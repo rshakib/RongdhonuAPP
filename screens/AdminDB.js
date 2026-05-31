@@ -343,7 +343,9 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
   const bkashSale = todaysOrders.reduce((sum, o) => sum + (o.bkash_amount || (o.method === 'বিকাশ' ? o.paidAmount : 0) || 0), 0);
   const nagadSale = todaysOrders.reduce((sum, o) => sum + (o.nagad_amount || (o.method === 'নগদ' ? o.paidAmount : 0) || 0), 0);
   const rocketSale = todaysOrders.reduce((sum, o) => sum + (o.rocket_amount || (o.method === 'রকেট' ? o.paidAmount : 0) || 0), 0);
-  const monthlyTotalSell = (submissionHistory?.reduce((sum, item) => sum + (item.sell || 0), 0) || 0) + todaySale;
+  const currentMonthPrefix = todayStr.substring(0, 7);
+  const thisMonthSubmissions = submissionHistory?.filter(item => item.date && item.date.startsWith(currentMonthPrefix)) || [];
+  const monthlyTotalSell = thisMonthSubmissions.reduce((sum, item) => sum + (item.sell || 0), 0) + todaySale;
   
   const allOrdersForLog = completedOrders.map(o => ({
     ...o,

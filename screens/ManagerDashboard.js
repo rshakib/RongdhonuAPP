@@ -275,7 +275,9 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
   const filteredOrders = allOrdersForLog.filter(o => (o.fullDate || todayStr) === todayStr);
 
   const totalDoneCount = todaysOrders.length;
-  const monthlyTotalSell = (submissionHistory?.reduce((sum, item) => sum + (item.sell || 0), 0) || 0) + todaySale;
+  const currentMonthPrefix = todayStr.substring(0, 7);
+  const thisMonthSubmissions = submissionHistory?.filter(item => item.date && item.date.startsWith(currentMonthPrefix)) || [];
+  const monthlyTotalSell = thisMonthSubmissions.reduce((sum, item) => sum + (item.sell || 0), 0) + todaySale;
 
   return (
     <SafeAreaView style={styles.container}>
