@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { formatDisplayDate } from '../database';
+import { formatDisplayDate, getBusinessDate } from '../database';
 
 export default function ExpensesScreen({ dailyExpenses, onUpdateExpenses, isDailySubmitted, userRole, onBack }) {
   // Local state initialized with dailyExpenses from App.js

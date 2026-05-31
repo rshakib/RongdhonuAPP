@@ -28,6 +28,7 @@ import {
   updateDailyExpenses,
   getSubmissionHistory,
   savePastAccount,
+  getBusinessDate,
   isTodaySubmitted,
   submitDailySheet,
   processSyncQueue,
@@ -45,7 +46,8 @@ import {
   getSyncQueueItems,
   syncHighFrequencyCollections,
   syncLowFrequencyCollections,
-  startSyncService
+  startSyncService,
+  performAutoSubmitChecks
 } from './database';
 
 // Import all 9 high-fidelity screens
@@ -238,6 +240,16 @@ export default function App() {
 
         // Start background sync service daemon automatically
         startSyncService();
+
+        // Check if there are any unsubmitted past days to Auto Submit right now
+        const didAutoSubmit = performAutoSubmitChecks();
+        if (didAutoSubmit) refreshData();
+
+        // Set interval to check for 11:59 PM auto-submits every minute
+        setInterval(() => {
+          const submitted = performAutoSubmitChecks();
+          if (submitted) refreshData();
+        }, 60000);
 
         // Pull low frequency collections (excluding menu) in the background asynchronously on startup
         syncLowFrequencyCollections().then((didChange) => {

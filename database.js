@@ -590,6 +590,11 @@ export function migrateSplitPayments() {
        db.execSync("ALTER TABLE daily_submit ADD COLUMN rocket_payment REAL DEFAULT 0");
     }
 
+    if (!submitCols.some(c => c.name === 'submission_type')) {
+       console.log("[DB Migration] Adding submission_type to daily_submit table...");
+       db.execSync("ALTER TABLE daily_submit ADD COLUMN submission_type TEXT DEFAULT 'MANUAL'");
+    }
+
     const summaryCols = db.getAllSync("PRAGMA table_info(daily_summary)");
     if (!summaryCols.some(c => c.name === 'rocketTotal')) {
        console.log("[DB Migration] Adding rocketTotal to daily_summary table...");
@@ -2503,6 +2508,7 @@ export function getSubmissionHistory() {
       sell: r.total_sell,
       expense: r.total_expense,
       deposit: r.net_deposit,
+      submissionType: r.submission_type || 'MANUAL',
       isManualEntry: r.submitted_by === 'Manual Entry',
       notes: r.submitted_by === 'Manual Entry' ? 'Manual Past Entry' : '',
       breakdown: {
@@ -2532,8 +2538,8 @@ export function savePastAccount(record) {
       INSERT OR REPLACE INTO daily_submit (
         id, date, total_sell, cash_payment, bkash_payment, nagad_payment, eja,
         dudu_store, akash_murgi, burger_bun, bazar, others, total_expense, net_deposit,
-        submitted_by, submitted_at, is_locked, created_at, updated_at, is_synced
-      ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, 'Manual Entry', ?, 1, ?, ?, 0)
+        submitted_by, submitted_at, is_locked, created_at, updated_at, is_synced, submission_type
+      ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, 'Manual Entry', ?, 1, ?, ?, 0, 'MANUAL')
     `, [
       dateStr,
       dateStr,
@@ -2593,17 +2599,17 @@ export function isTodaySubmitted() {
   }
 }
 
-export function submitDailySheet(summary, submittedBy) {
+export function submitDailySheet(summary, submittedBy, submissionType = 'MANUAL') {
   try {
-    const todayStr = getBusinessDate();
+    const todayStr = summary.bizDate || getBusinessDate();
     const now = new Date().toISOString();
     
     db.runSync(`
       INSERT OR REPLACE INTO daily_submit (
         id, date, total_sell, cash_payment, bkash_payment, nagad_payment, rocket_payment, eja,
         dudu_store, akash_murgi, burger_bun, bazar, others, total_expense, net_deposit,
-        submitted_by, submitted_at, is_locked, created_at, updated_at, is_synced
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 0)
+        submitted_by, submitted_at, is_locked, created_at, updated_at, is_synced, submission_type
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 0, ?)
     `, [
       todayStr,
       todayStr,
@@ -2623,7 +2629,8 @@ export function submitDailySheet(summary, submittedBy) {
       submittedBy,
       now,
       now,
-      now
+      now,
+      submissionType
     ]);
     enqueueSync("daily_submit", todayStr, "INSERT");
 
@@ -2635,6 +2642,103 @@ export function submitDailySheet(summary, submittedBy) {
   } catch (err) {
     console.error("Submit daily sheet error:", err);
     return false;
+  }
+}
+
+export function performAutoSubmitChecks() {
+  try {
+    const now = new Date();
+    const currentBizDate = getBusinessDate();
+    const isLateNight = now.getHours() === 23 && now.getMinutes() >= 59;
+    const isAfterMidnightBeforeRollover = now.getHours() === 0; // 12:00 AM - 12:59 AM
+    
+    const shouldSubmitCurrentBizDate = isLateNight || isAfterMidnightBeforeRollover;
+
+    const datesRows = db.getAllSync(`
+      SELECT DISTINCT date(created_at, 'localtime', '-1 hour') as biz_date FROM orders
+      UNION
+      SELECT DISTINCT date(created_at, 'localtime', '-1 hour') as biz_date FROM expenses
+    `);
+
+    let submittedAny = false;
+
+    datesRows.forEach(row => {
+      const dDate = row.biz_date;
+      if (!dDate) return;
+
+      let needsSubmit = false;
+      if (dDate < currentBizDate) {
+        needsSubmit = true;
+      } else if (dDate === currentBizDate && shouldSubmitCurrentBizDate) {
+        needsSubmit = true;
+      }
+
+      if (needsSubmit) {
+        const existing = db.getFirstSync("SELECT id FROM daily_submit WHERE date = ?", [dDate]);
+        if (!existing) {
+          executeAutoSubmitForDate(dDate);
+          submittedAny = true;
+        }
+      }
+    });
+
+    return submittedAny;
+  } catch(err) {
+    console.error("[Auto Submit] Check failed:", err);
+    return false;
+  }
+}
+
+function executeAutoSubmitForDate(dateStr) {
+  try {
+    const orders = db.getAllSync("SELECT * FROM orders WHERE date(created_at, 'localtime', '-1 hour') = ?", [dateStr]);
+    
+    let cashSell = 0, bkashSell = 0, nagadSell = 0, rocketSell = 0;
+    orders.forEach(o => {
+      cashSell += (o.cash_amount || (o.payment_method === 'ক্যাশ' ? o.grand_total : 0) || 0);
+      bkashSell += (o.bkash_amount || (o.payment_method === 'বিকাশ' ? o.grand_total : 0) || 0);
+      nagadSell += (o.nagad_amount || (o.payment_method === 'নগদ' ? o.grand_total : 0) || 0);
+      rocketSell += (o.rocket_amount || (o.payment_method === 'রকেট' ? o.grand_total : 0) || 0);
+    });
+    const totalSell = cashSell + bkashSell + nagadSell + rocketSell;
+
+    const expenses = db.getAllSync("SELECT * FROM expenses WHERE date(created_at, 'localtime', '-1 hour') = ?", [dateStr]);
+    let numDudu = 0, numAkash = 0, numBurger = 0, numBazar = 0, numOthers = 0, ijara = 0;
+    expenses.forEach(e => {
+      const amt = e.amount || 0;
+      if (e.category === 'দুদু স্টোর') numDudu += amt;
+      else if (e.category === 'আকাশ মুরগী') numAkash += amt;
+      else if (e.category === 'বার্গার বান') numBurger += amt;
+      else if (e.category === 'বাজার') numBazar += amt;
+      else if (e.category === 'অন্যান্য') numOthers += amt;
+      else if (e.category === 'ijara') ijara += amt;
+    });
+
+    const totalExpenses = numDudu + numAkash + numBurger + numBazar + numOthers;
+
+    const summary = {
+      bizDate: dateStr,
+      sell: totalSell,
+      expense: totalExpenses,
+      deposit: 3000, // AUTO SUBMIT FORCED DEPOSIT
+      breakdown: {
+        cash: cashSell,
+        bkash: bkashSell,
+        nagad: nagadSell,
+        rocket: rocketSell,
+        ijara: ijara,
+        dudu: numDudu,
+        akash: numAkash,
+        burger: numBurger,
+        bazar: numBazar,
+        others: numOthers
+      }
+    };
+
+    submitDailySheet(summary, 'Auto System', 'AUTO');
+    console.log(`[Auto Submit] Successfully auto-submitted for date: ${dateStr}`);
+  } catch (err) {
+    console.error(`[Auto Submit] Failed for date ${dateStr}:`, err);
   }
 }
 
@@ -2859,7 +2963,7 @@ export function getBusinessDate() {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  return `${y}-${m}-${day}`;
 }
 
 /**
@@ -2874,7 +2978,7 @@ export function getBusinessDateFromISO(isoStr) {
   const y = bizDate.getFullYear();
   const m = String(bizDate.getMonth() + 1).padStart(2, '0');
   const day = String(bizDate.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  return `${y}-${m}-${day}`;
 }
 
 export function formatDisplayDate(dateInput) {
