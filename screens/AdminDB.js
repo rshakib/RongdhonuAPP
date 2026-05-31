@@ -95,13 +95,13 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
   // Visual Sync Timer Countdowns
   const [delCountdown, setDelCountdown] = useState(10);
   const [tabCountdown, setTabCountdown] = useState(15);
-  const [fullCountdown, setFullCountdown] = useState(60);
+  const [fullCountdown, setFullCountdown] = useState(30);
 
   useEffect(() => {
     const t = setInterval(() => {
       setDelCountdown(prev => (prev <= 1 ? 10 : prev - 1));
       setTabCountdown(prev => (prev <= 1 ? 15 : prev - 1));
-      setFullCountdown(prev => (prev <= 1 ? 60 : prev - 1));
+      setFullCountdown(prev => (prev <= 1 ? 30 : prev - 1));
     }, 1000);
     return () => clearInterval(t);
   }, []);
@@ -347,7 +347,12 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
 
   const todaySale = completedOrders.reduce((sum, order) => sum + (order.paidAmount || 0), 0);
   const totalExpenses = (parseFloat(dailyExpenses.duduMiah) || 0) + (parseFloat(dailyExpenses.akashChicken) || 0) + (parseFloat(dailyExpenses.burgerBun) || 0) + (parseFloat(dailyExpenses.bazar) || 0) + (parseFloat(dailyExpenses.others) || 0);
-  const totalCash = todaySale + dailyExpenses.ijara - totalExpenses;
+  
+  // Calculate change money impact
+  const ongoingChangeMoney = deliveries.filter(d => d.status === 'BUSY').reduce((sum, d) => sum + (d.changeMoneyGiven || 0), 0);
+  const completedChangeMoney = completedOrders.reduce((sum, o) => sum + (o.changeMoneyGiven || 0), 0);
+  
+  const totalCash = todaySale + dailyExpenses.ijara - totalExpenses - ongoingChangeMoney - completedChangeMoney;
 
   const bkashSale = completedOrders.filter(o => o.method === 'বিকাশ').reduce((sum, o) => sum + (o.paidAmount || 0), 0);
   const nagadSale = completedOrders.filter(o => o.method === 'নগদ').reduce((sum, o) => sum + (o.paidAmount || 0), 0);
@@ -357,7 +362,8 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
   const allOrdersForLog = completedOrders.map(o => ({
     ...o,
     table: o.tableId,
-    amount: o.grandTotal || o.paidAmount || o.totalAmount
+    // Requirement: Show only Food Sales + Delivery Charge in log. Deduct changeMoneyGiven if it was included in the total.
+    amount: (o.paidAmount || o.grandTotal || o.totalAmount) - (o.changeMoneyGiven || 0)
   }));
 
   const filteredOrders = allOrdersForLog;
@@ -624,6 +630,17 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                 <View style={styles.detailRow}><Text style={styles.detailLabel}>সময়:</Text><Text style={styles.detailValue}>{selectedOrder.time}</Text></View>
                 <View style={styles.detailRow}><Text style={styles.detailLabel}>তারিখ:</Text><Text style={styles.detailValue}>{selectedOrder.fullDate ? formatDisplayDate(selectedOrder.fullDate) : 'আজ'}</Text></View>
                 <View style={styles.detailRow}><Text style={styles.detailLabel}>পেমেন্ট মাধ্যম:</Text><Text style={styles.detailValue}>{selectedOrder.method}</Text></View>
+                
+                {/* Detailed Payment Breakdown */}
+                <View style={{ marginTop: 8, padding: 8, backgroundColor: '#0A0A0A', borderRadius: 8, borderWidth: 1, borderColor: '#1A1A1A' }}>
+                   <Text style={{ color: '#888', fontSize: 10, marginBottom: 6, fontWeight: 'bold' }}>পেমেন্ট ব্রেকডাউন:</Text>
+                   <View style={styles.detailRow}><Text style={[styles.detailLabel, { fontSize: 11 }]}>💵 ক্যাশ:</Text><Text style={[styles.detailValue, { fontSize: 11 }]}>৳ {selectedOrder.cash_amount || 0}</Text></View>
+                   <View style={styles.detailRow}><Text style={[styles.detailLabel, { fontSize: 11 }]}>🐦 বিকাশ:</Text><Text style={[styles.detailValue, { fontSize: 11 }]}>৳ {selectedOrder.bkash_amount || 0}</Text></View>
+                   <View style={styles.detailRow}><Text style={[styles.detailLabel, { fontSize: 11 }]}>💰 নগদ:</Text><Text style={[styles.detailValue, { fontSize: 11 }]}>৳ {selectedOrder.nagad_amount || 0}</Text></View>
+                   <View style={styles.detailRow}><Text style={[styles.detailLabel, { fontSize: 11 }]}>🚀 রকেট:</Text><Text style={[styles.detailValue, { fontSize: 11 }]}>৳ {selectedOrder.rocket_amount || 0}</Text></View>
+                   <View style={styles.detailRow}><Text style={[styles.detailLabel, { fontSize: 11 }]}>😡 বাকি:</Text><Text style={[styles.detailValue, { fontSize: 11 }]}>৳ {selectedOrder.due_amount || 0}</Text></View>
+                </View>
+
                 {selectedOrder.deliveryCharge > 0 ? (
                   <>
                     <View style={styles.detailRow}><Text style={styles.detailLabel}>অর্ডার টোটাল:</Text><Text style={styles.detailValue}>৳ {selectedOrder.totalAmount}</Text></View>
@@ -666,7 +683,11 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
       <Modal animationType="fade" transparent={true} visible={menuModalVisible} onRequestClose={() => setMenuModalVisible(false)}>
         <TouchableOpacity style={styles.menuModalOverlay} activeOpacity={1} onPress={() => setMenuModalVisible(false)}>
           <View style={styles.menuModalContent}>
-            <View style={styles.syncTimerWrapper}><Text style={styles.syncTimerText}>Delete Check in: {delCountdown}s</Text><Text style={styles.syncTimerText}>Table Sync in: {tabCountdown}s</Text><Text style={styles.syncTimerText}>Full Sync in: {fullCountdown}s</Text></View>
+            <View style={styles.syncTimerWrapper}>
+              <Text style={styles.syncTimerText}>Delete Check in: {delCountdown}s</Text>
+              <Text style={styles.syncTimerText}>Table Sync in: {tabCountdown}s</Text>
+              <Text style={styles.syncTimerText}>Full Sync in: {fullCountdown}s</Text>
+            </View>
             <View style={styles.menuDivider} />
             {dailyExpenses.ijara > 0 ? (
               <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); Alert.alert("ইতিমধ্যে যোগ করা হয়েছে", "ইজা শুধুমাত্র একবার যোগ করা যাবে!"); }}><Text style={[styles.menuOptionText, { color: '#888' }]}>🔒 ইজা যুক্ত করা হয়েছে</Text></TouchableOpacity>
@@ -825,6 +846,42 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                       <View key={k} style={{ width: '48%', backgroundColor: '#0D0D0D', padding: 8, borderRadius: 6, borderWidth: 1, borderColor: '#1E1E1E', flexDirection: 'row', justifyContent: 'space-between' }}><Text style={{ color: '#AAA', fontSize: 11 }}>{k}</Text><Text style={{ color: '#FFB703', fontWeight: 'bold', fontSize: 11 }}>{v}</Text></View>
                   ))}</View>
                 </View>
+                {/* Status and Mode Grid */}
+                <View style={{ flexDirection: 'row', gap: 6, justifyContent: 'space-between', marginBottom: 8 }}>
+                  <View style={{ width: '32%', backgroundColor: '#0D0D0D', padding: 8, borderRadius: 6, borderWidth: 1, borderColor: '#1E1E1E' }}>
+                    <Text style={{ color: '#888', fontSize: 9, marginBottom: 2 }}>Sync Interval</Text>
+                    <Text style={{ color: '#FFF', fontSize: 11, fontWeight: 'bold' }}>30s</Text>
+                  </View>
+                  <View style={{ width: '32%', backgroundColor: '#0D0D0D', padding: 8, borderRadius: 6, borderWidth: 1, borderColor: '#1E1E1E' }}>
+                    <Text style={{ color: '#888', fontSize: 9, marginBottom: 2 }}>Poll Interval</Text>
+                    <Text style={{ color: '#FFF', fontSize: 11, fontWeight: 'bold' }}>30s</Text>
+                  </View>
+                  <View style={{ width: '32%', backgroundColor: '#0D0D0D', padding: 8, borderRadius: 6, borderWidth: 1, borderColor: '#1E1E1E' }}>
+                    <Text style={{ color: '#888', fontSize: 9, marginBottom: 2 }}>Firestore Mode</Text>
+                    <Text style={{ color: '#34D399', fontSize: 10, fontWeight: 'bold' }}>REST Sync</Text>
+                  </View>
+                </View>
+
+                {/* Granular Sync Status Timers */}
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'space-between', marginBottom: 12 }}>
+                  <View style={{ width: '48%', backgroundColor: '#0D0D0D', padding: 8, borderRadius: 6, borderWidth: 1, borderColor: '#1E1E1E' }}>
+                    <Text style={{ color: '#888', fontSize: 9, marginBottom: 2 }}>Last Sync Time</Text>
+                    <Text style={{ color: '#FFB703', fontSize: 10, fontWeight: 'bold' }}>{firebaseUsageData?.lastSyncTime || 'N/A'}</Text>
+                  </View>
+                  <View style={{ width: '48%', backgroundColor: '#0D0D0D', padding: 8, borderRadius: 6, borderWidth: 1, borderColor: '#1E1E1E' }}>
+                    <Text style={{ color: '#888', fontSize: 9, marginBottom: 2 }}>Next Full Sync (30s)</Text>
+                    <Text style={{ color: '#34D399', fontSize: 10, fontWeight: 'bold' }}>{firebaseUsageData?.nextFullSyncTime || 'N/A'}</Text>
+                  </View>
+                  <View style={{ width: '48%', backgroundColor: '#0D0D0D', padding: 8, borderRadius: 6, borderWidth: 1, borderColor: '#1E1E1E' }}>
+                    <Text style={{ color: '#888', fontSize: 9, marginBottom: 2 }}>Next Delete Check</Text>
+                    <Text style={{ color: '#34D399', fontSize: 10, fontWeight: 'bold' }}>{firebaseUsageData?.nextDeletionsTime || 'N/A'}</Text>
+                  </View>
+                  <View style={{ width: '48%', backgroundColor: '#0D0D0D', padding: 8, borderRadius: 6, borderWidth: 1, borderColor: '#1E1E1E' }}>
+                    <Text style={{ color: '#888', fontSize: 9, marginBottom: 2 }}>Next Table Sync</Text>
+                    <Text style={{ color: '#34D399', fontSize: 10, fontWeight: 'bold' }}>{firebaseUsageData?.nextTablesTime || 'N/A'}</Text>
+                  </View>
+                </View>
+
                 <View style={{ marginTop: 24, borderTopWidth: 1, borderColor: '#1F1F1F', paddingTop: 16 }}><Text style={{ color: '#FFB703', fontSize: 13, fontWeight: 'bold', marginBottom: 12 }}>⚡ ক্লাউড হেলথ</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                     <View style={{ width: '48%', backgroundColor: '#0D0D0D', padding: 8, borderRadius: 6, borderWidth: 1, borderColor: '#1E1E1E' }}><Text style={{ color: '#888', fontSize: 9 }}>Total Reads</Text><Text style={{ color: '#FFF', fontWeight: 'bold' }}>{firebaseUsageData?.readsToday || 0}</Text></View>

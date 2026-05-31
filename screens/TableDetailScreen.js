@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -16,6 +16,7 @@ export default function TableDetailScreen({
   table,
   onBack,
   onUpdateTableItems,
+  onUpdateDeliveryDetails,
   onPaymentDone,
   onNavigateToAddItem
 }) {
@@ -32,13 +33,36 @@ export default function TableDetailScreen({
 
   const items = table.items || [];
 
-  const [deliveryChargeText, setDeliveryChargeText] = useState('0');
+  const [deliveryChargeText, setDeliveryChargeText] = useState(table.deliveryCharge?.toString() || '0');
+  const [changeMoneyText, setChangeMoneyText] = useState(table.changeMoneyGiven?.toString() || '0');
+
   const deliveryCharge = parseFloat(deliveryChargeText) || 0;
+  const changeMoneyGiven = parseFloat(changeMoneyText) || 0;
+  
+  // Requirement: Only use the value already SAVED in DB for the Grand Total
+  // This ensures that typing in the field doesn't change the bill until "Confirm" is pressed.
+  const appliedChangeMoney = table.changeMoneyGiven || 0;
+
   const isDelivery = table.id && (table.id.toString().startsWith('D-') || table.id.toString().includes('Delivery') || table.name?.toString().includes('Delivery'));
 
   // Calculate live totals
   const totalAmount = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
   const totalItemsCount = items.reduce((sum, item) => sum + item.qty, 0);
+  // Grand Total only includes appliedChangeMoney (the one deducted from cash)
+  const grandTotal = totalAmount + (isDelivery ? (deliveryCharge + appliedChangeMoney) : 0);
+
+  const handleApplyChangeMoney = () => {
+    if (isDelivery && onUpdateDeliveryDetails) {
+       onUpdateDeliveryDetails(table.id, deliveryCharge, changeMoneyGiven);
+       Alert.alert("সফল", `৳${changeMoneyGiven} আপনার "মোট ক্যাশ" থেকে বিয়োগ করা হয়েছে এবং বিলে যোগ করা হয়েছে।`);
+    }
+  };
+
+  const handleApplyDeliveryCharge = () => {
+    if (isDelivery && onUpdateDeliveryDetails) {
+       onUpdateDeliveryDetails(table.id, deliveryCharge, changeMoneyGiven);
+    }
+  };
 
   // Increase item quantity in cart
   const handleIncreaseQty = (index) => {
@@ -174,72 +198,150 @@ export default function TableDetailScreen({
           <Text style={styles.dottedAddText}>➕ মেনু থেকে আইটেম যোগ করুন</Text>
         </TouchableOpacity>
 
-        {/* Delivery Charge Selector (Optional for Delivery Orders) */}
+        {/* Delivery Charge and Change Money given (Optional for Delivery Orders) */}
         {isDelivery && (
-          <View style={styles.deliveryChargeCard}>
-            <View style={styles.deliveryChargeHeader}>
-              <Text style={styles.deliveryChargeTitle}>🛵 ডেলিভারি চার্জ নির্ধারণ করুন</Text>
-              <Text style={styles.deliveryChargeSubtitle}>ডেলিভারি চার্জ যুক্ত করতে বাটন চাপুন বা টাইপ করুন</Text>
-            </View>
-            
-            {/* Presets Row */}
-            <View style={styles.presetsRow}>
-              {[20, 50, 80, 100].map((val) => (
+          <View style={{ marginBottom: 20 }}>
+            {/* Delivery Charge Section */}
+            <View style={styles.deliveryChargeCard}>
+              <View style={styles.deliveryChargeHeader}>
+                <Text style={styles.deliveryChargeTitle}>🚚 ডেলিভারি চার্জ নির্ধারণ করুন</Text>
+                <Text style={styles.deliveryChargeSubtitle}>ডেলিভারি চার্জ যুক্ত করতে বাটন চাপুন বা টাইপ করুন</Text>
+              </View>
+              
+              {/* Presets Row */}
+              <View style={styles.presetsRow}>
+                {[20, 50, 80, 100].map((val) => (
+                  <TouchableOpacity
+                    key={val}
+                    style={[
+                      styles.presetBtn,
+                      deliveryCharge === val && styles.presetBtnSelected
+                    ]}
+                    onPress={() => {
+                      setDeliveryChargeText(val.toString());
+                      // Trigger update
+                      setTimeout(handleApplyDeliveryCharge, 100);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[
+                      styles.presetBtnText,
+                      deliveryCharge === val && styles.presetBtnTextSelected
+                    ]}>৳ {val}</Text>
+                  </TouchableOpacity>
+                ))}
                 <TouchableOpacity
-                  key={val}
                   style={[
                     styles.presetBtn,
-                    deliveryCharge === val && styles.presetBtnSelected
+                    ![20, 50, 80, 100, 0].includes(deliveryCharge) && styles.presetBtnSelected
                   ]}
-                  onPress={() => setDeliveryChargeText(val.toString())}
+                  onPress={() => setDeliveryChargeText('')}
                   activeOpacity={0.8}
                 >
                   <Text style={[
                     styles.presetBtnText,
-                    deliveryCharge === val && styles.presetBtnTextSelected
-                  ]}>৳ {val}</Text>
+                    ![20, 50, 80, 100, 0].includes(deliveryCharge) && styles.presetBtnTextSelected
+                  ]}>অন্যান্য</Text>
                 </TouchableOpacity>
-              ))}
-              <TouchableOpacity
-                style={[
-                  styles.presetBtn,
-                  ![20, 50, 80, 100, 0].includes(deliveryCharge) && styles.presetBtnSelected
-                ]}
-                onPress={() => setDeliveryChargeText('')}
-                activeOpacity={0.8}
-              >
-                <Text style={[
-                  styles.presetBtnText,
-                  ![20, 50, 80, 100, 0].includes(deliveryCharge) && styles.presetBtnTextSelected
-                ]}>অন্যান্য</Text>
-              </TouchableOpacity>
+              </View>
+
+              {/* Manual TextInput */}
+              <View style={styles.manualInputRow}>
+                <View style={styles.manualInputWrapper}>
+                  <Text style={styles.manualCurrencySymbol}>৳</Text>
+                  <TextInput
+                    style={styles.manualTextInput}
+                    keyboardType="numeric"
+                    placeholder="অন্য পরিমাণ লিখুন"
+                    placeholderTextColor="#666"
+                    value={deliveryChargeText === '0' ? '' : deliveryChargeText}
+                    onChangeText={(txt) => {
+                      const cleanTxt = txt.replace(/[^0-9]/g, '');
+                      setDeliveryChargeText(cleanTxt);
+                    }}
+                    onBlur={handleApplyDeliveryCharge}
+                  />
+                </View>
+                {deliveryCharge > 0 && (
+                  <TouchableOpacity
+                    style={styles.clearBtn}
+                    onPress={() => {
+                      setDeliveryChargeText('0');
+                      setTimeout(handleApplyDeliveryCharge, 100);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.clearBtnText}>মুছে ফেলুন ×</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
 
-            {/* Manual TextInput */}
-            <View style={styles.manualInputRow}>
-              <View style={styles.manualInputWrapper}>
-                <Text style={styles.manualCurrencySymbol}>৳</Text>
-                <TextInput
-                  style={styles.manualTextInput}
-                  keyboardType="numeric"
-                  placeholder="অন্য পরিমাণ লিখুন"
-                  placeholderTextColor="#666"
-                  value={deliveryChargeText === '0' ? '' : deliveryChargeText}
-                  onChangeText={(txt) => {
-                    const cleanTxt = txt.replace(/[^0-9]/g, '');
-                    setDeliveryChargeText(cleanTxt);
-                  }}
-                />
+            {/* Change Money Given Section (Requirement 2 with Button) */}
+            <View style={[styles.deliveryChargeCard, { marginTop: 12, borderColor: 'rgba(239, 68, 68, 0.3)', backgroundColor: 'rgba(239, 68, 68, 0.02)' }]}>
+              <View style={styles.deliveryChargeHeader}>
+                <Text style={[styles.deliveryChargeTitle, { color: '#FCA5A5' }]}>💵 ভাঙতি টাকা (Change Money Given)</Text>
+                <Text style={styles.deliveryChargeSubtitle}>ডেলিভারি বয়কে ক্যাশ থেকে কত ভাঙতি দেওয়া হয়েছে?</Text>
               </View>
-              {deliveryCharge > 0 && (
-                <TouchableOpacity
-                  style={styles.clearBtn}
-                  onPress={() => setDeliveryChargeText('0')}
-                  activeOpacity={0.7}
+              
+              {/* Presets Row for Change Money */}
+              <View style={styles.presetsRow}>
+                {[100, 200, 500, 1000].map((val) => (
+                  <TouchableOpacity
+                    key={val}
+                    style={[
+                      styles.presetBtn,
+                      changeMoneyGiven === val && { borderColor: '#EF4444', backgroundColor: 'rgba(239, 68, 68, 0.1)' }
+                    ]}
+                    onPress={() => setChangeMoneyText(val.toString())}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[
+                      styles.presetBtnText,
+                      changeMoneyGiven === val && { color: '#EF4444' }
+                    ]}>৳ {val}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Manual TextInput and Apply Button */}
+              <View style={styles.manualInputRow}>
+                <View style={[styles.manualInputWrapper, { flex: 1.5, borderColor: appliedChangeMoney > 0 ? '#EF4444' : '#262626' }]}>
+                  <Text style={styles.manualCurrencySymbol}>৳</Text>
+                  <TextInput
+                    style={styles.manualTextInput}
+                    keyboardType="numeric"
+                    placeholder="পরিমাণ"
+                    placeholderTextColor="#666"
+                    value={changeMoneyText === '0' ? '' : changeMoneyText}
+                    onChangeText={(txt) => {
+                      const cleanTxt = txt.replace(/[^0-9]/g, '');
+                      setChangeMoneyText(cleanTxt);
+                    }}
+                  />
+                </View>
+                
+                <TouchableOpacity 
+                  style={{ 
+                    flex: 2, 
+                    backgroundColor: '#EF4444', 
+                    borderRadius: 10, 
+                    height: 48, 
+                    justifyContent: 'center', 
+                    alignItems: 'center',
+                    marginLeft: 8,
+                    flexDirection: 'row'
+                  }}
+                  onPress={handleApplyChangeMoney}
                 >
-                  <Text style={styles.clearBtnText}>মুছে ফেলুন ×</Text>
+                   <Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 11 }}>ক্যাশ থেকে বিয়োগ করুন</Text>
                 </TouchableOpacity>
-              )}
+              </View>
+              <Text style={{ color: '#F87171', fontSize: 9, marginTop: 8, opacity: 0.8 }}>
+                {appliedChangeMoney > 0 
+                  ? `✅ ৳${appliedChangeMoney} বর্তমানে আপনার "মোট ক্যাশ" থেকে বিয়োগ করা আছে।`
+                  : '* বাটনটি টিপলে টাকাটি আপনার "মোট ক্যাশ" থেকে কমে যাবে এবং বিলে যোগ হবে।'}
+              </Text>
             </View>
           </View>
         )}
@@ -249,9 +351,10 @@ export default function TableDetailScreen({
       <View style={styles.bottomBar}>
         <View style={styles.summaryCol}>
           <Text style={styles.summaryLabel}>{isDelivery ? "সর্বমোট (গ্র্যান্ড টোটাল)" : "মোট পরিমাণ"}</Text>
-          <Text style={styles.summaryAmount}>৳ {isDelivery ? (totalAmount + deliveryCharge) : totalAmount}</Text>
+          <Text style={styles.summaryAmount}>৳ {grandTotal}</Text>
           <Text style={styles.summaryCount}>
             {totalItemsCount} টি আইটেম{isDelivery && deliveryCharge > 0 ? ` + ৳${deliveryCharge} চার্জ` : ''}
+            {isDelivery && appliedChangeMoney > 0 ? ` + ৳${appliedChangeMoney} ভাঙতি` : ''}
           </Text>
         </View>
         <TouchableOpacity
@@ -265,7 +368,7 @@ export default function TableDetailScreen({
                 { text: "বাতিল", style: "cancel" },
                 { 
                   text: "হ্যাঁ, পেমেন্ট পেয়েছি", 
-                  onPress: () => onPaymentDone(totalAmount, deliveryCharge) 
+                  onPress: () => onPaymentDone(totalAmount, deliveryCharge, changeMoneyGiven) 
                 }
               ]
             );

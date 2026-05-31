@@ -19,6 +19,7 @@ import {
   createDelivery,
   updateDeliveryState,
   removeDelivery,
+  updateDeliveryDetails,
   getCompletedOrders,
   addCompletedOrder,
   deleteCompletedOrder,
@@ -171,6 +172,7 @@ export default function App() {
   const [selectedTableId, setSelectedTableId] = useState(null);
   const [paymentAmount, setPaymentAmount] = useState(0); // Total due amount
   const [deliveryCharge, setDeliveryCharge] = useState(0); // Optional delivery charge
+  const [changeMoneyGiven, setChangeMoneyGiven] = useState(0); // Change money given to rider
   const [paidAmount, setPaidAmount] = useState(0);       // User entered paid amount
   const [paymentMethod, setPaymentMethod] = useState('ক্যাশ');
 
@@ -268,7 +270,7 @@ export default function App() {
        } catch (err) {
          console.log("[Sync] Offline or network error during poll, skipped cycle:", err.message);
        }
-    }, 60000); // Check every 60 seconds (1 minute)
+    }, 30000); // Check every 30 seconds
 
     return () => clearInterval(realtimePoll);
   }, [isLoggedIn]);
@@ -293,6 +295,28 @@ export default function App() {
     }, 10000); // Check every 10 seconds
 
     return () => clearInterval(deletionsChannel);
+  }, [isLoggedIn]);
+
+  // --- HYBRID SYNC: FAST TABLES CHANNEL (15s) ---
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    const tablesChannel = setInterval(async () => {
+       if (AppState.currentState !== 'active') return;
+
+       try {
+         // Pull ONLY the restaurant_tables collection every 15 seconds
+         const didChange = await syncTablesOnly();
+         if (didChange) {
+           console.log("[Hybrid Sync] Table status changes detected. Refreshing UI...");
+           refreshData();
+         }
+       } catch (err) {
+         // Silently fail to minimize UI disruption on network issues
+       }
+    }, 15000); // Check every 15 seconds
+
+    return () => clearInterval(tablesChannel);
   }, [isLoggedIn]);
 
   // Pull low-frequency collections when the menu management screens are opened
@@ -514,7 +538,7 @@ export default function App() {
   // Creates a new delivery order with a unique ID in SQLite
   const handleCreateDelivery = async () => {
     const uniqueId = `D-${Date.now()}`;
-    const newName = `🛵 Delivery ${deliveries.length + 1}`;
+    const newName = `🛵 Delivery`;
 
     createDelivery(uniqueId, newName, 'FREE', '');
     refreshData();
@@ -588,15 +612,23 @@ export default function App() {
     );
   };
 
+  const handleUpdateDeliveryDetails = async (id, delCharge, changeMoney) => {
+    updateDeliveryDetails(id, delCharge, changeMoney);
+    refreshData();
+    // Immediate Sync
+    await syncRecordImmediately('deliveries', id);
+  };
+
   // Triggers navigation to the Checkout Page (Screen 8)
-  const handleNavigateToCheckout = (amount, delCharge = 0) => {
+  const handleNavigateToCheckout = (amount, delCharge = 0, changeMoney = 0) => {
     setPaymentAmount(amount);
     setDeliveryCharge(delCharge);
+    setChangeMoneyGiven(changeMoney);
     setCurrentScreen('PAYMENT_CHECKOUT');
   };
 
   // Triggered inside Screen 8 when clicking "পেমেন্ট সম্পন্ন করুন"
-  const handleCompletePayment = async (paid, method) => {
+  const handleCompletePayment = async (paid, method, breakdown = {}) => {
     const activeTable = tables.find(t => t.id === selectedTableId) || deliveries.find(d => d.id === selectedTableId);
     if (activeTable) {
       const orderRecord = {
@@ -605,14 +637,21 @@ export default function App() {
         items: activeTable.items.map(i => `${i.name} x${i.qty}`).join(', '),
         totalAmount: paymentAmount,
         deliveryCharge: deliveryCharge,
+        changeMoneyGiven: changeMoneyGiven,
+        // Split payment breakdown
+        cashAmount: breakdown.cash || 0,
+        bkashAmount: breakdown.bkash || 0,
+        nagadAmount: breakdown.nagad || 0,
+        rocketAmount: breakdown.rocket || 0,
+        dueAmount: breakdown.due || 0,
         paidAmount: paid,
         method: method,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         status: 'Done'
       };
-      
+
       addCompletedOrder(orderRecord);
-      
+
       setPaidAmount(paid);
       setPaymentMethod(method);
       setCurrentScreen('PAYMENT_SUCCESS');
@@ -639,6 +678,7 @@ export default function App() {
     setSelectedTableId(null);
     setPaymentAmount(0);
     setDeliveryCharge(0);
+    setChangeMoneyGiven(0);
     setPaidAmount(0);
     setCurrentScreen('DASHBOARD');
     
@@ -727,7 +767,7 @@ export default function App() {
     const today = new Date().toISOString().split('T')[0];
     let anySuccess = false;
     for (const c of cats) {
-       const sid = `${today}_${c}`;
+       const sid = `exp_${today}_${c.replace(/\s+/g, '_')}`;
        const s = await syncRecordImmediately('expenses', sid);
        if (s) anySuccess = true;
     }
@@ -993,6 +1033,7 @@ export default function App() {
               refreshData();
             }}
             onUpdateTableItems={handleUpdateTableItems}
+            onUpdateDeliveryDetails={handleUpdateDeliveryDetails}
             onPaymentDone={handleNavigateToCheckout}
             onNavigateToAddItem={() => setCurrentScreen('ADD_ITEM')}
           />
@@ -1036,6 +1077,7 @@ export default function App() {
             tableId={checkoutTable ? (checkoutTable.name || checkoutTable.id) : selectedTableId}
             totalAmount={paymentAmount}
             deliveryCharge={deliveryCharge}
+            changeMoneyGiven={changeMoneyGiven}
             totalItems={totalItemsCount}
             userRole={userRole}
             onBack={() => setCurrentScreen('TABLE_DETAIL')}

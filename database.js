@@ -187,6 +187,11 @@ const TABLE_SCHEMAS = {
       discount REAL,
       delivery_charge REAL DEFAULT 0,
       change_money_given REAL DEFAULT 0,
+      cash_amount REAL DEFAULT 0,
+      bkash_amount REAL DEFAULT 0,
+      nagad_amount REAL DEFAULT 0,
+      rocket_amount REAL DEFAULT 0,
+      due_amount REAL DEFAULT 0,
       grand_total REAL,
       payment_status TEXT, -- Paid, Unpaid, Pending, etc.
       payment_method TEXT,
@@ -218,6 +223,11 @@ const TABLE_SCHEMAS = {
       discount_amount REAL,
       delivery_charge REAL DEFAULT 0,
       change_money_given REAL DEFAULT 0,
+      cash_amount REAL DEFAULT 0,
+      bkash_amount REAL DEFAULT 0,
+      nagad_amount REAL DEFAULT 0,
+      rocket_amount REAL DEFAULT 0,
+      due_amount REAL DEFAULT 0,
       payment_method TEXT,
       payment_status TEXT,
       paid_at TEXT,
@@ -555,6 +565,28 @@ export function migrateDeliveryCharge() {
   }
 }
 
+export function migrateSplitPayments() {
+  try {
+    const ordersCols = db.getAllSync("PRAGMA table_info(orders)");
+    const paymentsCols = db.getAllSync("PRAGMA table_info(payments)");
+    
+    const fields = ['cash_amount', 'bkash_amount', 'nagad_amount', 'rocket_amount', 'due_amount'];
+    
+    for (const f of fields) {
+      if (!ordersCols.some(c => c.name === f)) {
+        console.log(`[DB Migration] Adding ${f} to orders table...`);
+        db.execSync(`ALTER TABLE orders ADD COLUMN ${f} REAL DEFAULT 0`);
+      }
+      if (!paymentsCols.some(c => c.name === f)) {
+        console.log(`[DB Migration] Adding ${f} to payments table...`);
+        db.execSync(`ALTER TABLE payments ADD COLUMN ${f} REAL DEFAULT 0`);
+      }
+    }
+  } catch (err) {
+    console.error("[DB Migration] Split payment migration failed:", err);
+  }
+}
+
 // ==========================================
 // 1. AUTO INITIALIZATION ENGINE
 // ==========================================
@@ -565,6 +597,7 @@ export function initDatabase(skipSeeding = false) {
     // Run schema migrations first
     migrateMenuItemsTable();
     migrateDeliveryCharge();
+    migrateSplitPayments();
 
     // 1. Create tables
     for (const [tableName, sql] of Object.entries(TABLE_SCHEMAS)) {
@@ -841,7 +874,7 @@ export function startSyncService() {
     if (AppState && AppState.currentState === 'active') {
       await processSyncQueue();
     }
-  }, 60000); // Check and push changes every 60 seconds (1 minute)
+  }, 30000); // Check and push changes every 30 seconds
 }
 
 export async function processSyncQueue(singleRecordId = null, singleTableName = null) {
@@ -910,8 +943,9 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
       }
 
       try {
+        const encodedId = encodeURIComponent(recordId);
         if (action === 'DELETE') {
-          const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${tableName}/${recordId}?key=${apiKey}`;
+          const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${tableName}/${encodedId}?key=${apiKey}`;
           const res = await fetch(url, { method: 'DELETE' });
           
           if (res.ok || res.status === 404) {
@@ -928,7 +962,6 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
             lastSyncError = `HTTP ${res.status}: ${errText}`;
             db.runSync("UPDATE sync_queue SET status = 'FAILED' WHERE id = ?", [Number(queueId)]);
             failedWrites++;
-            if (!singleRecordId) break;
           }
         } else {
           let row = null;
@@ -948,7 +981,7 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
 
           const firestoreDoc = toFirestoreDocument(row);
           const targetCollection = tableName === 'deletions' ? 'app_config' : tableName;
-          const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${targetCollection}/${rIdStr}?key=${apiKey}`;
+          const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${targetCollection}/${encodeURIComponent(rIdStr)}?key=${apiKey}`;
           
           const res = await fetch(url, {
             method: 'PATCH',
@@ -976,14 +1009,12 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
             lastSyncError = `HTTP ${res.status}: ${errText}`;
             db.runSync("UPDATE sync_queue SET status = 'FAILED' WHERE id = ?", [Number(queueId)]);
             failedWrites++;
-            if (!singleRecordId) break; 
           }
         }
       } catch (err) {
         lastSyncError = `Sync Error: ${err.message}`;
         db.runSync("UPDATE sync_queue SET status = 'FAILED' WHERE id = ?", [Number(queueId)]);
         failedWrites++;
-        if (!singleRecordId) break;
       }
     }
 
@@ -1300,7 +1331,7 @@ export async function syncLowFrequencyCollections() {
   let hasChanges = false;
   try {
     // Menu collections removed from periodic polling to optimize Firestore reads.
-    const lowFreq = ['users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 'app_config'];
+    const lowFreq = ['users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 'app_config', 'expenses', 'eja_history'];
     hasChanges = await syncCollections(lowFreq);
   } finally {
     isPullingSyncLow = false;
@@ -1612,23 +1643,36 @@ export function calculateAndSaveDailySummary(dateStr) {
       "SELECT * FROM payments WHERE SUBSTR(created_at, 1, 10) = ?",
       [todayStr]
     );
-    
+
     let cashTotal = 0;
     let bkashTotal = 0;
     let nagadTotal = 0;
+    let rocketTotal = 0;
     let dueCollection = 0;
 
     paymentsToday.forEach(p => {
-      const amt = p.customer_paid || 0;
-      const method = String(p.payment_method).toLowerCase();
-      if (method.includes('cash') || method.includes('ক্যাশ')) {
-        cashTotal += amt;
-      } else if (method.includes('bkash') || method.includes('বিকাশ')) {
-        bkashTotal += amt;
-      } else if (method.includes('nagad') || method.includes('নগদ')) {
-        nagadTotal += amt;
-      } else if (method.includes('later') || method.includes('বাকি')) {
-        dueCollection += amt;
+      // Logic for new Split Payment system
+      cashTotal += (p.cash_amount || 0);
+      bkashTotal += (p.bkash_amount || 0);
+      nagadTotal += (p.nagad_amount || 0);
+      rocketTotal += (p.rocket_amount || 0);
+      dueCollection += (p.due_amount || 0);
+
+      // Legacy fallback for records created before split payments
+      if (!p.cash_amount && !p.bkash_amount && !p.nagad_amount && !p.rocket_amount && !p.due_amount) {
+        const amt = p.customer_paid || 0;
+        const method = String(p.payment_method).toLowerCase();
+        if (method.includes('cash') || method.includes('ক্যাশ')) {
+          cashTotal += amt;
+        } else if (method.includes('bkash') || method.includes('বিকাশ')) {
+          bkashTotal += amt;
+        } else if (method.includes('nagad') || method.includes('নগদ')) {
+          nagadTotal += amt;
+        } else if (method.includes('rocket') || method.includes('রকেট')) {
+          rocketTotal += amt;
+        } else if (method.includes('later') || method.includes('বাকি')) {
+          dueCollection += amt;
+        }
       }
     });
 
@@ -1669,7 +1713,7 @@ export function calculateAndSaveDailySummary(dateStr) {
           temperature = ?, humidity = ?, condition = ?, isRainy = ?, windSpeed = ?,
           totalOrders = ?, totalSales = ?, totalDiscount = ?, totalExpense = ?, totalDelivery = ?,
           total_delivery_charge = ?, averageOrderValue = ?, peakHour = ?, firstOrderTime = ?, lastOrderTime = ?,
-          cashTotal = ?, bkashTotal = ?, nagadTotal = ?, dueCollection = ?, ejaAmount = ?,
+          cashTotal = ?, bkashTotal = ?, nagadTotal = ?, rocketTotal = ?, dueCollection = ?, ejaAmount = ?,
           netCash = ?, ownerDeposit = ?, itemSummary = ?, updated_at = ?, is_synced = 0
         WHERE date = ?
       `, [
@@ -1677,7 +1721,7 @@ export function calculateAndSaveDailySummary(dateStr) {
         weather.temperature, weather.humidity, weather.condition, weather.isRainy, weather.windSpeed,
         totalOrders, totalSales, totalDiscount, totalExpense, totalDelivery,
         totalDeliveryCharge, averageOrderValue, peakHour, firstOrderTime, lastOrderTime,
-        cashTotal, bkashTotal, nagadTotal, dueCollection, ejaAmount,
+        cashTotal, bkashTotal, nagadTotal, rocketTotal, dueCollection, ejaAmount,
         netCash, ownerDeposit, itemSummary, now, todayStr
       ]);
       enqueueSync("daily_summary", todayStr, "UPDATE");
@@ -1687,22 +1731,22 @@ export function calculateAndSaveDailySummary(dateStr) {
           id, date, dayOfWeek, weekOfMonth, isFriday, isHoliday, specialDayNote,
           temperature, humidity, condition, isRainy, windSpeed, totalOrders, totalSales,
           totalDiscount, totalExpense, totalDelivery, total_delivery_charge, averageOrderValue, peakHour,
-          firstOrderTime, lastOrderTime, cashTotal, bkashTotal, nagadTotal, dueCollection,
+          firstOrderTime, lastOrderTime, cashTotal, bkashTotal, nagadTotal, rocketTotal, dueCollection,
           ejaAmount, netCash, ownerDeposit, itemSummary, created_at, updated_at, is_synced
         ) VALUES (
           ?, ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?, ?, 0
         )
       `, [
         todayStr, todayStr, dayOfWeek, weekOfMonth, isFriday, isHoliday, specialDayNote,
         weather.temperature, weather.humidity, weather.condition, weather.isRainy, weather.windSpeed,
         totalOrders, totalSales, totalDiscount, totalExpense, totalDelivery, totalDeliveryCharge,
-        averageOrderValue, peakHour, firstOrderTime, lastOrderTime,
-        cashTotal, bkashTotal, nagadTotal, dueCollection, ejaAmount,
-        netCash, ownerDeposit, itemSummary, now, now
+        averageOrderValue, peakHour, firstOrderTime, lastOrderTime, 
+        cashTotal, bkashTotal, nagadTotal, rocketTotal, dueCollection,
+        ejaAmount, netCash, ownerDeposit, itemSummary, now, now
       ]);
       enqueueSync("daily_summary", todayStr, "INSERT");
     }
@@ -2189,12 +2233,21 @@ export function addCompletedOrder(orderRecord) {
     const todayStr = nowIso.substring(0, 10);
     const deliveryCharge = orderRecord.deliveryCharge || 0;
     const changeMoneyGiven = orderRecord.changeMoneyGiven || 0;
-    
+
+    // Breakdown Amounts (for Split Payments)
+    const cashAmt = orderRecord.cashAmount || 0;
+    const bkashAmt = orderRecord.bkashAmount || 0;
+    const nagadAmt = orderRecord.nagadAmount || 0;
+    const rocketAmt = orderRecord.rocketAmount || 0;
+    const dueAmt = orderRecord.dueAmount || 0;
+
     // Check if order already exists in SQLite to prevent duplicate creation
     const existingOrder = db.getFirstSync("SELECT id FROM orders WHERE id = ?", [idStr]);
     if (existingOrder) {
       db.runSync(`
-        UPDATE orders SET table_id = ?, items = ?, subtotal = ?, discount = ?, delivery_charge = ?, change_money_given = ?, grand_total = ?, payment_status = 'Paid', payment_method = ?, time = ?, updated_at = ?, is_synced = 0
+        UPDATE orders SET table_id = ?, items = ?, subtotal = ?, discount = ?, delivery_charge = ?, change_money_given = ?, 
+        cash_amount = ?, bkash_amount = ?, nagad_amount = ?, rocket_amount = ?, due_amount = ?,
+        grand_total = ?, payment_status = 'Paid', payment_method = ?, time = ?, updated_at = ?, is_synced = 0
         WHERE id = ?
       `, [
         orderRecord.tableId,
@@ -2203,6 +2256,11 @@ export function addCompletedOrder(orderRecord) {
         0.0,
         deliveryCharge,
         changeMoneyGiven,
+        cashAmt,
+        bkashAmt,
+        nagadAmt,
+        rocketAmt,
+        dueAmt,
         orderRecord.paidAmount,
         orderRecord.method,
         orderRecord.time,
@@ -2212,8 +2270,12 @@ export function addCompletedOrder(orderRecord) {
       enqueueSync("orders", idStr, "UPDATE");
     } else {
       db.runSync(`
-        INSERT OR REPLACE INTO orders (id, table_id, items, subtotal, discount, delivery_charge, grand_total, payment_status, payment_method, time, created_at, updated_at, locked_at, is_synced)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Paid', ?, ?, ?, ?, ?, 0)
+        INSERT OR REPLACE INTO orders (
+          id, table_id, items, subtotal, discount, delivery_charge, change_money_given,
+          cash_amount, bkash_amount, nagad_amount, rocket_amount, due_amount,
+          grand_total, payment_status, payment_method, time, created_at, updated_at, locked_at, is_synced
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Paid', ?, ?, ?, ?, ?, 0)
       `, [
         idStr,
         orderRecord.tableId,
@@ -2221,6 +2283,12 @@ export function addCompletedOrder(orderRecord) {
         orderRecord.totalAmount,
         0.0,
         deliveryCharge,
+        changeMoneyGiven,
+        cashAmt,
+        bkashAmt,
+        nagadAmt,
+        rocketAmt,
+        dueAmt,
         orderRecord.paidAmount,
         orderRecord.method,
         orderRecord.time,
@@ -2235,14 +2303,20 @@ export function addCompletedOrder(orderRecord) {
     const existingPay = db.getFirstSync("SELECT id FROM payments WHERE id = ?", [payId]);
     if (existingPay) {
       db.runSync(`
-        UPDATE payments SET total_amount = ?, customer_paid = ?, discount_amount = 0.0, delivery_charge = ?, payment_method = ?, payment_status = 'Paid', paid_at = ?, updated_at = ?, is_synced = 0
+        UPDATE payments SET total_amount = ?, customer_paid = ?, discount_amount = 0.0, delivery_charge = ?, change_money_given = ?, 
+        cash_amount = ?, bkash_amount = ?, nagad_amount = ?, rocket_amount = ?, due_amount = ?,
+        payment_method = ?, payment_status = 'Paid', paid_at = ?, updated_at = ?, is_synced = 0
         WHERE id = ?
-      `, [orderRecord.paidAmount, orderRecord.paidAmount, deliveryCharge, orderRecord.method, nowIso, nowIso, payId]);
+      `, [orderRecord.paidAmount, orderRecord.paidAmount, deliveryCharge, changeMoneyGiven, cashAmt, bkashAmt, nagadAmt, rocketAmt, dueAmt, orderRecord.method, nowIso, nowIso, payId]);
       enqueueSync("payments", payId, "UPDATE");
     } else {
       db.runSync(`
-        INSERT OR REPLACE INTO payments (id, order_id, total_amount, customer_paid, discount_amount, delivery_charge, payment_method, payment_status, paid_at, created_at, updated_at, is_synced)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Paid', ?, ?, ?, 0)
+        INSERT OR REPLACE INTO payments (
+          id, order_id, total_amount, customer_paid, discount_amount, delivery_charge, 
+          change_money_given, cash_amount, bkash_amount, nagad_amount, rocket_amount, due_amount,
+          payment_method, payment_status, paid_at, created_at, updated_at, is_synced
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Paid', ?, ?, ?, 0)
       `, [
         payId,
         idStr,
@@ -2250,6 +2324,12 @@ export function addCompletedOrder(orderRecord) {
         orderRecord.paidAmount,
         0.0,
         deliveryCharge,
+        changeMoneyGiven,
+        cashAmt,
+        bkashAmt,
+        nagadAmt,
+        rocketAmt,
+        dueAmt,
         orderRecord.method,
         nowIso,
         nowIso,
@@ -2939,7 +3019,7 @@ export function getFirebaseUsageStats() {
 
   const nextDeletionsTime = getGranularNextSync('deletions', 10000);
   const nextTablesTime = getGranularNextSync('restaurant_tables', 15000);
-  const nextFullSyncTime = getGranularNextSync('orders', 60000);
+  const nextFullSyncTime = getGranularNextSync('orders', 30000);
 
   return {
     readsToday: readsToday,
@@ -2960,8 +3040,8 @@ export function getFirebaseUsageStats() {
     estMonthlyReads: Math.round(estMonthlyReads),
     estMonthlyWrites: Math.round(estMonthlyWrites),
     warningColor: warningColor,
-    syncInterval: 60,
-    pollingInterval: 60,
+    syncInterval: 30,
+    pollingInterval: 30,
     firestoreMode: 'Cloud Sync (REST)'
   };
   }

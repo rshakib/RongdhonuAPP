@@ -41,13 +41,16 @@ export default function DailySubmitScreen({ dailyExpenses, completedOrders = [],
 
   const totalExpenses = numDudu + numAkash + numBurger + numBazar + numOthers;
 
-  // Real Sales Data Calculations
-  const cashSell = completedOrders.filter(o => o.method === 'ক্যাশ').reduce((sum, o) => sum + (o.paidAmount || 0), 0);
-  const bkashSell = completedOrders.filter(o => o.method === 'বিকাশ').reduce((sum, o) => sum + (o.paidAmount || 0), 0);
-  const nagadSell = completedOrders.filter(o => o.method === 'নগদ').reduce((sum, o) => sum + (o.paidAmount || 0), 0);
+  // Real Sales Data Calculations using new breakdown fields
+  const cashSell = completedOrders.reduce((sum, o) => sum + (o.cash_amount || (o.method === 'ক্যাশ' ? o.paidAmount : 0) || 0), 0);
+  const bkashSell = completedOrders.reduce((sum, o) => sum + (o.bkash_amount || (o.method === 'বিকাশ' ? o.paidAmount : 0) || 0), 0);
+  const nagadSell = completedOrders.reduce((sum, o) => sum + (o.nagad_amount || (o.method === 'নগদ' ? o.paidAmount : 0) || 0), 0);
+  const rocketSell = completedOrders.reduce((sum, o) => sum + (o.rocket_amount || (o.method === 'রকেট' ? o.paidAmount : 0) || 0), 0);
+  const dueSell = completedOrders.reduce((sum, o) => sum + (o.due_amount || (o.method === 'বাকি' ? o.paidAmount : 0) || 0), 0);
+  
   const deliverySell = completedOrders.filter(o => o.tableId && (o.tableId.toString().includes('D-') || o.tableId.toString().includes('Delivery'))).reduce((sum, o) => sum + (o.paidAmount || 0), 0);
   const deliveryChargeTotal = completedOrders.reduce((sum, o) => sum + (o.deliveryCharge || 0), 0);
-  const totalSell = cashSell + bkashSell + nagadSell;
+  const totalSell = cashSell + bkashSell + nagadSell + rocketSell + dueSell;
   
   // Net Cash = মোট বিক্রয় - মোট খরচ
   const netCash = totalSell - totalExpenses;

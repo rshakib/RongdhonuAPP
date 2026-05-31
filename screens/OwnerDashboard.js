@@ -297,7 +297,12 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
 
   const todaySale = completedOrders.reduce((sum, order) => sum + (order.paidAmount || 0), 0);
   const totalExpenses = (parseFloat(dailyExpenses.duduMiah) || 0) + (parseFloat(dailyExpenses.akashChicken) || 0) + (parseFloat(dailyExpenses.burgerBun) || 0) + (parseFloat(dailyExpenses.bazar) || 0) + (parseFloat(dailyExpenses.others) || 0);
-  const totalCash = todaySale + dailyExpenses.ijara - totalExpenses;
+  
+  // Calculate change money impact
+  const ongoingChangeMoney = deliveries.filter(d => d.status === 'BUSY').reduce((sum, d) => sum + (d.changeMoneyGiven || 0), 0);
+  const completedChangeMoney = completedOrders.reduce((sum, o) => sum + (o.changeMoneyGiven || 0), 0);
+  
+  const totalCash = todaySale + dailyExpenses.ijara - totalExpenses - ongoingChangeMoney - completedChangeMoney;
 
   const bkashSale = completedOrders.filter(o => o.method === 'বিকাশ').reduce((sum, o) => sum + (o.paidAmount || 0), 0);
   const nagadSale = completedOrders.filter(o => o.method === 'নগদ').reduce((sum, o) => sum + (o.paidAmount || 0), 0);
@@ -307,7 +312,8 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
   const allOrdersForLog = completedOrders.map(o => ({
     ...o,
     table: o.tableId,
-    amount: o.grandTotal || o.paidAmount || o.totalAmount
+    // Requirement: Show only Food Sales + Delivery Charge in log. Deduct changeMoneyGiven if it was included in the total.
+    amount: (o.paidAmount || o.grandTotal || o.totalAmount) - (o.changeMoneyGiven || 0)
   }));
 
   const filteredOrders = allOrdersForLog;
@@ -675,6 +681,17 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
                 <View style={styles.detailRow}><Text style={styles.detailLabel}>সময়:</Text><Text style={styles.detailValue}>{selectedOrder.time}</Text></View>
                 <View style={styles.detailRow}><Text style={styles.detailLabel}>তারিখ:</Text><Text style={styles.detailValue}>{selectedOrder.fullDate ? formatDisplayDate(selectedOrder.fullDate) : 'আজ'}</Text></View>
                 <View style={styles.detailRow}><Text style={styles.detailLabel}>পেমেন্ট মাধ্যম:</Text><Text style={styles.detailValue}>{selectedOrder.method}</Text></View>
+
+                {/* Detailed Payment Breakdown */}
+                <View style={{ marginTop: 8, padding: 8, backgroundColor: '#0A0A0A', borderRadius: 8, borderWidth: 1, borderColor: '#1A1A1A' }}>
+                   <Text style={{ color: '#888', fontSize: 10, marginBottom: 6, fontWeight: 'bold' }}>পেমেন্ট ব্রেকডাউন:</Text>
+                   <View style={styles.detailRow}><Text style={[styles.detailLabel, { fontSize: 11 }]}>💵 ক্যাশ:</Text><Text style={[styles.detailValue, { fontSize: 11 }]}>৳ {selectedOrder.cash_amount || 0}</Text></View>
+                   <View style={styles.detailRow}><Text style={[styles.detailLabel, { fontSize: 11 }]}>🐦 বিকাশ:</Text><Text style={[styles.detailValue, { fontSize: 11 }]}>৳ {selectedOrder.bkash_amount || 0}</Text></View>
+                   <View style={styles.detailRow}><Text style={[styles.detailLabel, { fontSize: 11 }]}>💰 নগদ:</Text><Text style={[styles.detailValue, { fontSize: 11 }]}>৳ {selectedOrder.nagad_amount || 0}</Text></View>
+                   <View style={styles.detailRow}><Text style={[styles.detailLabel, { fontSize: 11 }]}>🚀 রকেট:</Text><Text style={[styles.detailValue, { fontSize: 11 }]}>৳ {selectedOrder.rocket_amount || 0}</Text></View>
+                   <View style={styles.detailRow}><Text style={[styles.detailLabel, { fontSize: 11 }]}>😡 বাকি:</Text><Text style={[styles.detailValue, { fontSize: 11 }]}>৳ {selectedOrder.due_amount || 0}</Text></View>
+                </View>
+
                 {selectedOrder.deliveryCharge > 0 ? (
                   <>
                     <View style={styles.detailRow}><Text style={styles.detailLabel}>অর্ডার টোটাল:</Text><Text style={styles.detailValue}>৳ {selectedOrder.totalAmount}</Text></View>
