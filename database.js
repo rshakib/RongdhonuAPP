@@ -185,6 +185,8 @@ const TABLE_SCHEMAS = {
       items TEXT, -- Text summary or serialized items
       subtotal REAL,
       discount REAL,
+      delivery_charge REAL DEFAULT 0,
+      change_money_given REAL DEFAULT 0,
       grand_total REAL,
       payment_status TEXT, -- Paid, Unpaid, Pending, etc.
       payment_method TEXT,
@@ -214,6 +216,8 @@ const TABLE_SCHEMAS = {
       total_amount REAL,
       customer_paid REAL,
       discount_amount REAL,
+      delivery_charge REAL DEFAULT 0,
+      change_money_given REAL DEFAULT 0,
       payment_method TEXT,
       payment_status TEXT,
       paid_at TEXT,
@@ -245,6 +249,8 @@ const TABLE_SCHEMAS = {
       status TEXT, -- BUSY, COMPLETED
       items TEXT, -- JSON string of items
       startTime TEXT,
+      delivery_charge REAL DEFAULT 0,
+      change_money_given REAL DEFAULT 0,
       created_at TEXT,
       completed_at TEXT,
       updated_at TEXT,
@@ -294,6 +300,7 @@ const TABLE_SCHEMAS = {
       totalDiscount REAL,
       totalExpense REAL,
       totalDelivery REAL,
+      total_delivery_charge REAL DEFAULT 0,
       averageOrderValue REAL,
       peakHour TEXT,
       firstOrderTime TEXT,
@@ -495,6 +502,59 @@ export function migrateMenuItemsTable() {
   }
 }
 
+export function migrateDeliveryCharge() {
+  try {
+    // 1. Migrate orders table
+    const ordersColumns = db.getAllSync("PRAGMA table_info(orders)");
+    const ordersHasDeliveryCharge = ordersColumns.some(col => col.name === 'delivery_charge');
+    if (!ordersHasDeliveryCharge) {
+      console.log("[DB Migration] Adding delivery_charge column to orders table...");
+      db.execSync("ALTER TABLE orders ADD COLUMN delivery_charge REAL DEFAULT 0");
+    }
+    const ordersHasChangeMoney = ordersColumns.some(col => col.name === 'change_money_given');
+    if (!ordersHasChangeMoney) {
+      console.log("[DB Migration] Adding change_money_given column to orders table...");
+      db.execSync("ALTER TABLE orders ADD COLUMN change_money_given REAL DEFAULT 0");
+    }
+
+    // 2. Migrate payments table
+    const paymentsColumns = db.getAllSync("PRAGMA table_info(payments)");
+    const paymentsHasDeliveryCharge = paymentsColumns.some(col => col.name === 'delivery_charge');
+    if (!paymentsHasDeliveryCharge) {
+      console.log("[DB Migration] Adding delivery_charge column to payments table...");
+      db.execSync("ALTER TABLE payments ADD COLUMN delivery_charge REAL DEFAULT 0");
+    }
+    const paymentsHasChangeMoney = paymentsColumns.some(col => col.name === 'change_money_given');
+    if (!paymentsHasChangeMoney) {
+      console.log("[DB Migration] Adding change_money_given column to payments table...");
+      db.execSync("ALTER TABLE payments ADD COLUMN change_money_given REAL DEFAULT 0");
+    }
+
+    // 3. Migrate deliveries table
+    const deliveriesColumns = db.getAllSync("PRAGMA table_info(deliveries)");
+    const deliveriesHasDeliveryCharge = deliveriesColumns.some(col => col.name === 'delivery_charge');
+    if (!deliveriesHasDeliveryCharge) {
+      console.log("[DB Migration] Adding delivery_charge column to deliveries table...");
+      db.execSync("ALTER TABLE deliveries ADD COLUMN delivery_charge REAL DEFAULT 0");
+    }
+    const deliveriesHasChangeMoney = deliveriesColumns.some(col => col.name === 'change_money_given');
+    if (!deliveriesHasChangeMoney) {
+      console.log("[DB Migration] Adding change_money_given column to deliveries table...");
+      db.execSync("ALTER TABLE deliveries ADD COLUMN change_money_given REAL DEFAULT 0");
+    }
+
+    // 4. Migrate daily_summary table
+    const summaryColumns = db.getAllSync("PRAGMA table_info(daily_summary)");
+    const summaryHasDeliveryCharge = summaryColumns.some(col => col.name === 'total_delivery_charge');
+    if (!summaryHasDeliveryCharge) {
+      console.log("[DB Migration] Adding total_delivery_charge column to daily_summary table...");
+      db.execSync("ALTER TABLE daily_summary ADD COLUMN total_delivery_charge REAL DEFAULT 0");
+    }
+  } catch (err) {
+    console.error("[DB Migration] Failed to migrate delivery columns:", err);
+  }
+}
+
 // ==========================================
 // 1. AUTO INITIALIZATION ENGINE
 // ==========================================
@@ -504,6 +564,7 @@ export function initDatabase(skipSeeding = false) {
   try {
     // Run schema migrations first
     migrateMenuItemsTable();
+    migrateDeliveryCharge();
 
     // 1. Create tables
     for (const [tableName, sql] of Object.entries(TABLE_SCHEMAS)) {
@@ -1510,6 +1571,7 @@ export function calculateAndSaveDailySummary(dateStr) {
     const totalOrders = ordersToday.length;
     const totalSales = ordersToday.reduce((sum, o) => sum + (o.grand_total || 0), 0);
     const totalDiscount = ordersToday.reduce((sum, o) => sum + (o.discount || 0), 0);
+    const totalDeliveryCharge = ordersToday.reduce((sum, o) => sum + (o.delivery_charge || 0), 0);
     const averageOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
     
     const hourCounts = {};
@@ -1576,7 +1638,12 @@ export function calculateAndSaveDailySummary(dateStr) {
     );
     const ejaAmount = ejaRecord ? (ejaRecord.total_eja || 0) : 0;
 
-    const netCash = cashTotal + ejaAmount - totalExpense;
+    const activeDeliveries = db.getAllSync("SELECT change_money_given FROM deliveries WHERE status = 'BUSY'");
+    const ongoingChangeMoney = activeDeliveries.reduce((sum, d) => sum + (d.change_money_given || 0), 0);
+    const completedChangeMoney = ordersToday.reduce((sum, o) => sum + (o.change_money_given || 0), 0);
+    const totalChangeMoney = ongoingChangeMoney + completedChangeMoney;
+
+    const netCash = cashTotal + ejaAmount - totalExpense - totalChangeMoney;
 
     const submitRecord = db.getFirstSync("SELECT * FROM daily_submit WHERE date = ?", [todayStr]);
     const ownerDeposit = submitRecord ? (submitRecord.net_deposit || 0) : 0;
@@ -1601,7 +1668,7 @@ export function calculateAndSaveDailySummary(dateStr) {
           dayOfWeek = ?, weekOfMonth = ?, isFriday = ?, isHoliday = ?, specialDayNote = ?,
           temperature = ?, humidity = ?, condition = ?, isRainy = ?, windSpeed = ?,
           totalOrders = ?, totalSales = ?, totalDiscount = ?, totalExpense = ?, totalDelivery = ?,
-          averageOrderValue = ?, peakHour = ?, firstOrderTime = ?, lastOrderTime = ?,
+          total_delivery_charge = ?, averageOrderValue = ?, peakHour = ?, firstOrderTime = ?, lastOrderTime = ?,
           cashTotal = ?, bkashTotal = ?, nagadTotal = ?, dueCollection = ?, ejaAmount = ?,
           netCash = ?, ownerDeposit = ?, itemSummary = ?, updated_at = ?, is_synced = 0
         WHERE date = ?
@@ -1609,7 +1676,7 @@ export function calculateAndSaveDailySummary(dateStr) {
         dayOfWeek, weekOfMonth, isFriday, isHoliday, specialDayNote,
         weather.temperature, weather.humidity, weather.condition, weather.isRainy, weather.windSpeed,
         totalOrders, totalSales, totalDiscount, totalExpense, totalDelivery,
-        averageOrderValue, peakHour, firstOrderTime, lastOrderTime,
+        totalDeliveryCharge, averageOrderValue, peakHour, firstOrderTime, lastOrderTime,
         cashTotal, bkashTotal, nagadTotal, dueCollection, ejaAmount,
         netCash, ownerDeposit, itemSummary, now, todayStr
       ]);
@@ -1619,20 +1686,20 @@ export function calculateAndSaveDailySummary(dateStr) {
         INSERT INTO daily_summary (
           id, date, dayOfWeek, weekOfMonth, isFriday, isHoliday, specialDayNote,
           temperature, humidity, condition, isRainy, windSpeed, totalOrders, totalSales,
-          totalDiscount, totalExpense, totalDelivery, averageOrderValue, peakHour,
+          totalDiscount, totalExpense, totalDelivery, total_delivery_charge, averageOrderValue, peakHour,
           firstOrderTime, lastOrderTime, cashTotal, bkashTotal, nagadTotal, dueCollection,
           ejaAmount, netCash, ownerDeposit, itemSummary, created_at, updated_at, is_synced
         ) VALUES (
           ?, ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?, ?, 0
         )
       `, [
         todayStr, todayStr, dayOfWeek, weekOfMonth, isFriday, isHoliday, specialDayNote,
         weather.temperature, weather.humidity, weather.condition, weather.isRainy, weather.windSpeed,
-        totalOrders, totalSales, totalDiscount, totalExpense, totalDelivery,
+        totalOrders, totalSales, totalDiscount, totalExpense, totalDelivery, totalDeliveryCharge,
         averageOrderValue, peakHour, firstOrderTime, lastOrderTime,
         cashTotal, bkashTotal, nagadTotal, dueCollection, ejaAmount,
         netCash, ownerDeposit, itemSummary, now, now
@@ -2024,7 +2091,9 @@ export function getDeliveries() {
       name: r.customer_name,
       status: r.status,
       items: JSON.parse(r.items || '[]'),
-      startTime: r.startTime || ''
+      startTime: r.startTime || '',
+      deliveryCharge: r.delivery_charge || 0,
+      changeMoneyGiven: r.change_money_given || 0
     }));
   } catch (err) {
     console.error(err);
@@ -2068,6 +2137,19 @@ export function updateDeliveryState(id, updatedItems, status, startTime) {
   }
 }
 
+export function updateDeliveryDetails(id, delCharge, changeMoney) {
+  try {
+    const now = new Date().toISOString();
+    db.runSync(
+      "UPDATE deliveries SET delivery_charge = ?, change_money_given = ?, updated_at = ?, is_synced = 0 WHERE id = ?",
+      [delCharge, changeMoney, now, id]
+    );
+    enqueueSync("deliveries", id, "UPDATE");
+  } catch (err) {
+    console.error(err);
+  }
+}
+
 export function removeDelivery(id) {
   try {
     db.runSync("DELETE FROM deliveries WHERE id = ?", [id]);
@@ -2084,7 +2166,10 @@ export function getCompletedOrders() {
       id: Number(r.id),
       tableId: r.table_id,
       items: r.items,
-      totalAmount: r.grand_total,
+      totalAmount: (r.subtotal !== null && r.subtotal !== undefined) ? r.subtotal : r.grand_total,
+      deliveryCharge: r.delivery_charge || 0,
+      changeMoneyGiven: r.change_money_given || 0,
+      grandTotal: r.grand_total,
       paidAmount: r.grand_total,
       method: r.payment_method,
       time: r.time,
@@ -2102,18 +2187,22 @@ export function addCompletedOrder(orderRecord) {
     const idStr = String(orderRecord.id);
     const nowIso = new Date().toISOString();
     const todayStr = nowIso.substring(0, 10);
+    const deliveryCharge = orderRecord.deliveryCharge || 0;
+    const changeMoneyGiven = orderRecord.changeMoneyGiven || 0;
     
     // Check if order already exists in SQLite to prevent duplicate creation
     const existingOrder = db.getFirstSync("SELECT id FROM orders WHERE id = ?", [idStr]);
     if (existingOrder) {
       db.runSync(`
-        UPDATE orders SET table_id = ?, items = ?, subtotal = ?, discount = ?, grand_total = ?, payment_status = 'Paid', payment_method = ?, time = ?, updated_at = ?, is_synced = 0
+        UPDATE orders SET table_id = ?, items = ?, subtotal = ?, discount = ?, delivery_charge = ?, change_money_given = ?, grand_total = ?, payment_status = 'Paid', payment_method = ?, time = ?, updated_at = ?, is_synced = 0
         WHERE id = ?
       `, [
         orderRecord.tableId,
         orderRecord.items,
         orderRecord.totalAmount,
         0.0,
+        deliveryCharge,
+        changeMoneyGiven,
         orderRecord.paidAmount,
         orderRecord.method,
         orderRecord.time,
@@ -2123,14 +2212,15 @@ export function addCompletedOrder(orderRecord) {
       enqueueSync("orders", idStr, "UPDATE");
     } else {
       db.runSync(`
-        INSERT OR REPLACE INTO orders (id, table_id, items, subtotal, discount, grand_total, payment_status, payment_method, time, created_at, updated_at, locked_at, is_synced)
-        VALUES (?, ?, ?, ?, ?, ?, 'Paid', ?, ?, ?, ?, ?, 0)
+        INSERT OR REPLACE INTO orders (id, table_id, items, subtotal, discount, delivery_charge, grand_total, payment_status, payment_method, time, created_at, updated_at, locked_at, is_synced)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Paid', ?, ?, ?, ?, ?, 0)
       `, [
         idStr,
         orderRecord.tableId,
         orderRecord.items,
         orderRecord.totalAmount,
         0.0,
+        deliveryCharge,
         orderRecord.paidAmount,
         orderRecord.method,
         orderRecord.time,
@@ -2145,20 +2235,21 @@ export function addCompletedOrder(orderRecord) {
     const existingPay = db.getFirstSync("SELECT id FROM payments WHERE id = ?", [payId]);
     if (existingPay) {
       db.runSync(`
-        UPDATE payments SET total_amount = ?, customer_paid = ?, discount_amount = 0.0, payment_method = ?, payment_status = 'Paid', paid_at = ?, updated_at = ?, is_synced = 0
+        UPDATE payments SET total_amount = ?, customer_paid = ?, discount_amount = 0.0, delivery_charge = ?, payment_method = ?, payment_status = 'Paid', paid_at = ?, updated_at = ?, is_synced = 0
         WHERE id = ?
-      `, [orderRecord.paidAmount, orderRecord.paidAmount, orderRecord.method, nowIso, nowIso, payId]);
+      `, [orderRecord.paidAmount, orderRecord.paidAmount, deliveryCharge, orderRecord.method, nowIso, nowIso, payId]);
       enqueueSync("payments", payId, "UPDATE");
     } else {
       db.runSync(`
-        INSERT OR REPLACE INTO payments (id, order_id, total_amount, customer_paid, discount_amount, payment_method, payment_status, paid_at, created_at, updated_at, is_synced)
-        VALUES (?, ?, ?, ?, ?, ?, 'Paid', ?, ?, ?, 0)
+        INSERT OR REPLACE INTO payments (id, order_id, total_amount, customer_paid, discount_amount, delivery_charge, payment_method, payment_status, paid_at, created_at, updated_at, is_synced)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Paid', ?, ?, ?, 0)
       `, [
         payId,
         idStr,
         orderRecord.paidAmount,
         orderRecord.paidAmount,
         0.0,
+        deliveryCharge,
         orderRecord.method,
         nowIso,
         nowIso,

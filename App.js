@@ -170,6 +170,7 @@ export default function App() {
   const [currentScreen, setCurrentScreen] = useState('DASHBOARD'); // 'DASHBOARD', 'TABLE_DETAIL', 'PAYMENT_SUCCESS', 'DAILY_SUBMIT', 'ADD_ITEM', 'PAYMENT_CHECKOUT'
   const [selectedTableId, setSelectedTableId] = useState(null);
   const [paymentAmount, setPaymentAmount] = useState(0); // Total due amount
+  const [deliveryCharge, setDeliveryCharge] = useState(0); // Optional delivery charge
   const [paidAmount, setPaidAmount] = useState(0);       // User entered paid amount
   const [paymentMethod, setPaymentMethod] = useState('ক্যাশ');
 
@@ -588,8 +589,9 @@ export default function App() {
   };
 
   // Triggers navigation to the Checkout Page (Screen 8)
-  const handleNavigateToCheckout = (amount) => {
+  const handleNavigateToCheckout = (amount, delCharge = 0) => {
     setPaymentAmount(amount);
+    setDeliveryCharge(delCharge);
     setCurrentScreen('PAYMENT_CHECKOUT');
   };
 
@@ -602,6 +604,7 @@ export default function App() {
         tableId: activeTable.name || activeTable.id,
         items: activeTable.items.map(i => `${i.name} x${i.qty}`).join(', '),
         totalAmount: paymentAmount,
+        deliveryCharge: deliveryCharge,
         paidAmount: paid,
         method: method,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -635,6 +638,7 @@ export default function App() {
     refreshData();
     setSelectedTableId(null);
     setPaymentAmount(0);
+    setDeliveryCharge(0);
     setPaidAmount(0);
     setCurrentScreen('DASHBOARD');
     
@@ -1031,6 +1035,7 @@ export default function App() {
           <PaymentCheckoutScreen
             tableId={checkoutTable ? (checkoutTable.name || checkoutTable.id) : selectedTableId}
             totalAmount={paymentAmount}
+            deliveryCharge={deliveryCharge}
             totalItems={totalItemsCount}
             userRole={userRole}
             onBack={() => setCurrentScreen('TABLE_DETAIL')}

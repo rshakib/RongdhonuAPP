@@ -58,7 +58,10 @@ export async function exportSalesReportPDF(orders, filterName = "Sales Report") 
         <div class="main-text">${order.fullDate ? formatDisplayDate(order.fullDate) : 'আজ'}</div>
         <div class="sub-text">${order.time || ''}</div>
       </td>
-      <td style="width: 15%; text-align: center; font-weight: bold;">${order.tableId}</td>
+      <td style="width: 15%; text-align: center; font-weight: bold;">
+        ${order.tableId}
+        ${order.deliveryCharge > 0 ? `<div style="font-size: 10px; color: #6B7280; font-weight: normal; margin-top: 4px;">ডেলিভারি চার্জ: ৳${order.deliveryCharge}</div>` : ''}
+      </td>
       <td style="width: 45%; text-align: left; color: #D97706; font-size: 13px;">${order.items || ''}</td>
       <td style="width: 15%; text-align: right; font-weight: bold; color: #059669;">৳${(order.paidAmount || 0).toLocaleString()}</td>
     </tr>

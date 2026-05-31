@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   StyleSheet,
   Text,
   View,
   ScrollView,
   TouchableOpacity,
+  TextInput,
+  Alert,
   Platform,
   StatusBar as RNStatusBar
 } from 'react-native';
@@ -29,6 +31,10 @@ export default function TableDetailScreen({
   }
 
   const items = table.items || [];
+
+  const [deliveryChargeText, setDeliveryChargeText] = useState('0');
+  const deliveryCharge = parseFloat(deliveryChargeText) || 0;
+  const isDelivery = table.id && (table.id.toString().startsWith('D-') || table.id.toString().includes('Delivery') || table.name?.toString().includes('Delivery'));
 
   // Calculate live totals
   const totalAmount = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
@@ -167,19 +173,103 @@ export default function TableDetailScreen({
         <TouchableOpacity style={styles.dottedAddButton} onPress={onNavigateToAddItem}>
           <Text style={styles.dottedAddText}>➕ মেনু থেকে আইটেম যোগ করুন</Text>
         </TouchableOpacity>
+
+        {/* Delivery Charge Selector (Optional for Delivery Orders) */}
+        {isDelivery && (
+          <View style={styles.deliveryChargeCard}>
+            <View style={styles.deliveryChargeHeader}>
+              <Text style={styles.deliveryChargeTitle}>🛵 ডেলিভারি চার্জ নির্ধারণ করুন</Text>
+              <Text style={styles.deliveryChargeSubtitle}>ডেলিভারি চার্জ যুক্ত করতে বাটন চাপুন বা টাইপ করুন</Text>
+            </View>
+            
+            {/* Presets Row */}
+            <View style={styles.presetsRow}>
+              {[20, 50, 80, 100].map((val) => (
+                <TouchableOpacity
+                  key={val}
+                  style={[
+                    styles.presetBtn,
+                    deliveryCharge === val && styles.presetBtnSelected
+                  ]}
+                  onPress={() => setDeliveryChargeText(val.toString())}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[
+                    styles.presetBtnText,
+                    deliveryCharge === val && styles.presetBtnTextSelected
+                  ]}>৳ {val}</Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity
+                style={[
+                  styles.presetBtn,
+                  ![20, 50, 80, 100, 0].includes(deliveryCharge) && styles.presetBtnSelected
+                ]}
+                onPress={() => setDeliveryChargeText('')}
+                activeOpacity={0.8}
+              >
+                <Text style={[
+                  styles.presetBtnText,
+                  ![20, 50, 80, 100, 0].includes(deliveryCharge) && styles.presetBtnTextSelected
+                ]}>অন্যান্য</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Manual TextInput */}
+            <View style={styles.manualInputRow}>
+              <View style={styles.manualInputWrapper}>
+                <Text style={styles.manualCurrencySymbol}>৳</Text>
+                <TextInput
+                  style={styles.manualTextInput}
+                  keyboardType="numeric"
+                  placeholder="অন্য পরিমাণ লিখুন"
+                  placeholderTextColor="#666"
+                  value={deliveryChargeText === '0' ? '' : deliveryChargeText}
+                  onChangeText={(txt) => {
+                    const cleanTxt = txt.replace(/[^0-9]/g, '');
+                    setDeliveryChargeText(cleanTxt);
+                  }}
+                />
+              </View>
+              {deliveryCharge > 0 && (
+                <TouchableOpacity
+                  style={styles.clearBtn}
+                  onPress={() => setDeliveryChargeText('0')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.clearBtnText}>মুছে ফেলুন ×</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        )}
       </ScrollView>
 
       {/* Dynamic Bottom Bar */}
       <View style={styles.bottomBar}>
         <View style={styles.summaryCol}>
-          <Text style={styles.summaryLabel}>মোট পরিমাণ</Text>
-          <Text style={styles.summaryAmount}>৳ {totalAmount}</Text>
-          <Text style={styles.summaryCount}>{totalItemsCount} টি আইটেম</Text>
+          <Text style={styles.summaryLabel}>{isDelivery ? "সর্বমোট (গ্র্যান্ড টোটাল)" : "মোট পরিমাণ"}</Text>
+          <Text style={styles.summaryAmount}>৳ {isDelivery ? (totalAmount + deliveryCharge) : totalAmount}</Text>
+          <Text style={styles.summaryCount}>
+            {totalItemsCount} টি আইটেম{isDelivery && deliveryCharge > 0 ? ` + ৳${deliveryCharge} চার্জ` : ''}
+          </Text>
         </View>
         <TouchableOpacity
           style={[styles.paymentBtn, totalAmount === 0 && styles.paymentBtnDisabled]}
           disabled={totalAmount === 0}
-          onPress={() => onPaymentDone(totalAmount)}
+          onPress={() => {
+            Alert.alert(
+              "পেমেন্ট নিশ্চিত করুন",
+              "আপনি কি কাস্টমারের কাছ থেকে পেমেন্ট বুঝে পেয়েছেন?\n\n⚠️ সতর্কতা: এই কাজটি অর্ডারটি সম্পন্ন করবে এবং এটি সহজে পরিবর্তন করা যাবে না।",
+              [
+                { text: "বাতিল", style: "cancel" },
+                { 
+                  text: "হ্যাঁ, পেমেন্ট পেয়েছি", 
+                  onPress: () => onPaymentDone(totalAmount, deliveryCharge) 
+                }
+              ]
+            );
+          }}
         >
           <Text style={styles.paymentBtnCheck}>✓</Text>
           <View>
@@ -529,5 +619,98 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
     marginLeft: 12,
+  },
+  deliveryChargeCard: {
+    backgroundColor: 'rgba(255, 183, 3, 0.02)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 183, 3, 0.15)',
+    borderRadius: 14,
+    padding: 16,
+    marginTop: 16,
+    marginBottom: 10,
+  },
+  deliveryChargeHeader: {
+    marginBottom: 12,
+  },
+  deliveryChargeTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  deliveryChargeSubtitle: {
+    fontSize: 10,
+    color: '#888888',
+    marginTop: 4,
+  },
+  presetsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+    gap: 8,
+  },
+  presetBtn: {
+    flex: 1,
+    backgroundColor: '#161616',
+    borderWidth: 1,
+    borderColor: '#262626',
+    borderRadius: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  presetBtnSelected: {
+    backgroundColor: 'rgba(255, 183, 3, 0.15)',
+    borderColor: '#FFB703',
+  },
+  presetBtnText: {
+    color: '#888888',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  presetBtnTextSelected: {
+    color: '#FFB703',
+    fontWeight: 'bold',
+  },
+  manualInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  manualInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#161616',
+    borderWidth: 1,
+    borderColor: '#262626',
+    borderRadius: 10,
+    flex: 1,
+    height: 44,
+    paddingHorizontal: 12,
+  },
+  manualCurrencySymbol: {
+    fontSize: 16,
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    marginRight: 6,
+  },
+  manualTextInput: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 14,
+    height: '100%',
+    padding: 0,
+  },
+  clearBtn: {
+    marginLeft: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.2)',
+  },
+  clearBtnText: {
+    color: '#EF4444',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });

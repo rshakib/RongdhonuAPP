@@ -16,15 +16,17 @@ export default function PaymentCheckoutScreen({
   tableId,
   totalAmount,
   totalItems,
+  deliveryCharge = 0,
   userRole,
   onBack,
   onCompletePayment
 }) {
-  const [amountInput, setAmountInput] = useState(totalAmount.toString());
+  const grandTotal = totalAmount + (deliveryCharge || 0);
+  const [amountInput, setAmountInput] = useState(grandTotal.toString());
   const [selectedMethod, setSelectedMethod] = useState('ক্যাশ'); // 'ক্যাশ', 'বিকাশ', 'রকেট', 'নগদ', 'বাকি'
 
   const handleFullAmount = () => {
-    setAmountInput(totalAmount.toString());
+    setAmountInput(grandTotal.toString());
   };
 
   const handleComplete = () => {
@@ -50,7 +52,7 @@ export default function PaymentCheckoutScreen({
     if (methodId === 'বাকি') {
       setAmountInput('0'); // Default to 0 when Baki is selected
     } else if (amountInput === '0') {
-      setAmountInput(totalAmount.toString()); // Revert to full total if switching back
+      setAmountInput(grandTotal.toString()); // Revert to full total if switching back
     }
   };
 
@@ -94,14 +96,31 @@ export default function PaymentCheckoutScreen({
             </View>
             <View style={styles.dividerLine} />
             <View style={styles.summaryCol}>
-              <Text style={styles.summaryLabel}>মোট পরিমাণ</Text>
+              <Text style={styles.summaryLabel}>অর্ডার টোটাল</Text>
               <Text style={styles.summaryValue}>৳ {totalAmount}</Text>
             </View>
-            <View style={styles.dividerLine} />
-            <View style={styles.summaryCol}>
-              <Text style={styles.summaryLabel}>ডিসকাউন্ট</Text>
-              <Text style={styles.summaryValue}>৳ 0</Text>
-            </View>
+            {deliveryCharge > 0 ? (
+              <>
+                <View style={styles.dividerLine} />
+                <View style={styles.summaryCol}>
+                  <Text style={styles.summaryLabel}>ডেলিভারি চার্জ</Text>
+                  <Text style={styles.summaryValue}>৳ {deliveryCharge}</Text>
+                </View>
+                <View style={styles.dividerLine} />
+                <View style={styles.summaryCol}>
+                  <Text style={styles.summaryLabel}>গ্র্যান্ড টোটাল</Text>
+                  <Text style={[styles.summaryValue, { color: '#10B981' }]}>৳ {grandTotal}</Text>
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={styles.dividerLine} />
+                <View style={styles.summaryCol}>
+                  <Text style={styles.summaryLabel}>ডিসকাউন্ট</Text>
+                  <Text style={styles.summaryValue}>৳ 0</Text>
+                </View>
+              </>
+            )}
           </View>
         </View>
 
