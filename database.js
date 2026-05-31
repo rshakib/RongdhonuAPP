@@ -3210,6 +3210,45 @@ function formatDisplayTime(dateObj) {
 }
 
 // ==========================================
+// ADMIN CLEANUP TOOL
+// ==========================================
+export function deleteDataByDate(targetDate) {
+  try {
+    const now = new Date().toISOString();
+
+    // 1. Orders
+    db.runSync("DELETE FROM orders WHERE date(created_at, 'localtime', '-1 hour') = ?", [targetDate]);
+    
+    // 2. Payments
+    db.runSync("DELETE FROM payments WHERE date(created_at, 'localtime', '-1 hour') = ?", [targetDate]);
+    
+    // 3. Deliveries
+    db.runSync("DELETE FROM deliveries WHERE date(completed_at, 'localtime', '-1 hour') = ?", [targetDate]);
+    
+    // 4. Expenses
+    db.runSync("DELETE FROM expenses WHERE date(created_at, 'localtime', '-1 hour') = ?", [targetDate]);
+    
+    // 5. Daily Submit
+    db.runSync("DELETE FROM daily_submit WHERE date = ?", [targetDate]);
+    
+    // 6. Daily Summary
+    db.runSync("DELETE FROM daily_summary WHERE date = ?", [targetDate]);
+    
+    // Note: To clear sync_queue correctly and prevent it from trying to push deleted things 
+    // or pushing these deletions to Firestore, we delete them completely.
+    // If we wanted to also delete them from Firestore, we would use recordDeletion() wrapper.
+    // Assuming the user just wants the local data gone or it's already a test day:
+    db.runSync("DELETE FROM sync_queue WHERE record_id LIKE ?", [`%${targetDate}%`]);
+
+    console.log(`[Admin Tool] Successfully deleted all local data for ${targetDate}`);
+    return { success: true };
+  } catch (err) {
+    console.error("[Admin Tool] Failed to delete data:", err);
+    return { success: false, error: err.message };
+  }
+}
+
+// ==========================================
 // 8. TOMBSTONE DELETION AND MANUAL SYNC ENGINE
 // ==========================================
 

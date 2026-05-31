@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { exportSalesReportPDF, exportDepositReportPDF } from '../pdfHelper';
-import { formatDisplayDate, getBusinessDate, inspectDatabaseStats, executeInspectorQuery, getFirebaseUsageStats, verifyPinCode } from '../database';
+import { formatDisplayDate, getBusinessDate, inspectDatabaseStats, executeInspectorQuery, getFirebaseUsageStats, verifyPinCode, deleteDataByDate } from '../database';
 
 const { width } = Dimensions.get('window');
 
@@ -123,6 +123,11 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
   const [sqlQueryError, setSqlQueryError] = useState(null);
   const [firebaseUsageData, setFirebaseUsageData] = useState(null);
 
+  // Data Cleanup Tool States
+  const [cleanupModalVisible, setCleanupModalVisible] = useState(false);
+  const [cleanupTargetDate, setCleanupTargetDate] = useState('2026-06-01');
+  const [cleanupCounts, setCleanupCounts] = useState(null);
+  
   // Past Account States
   const [pastAccountModalVisible, setPastAccountModalVisible] = useState(false);
   const [isEditingPast, setIsEditingPast] = useState(false);
@@ -315,6 +320,54 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     } catch (e) {
       setSqlQueryError(e.message);
     }
+  };
+
+  const handleRunCleanupAudit = () => {
+    try {
+      const target = cleanupTargetDate;
+      const countOrders = executeInspectorQuery("SELECT COUNT(*) as c FROM orders WHERE date(created_at, 'localtime', '-1 hour') = ?", [target])[0]?.c || 0;
+      const countPayments = executeInspectorQuery("SELECT COUNT(*) as c FROM payments WHERE date(created_at, 'localtime', '-1 hour') = ?", [target])[0]?.c || 0;
+      const countDeliveries = executeInspectorQuery("SELECT COUNT(*) as c FROM deliveries WHERE date(completed_at, 'localtime', '-1 hour') = ?", [target])[0]?.c || 0;
+      const countExpenses = executeInspectorQuery("SELECT COUNT(*) as c FROM expenses WHERE date(created_at, 'localtime', '-1 hour') = ?", [target])[0]?.c || 0;
+      const countSubmit = executeInspectorQuery("SELECT COUNT(*) as c FROM daily_submit WHERE date = ?", [target])[0]?.c || 0;
+      const countSummary = executeInspectorQuery("SELECT COUNT(*) as c FROM daily_summary WHERE date = ?", [target])[0]?.c || 0;
+      const countSyncQueue = executeInspectorQuery("SELECT COUNT(*) as c FROM sync_queue WHERE record_id LIKE ?", [`%${target}%`])[0]?.c || 0;
+      
+      setCleanupCounts({
+        orders: countOrders,
+        payments: countPayments,
+        deliveries: countDeliveries,
+        expenses: countExpenses,
+        submit: countSubmit,
+        summary: countSummary,
+        syncQueue: countSyncQueue
+      });
+    } catch (e) {
+      Alert.alert("Audit Error", e.message);
+    }
+  };
+
+  const handleConfirmCleanup = () => {
+    Alert.alert(
+      "Warning",
+      `Are you sure you want to permanently delete all local data for ${cleanupTargetDate}?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Delete Data", 
+          style: "destructive",
+          onPress: () => {
+            const res = deleteDataByDate(cleanupTargetDate);
+            if (res.success) {
+              Alert.alert("Success", "Data deleted successfully. Restarting dashboard...");
+              setCleanupModalVisible(false);
+            } else {
+              Alert.alert("Error", res.error);
+            }
+          }
+        }
+      ]
+    );
   };
 
   const activeTablesCount = tables.filter(t => t.status === 'BUSY').length;
@@ -696,6 +749,8 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
             <View style={styles.menuDivider} />
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onResetPushPullLimits(); }}><Text style={[styles.menuOptionText, { fontSize: 10, color: '#34D399' }]}>🔄 Reset Push/Pull Limits</Text></TouchableOpacity>
             <View style={styles.menuDivider} />
+            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); setCleanupModalVisible(true); }}><Text style={[styles.menuOptionText, { color: '#EF4444' }]}>🗑️ Data Cleanup Tool</Text></TouchableOpacity>
+            <View style={styles.menuDivider} />
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onLogout(); }}><Text style={[styles.menuOptionText, { color: '#FF4D4D' }]}>Logout</Text></TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -916,6 +971,50 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
           </View>
         </View>
       </Modal>
+      {/* DATA CLEANUP TOOL */}
+      <Modal animationType="slide" transparent={true} visible={cleanupModalVisible} onRequestClose={() => setCleanupModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { width: '90%' }]}>
+            <Text style={[styles.modalTitle, { color: '#EF4444' }]}>🗑️ Data Cleanup Tool</Text>
+            
+            <View style={{ marginBottom: 15 }}>
+              <Text style={{ color: '#888', marginBottom: 5 }}>Target Date (YYYY-MM-DD)</Text>
+              <TextInput 
+                style={[styles.modalInput, { color: '#FFF', textAlign: 'center' }]} 
+                value={cleanupTargetDate} 
+                onChangeText={setCleanupTargetDate}
+              />
+            </View>
+
+            <TouchableOpacity style={{ backgroundColor: '#1E1E1E', padding: 10, borderRadius: 6, alignItems: 'center', marginBottom: 15 }} onPress={handleRunCleanupAudit}>
+              <Text style={{ color: '#34D399', fontWeight: 'bold' }}>🔍 Run Audit</Text>
+            </TouchableOpacity>
+
+            {cleanupCounts && (
+              <View style={{ backgroundColor: '#0D0D0D', padding: 10, borderRadius: 6, borderWidth: 1, borderColor: '#333', marginBottom: 15 }}>
+                <Text style={{ color: '#FFB703', fontWeight: 'bold', marginBottom: 5 }}>Found Records for {cleanupTargetDate}:</Text>
+                <Text style={{ color: '#FFF' }}>Orders: {cleanupCounts.orders}</Text>
+                <Text style={{ color: '#FFF' }}>Payments: {cleanupCounts.payments}</Text>
+                <Text style={{ color: '#FFF' }}>Deliveries: {cleanupCounts.deliveries}</Text>
+                <Text style={{ color: '#FFF' }}>Expenses: {cleanupCounts.expenses}</Text>
+                <Text style={{ color: '#FFF' }}>Daily Submit: {cleanupCounts.submit}</Text>
+                <Text style={{ color: '#FFF' }}>Daily Summary: {cleanupCounts.summary}</Text>
+                <Text style={{ color: '#FFF' }}>Sync Queue: {cleanupCounts.syncQueue}</Text>
+              </View>
+            )}
+
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity style={styles.modalCancelBtn} onPress={() => setCleanupModalVisible(false)}>
+                <Text style={styles.modalCancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalSaveBtn, { backgroundColor: '#EF4444' }]} onPress={handleConfirmCleanup}>
+                <Text style={styles.modalSaveBtnText}>Delete All</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
