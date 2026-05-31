@@ -1618,7 +1618,7 @@ export function calculateAndSaveDailySummary(dateStr) {
       [todayStr]
     );
     const totalOrders = ordersToday.length;
-    const totalSales = ordersToday.reduce((sum, o) => sum + (o.grand_total || 0), 0);
+    const totalSales = ordersToday.reduce((sum, o) => sum + ((o.grand_total || 0) - (o.change_money_given || 0)), 0);
     const totalDiscount = ordersToday.reduce((sum, o) => sum + (o.discount || 0), 0);
     const totalDeliveryCharge = ordersToday.reduce((sum, o) => sum + (o.delivery_charge || 0), 0);
     const averageOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
@@ -1699,9 +1699,12 @@ export function calculateAndSaveDailySummary(dateStr) {
     const activeDeliveries = db.getAllSync("SELECT change_money_given FROM deliveries WHERE status = 'BUSY'");
     const ongoingChangeMoney = activeDeliveries.reduce((sum, d) => sum + (d.change_money_given || 0), 0);
     const completedChangeMoney = ordersToday.reduce((sum, o) => sum + (o.change_money_given || 0), 0);
-    const totalChangeMoney = ongoingChangeMoney + completedChangeMoney;
 
-    const netCash = cashTotal + ejaAmount - totalExpense - totalChangeMoney;
+    // Deduct returned change money from cash total (as it's just a float return)
+    cashTotal = Math.max(0, cashTotal - completedChangeMoney);
+
+    // Net cash generation only deducts ongoingChangeMoney (cash currently out of the drawer)
+    const netCash = cashTotal + ejaAmount - totalExpense - ongoingChangeMoney;
 
     const submitRecord = db.getFirstSync("SELECT * FROM daily_submit WHERE date = ?", [todayStr]);
     const ownerDeposit = submitRecord ? (submitRecord.net_deposit || 0) : 0;
@@ -2694,12 +2697,17 @@ function executeAutoSubmitForDate(dateStr) {
     const orders = db.getAllSync("SELECT * FROM orders WHERE date(created_at, 'localtime', '-1 hour') = ?", [dateStr]);
     
     let cashSell = 0, bkashSell = 0, nagadSell = 0, rocketSell = 0;
+    let completedChangeMoney = 0;
     orders.forEach(o => {
       cashSell += (o.cash_amount || (o.payment_method === 'ক্যাশ' ? o.grand_total : 0) || 0);
       bkashSell += (o.bkash_amount || (o.payment_method === 'বিকাশ' ? o.grand_total : 0) || 0);
       nagadSell += (o.nagad_amount || (o.payment_method === 'নগদ' ? o.grand_total : 0) || 0);
       rocketSell += (o.rocket_amount || (o.payment_method === 'রকেট' ? o.grand_total : 0) || 0);
+      completedChangeMoney += (o.change_money_given || 0);
     });
+    
+    // Deduct returned change money from cash sales
+    cashSell = Math.max(0, cashSell - completedChangeMoney);
     const totalSell = cashSell + bkashSell + nagadSell + rocketSell;
 
     const expenses = db.getAllSync("SELECT * FROM expenses WHERE date(created_at, 'localtime', '-1 hour') = ?", [dateStr]);

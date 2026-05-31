@@ -51,12 +51,16 @@ export default function DailySubmitScreen({ dailyExpenses, completedOrders = [],
   });
 
   // Real Sales Data Calculations using new breakdown fields
-  const cashSell = todaysOrders.reduce((sum, o) => sum + (o.cash_amount || (o.method === 'ক্যাশ' ? o.paidAmount : 0) || 0), 0);
+  const rawCashSell = todaysOrders.reduce((sum, o) => sum + (o.cash_amount || (o.method === 'ক্যাশ' ? o.paidAmount : 0) || 0), 0);
   const bkashSell = todaysOrders.reduce((sum, o) => sum + (o.bkash_amount || (o.method === 'বিকাশ' ? o.paidAmount : 0) || 0), 0);
   const nagadSell = todaysOrders.reduce((sum, o) => sum + (o.nagad_amount || (o.method === 'নগদ' ? o.paidAmount : 0) || 0), 0);
   const rocketSell = todaysOrders.reduce((sum, o) => sum + (o.rocket_amount || (o.method === 'রকেট' ? o.paidAmount : 0) || 0), 0);
   
-  const deliverySell = todaysOrders.filter(o => o.tableId && (o.tableId.toString().includes('D-') || o.tableId.toString().includes('Delivery'))).reduce((sum, o) => sum + (o.paidAmount || 0), 0);
+  // Deduct returned change money from cash sales, as change money is a float return, not a sale
+  const totalChangeMoney = todaysOrders.reduce((sum, o) => sum + (o.changeMoneyGiven || 0), 0);
+  const cashSell = Math.max(0, rawCashSell - totalChangeMoney);
+
+  const deliverySell = todaysOrders.filter(o => o.tableId && (o.tableId.toString().includes('D-') || o.tableId.toString().includes('Delivery'))).reduce((sum, o) => sum + ((o.paidAmount || 0) - (o.changeMoneyGiven || 0)), 0);
   const deliveryChargeTotal = todaysOrders.reduce((sum, o) => sum + (o.deliveryCharge || 0), 0);
   const totalSell = cashSell + bkashSell + nagadSell + rocketSell;
   
