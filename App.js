@@ -763,7 +763,7 @@ export default function App() {
     refreshData();
     // Sync all 5 expense categories
     const cats = ['দুদু স্টোর', 'আকাশ মুরগী', 'বার্গার বান', 'বাজার', 'অন্যান্য', 'ijara'];
-    const today = new Date().toISOString().split('T')[0];
+    const today = getBusinessDate();
     let anySuccess = false;
     for (const c of cats) {
        const sid = `exp_${today}_${c.replace(/\s+/g, '_')}`;
@@ -1116,7 +1116,7 @@ export default function App() {
                 submitDailySheet(summary, userDisplayName);
                 refreshData();
                 
-                const todayStr = new Date().toISOString().split('T')[0];
+                const todayStr = getBusinessDate();
                 const success = await syncRecordImmediately('daily_submit', todayStr);
                 showToast(success ? "✅ ডাটা সেভ হয়েছে" : "📱 অফলাইনে সেভ হয়েছে", success ? 'online' : 'offline');
               }

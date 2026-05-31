@@ -13,7 +13,7 @@ import {
   TextInput
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { formatDisplayDate } from '../database';
+import { formatDisplayDate, getBusinessDate } from '../database';
 
 const { width } = Dimensions.get('window');
 
@@ -26,7 +26,7 @@ const getBengaliDate = () => {
 };
 
 // --- CUSTOM CALENDAR PICKER COMPONENT ---
-const CalendarPicker = ({ visible, onClose, onSelectDate }) => {
+const CalendarPicker = ({ visible, onClose, onSelectDate, initialDate }) => {
   const [viewDate, setViewDate] = useState(new Date());
   const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   const days = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -91,20 +91,6 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
   const [selectedTableForRename, setSelectedTableForRename] = useState(null);
   const [newTableName, setNewTableName] = useState('');
 
-  // Visual Sync Timer Countdowns
-  const [delCountdown, setDelCountdown] = useState(10);
-  const [tabCountdown, setTabCountdown] = useState(15);
-  const [fullCountdown, setFullCountdown] = useState(60);
-
-  useEffect(() => {
-    const t = setInterval(() => {
-      setDelCountdown(prev => (prev <= 1 ? 10 : prev - 1));
-      setTabCountdown(prev => (prev <= 1 ? 15 : prev - 1));
-      setFullCountdown(prev => (prev <= 1 ? 60 : prev - 1));
-    }, 1000);
-    return () => clearInterval(t);
-  }, []);
-
   // Menu Modal state
   const [menuModalVisible, setMenuModalVisible] = useState(false);
   const [ijaraModalVisible, setIjaraModalVisible] = useState(false);
@@ -118,6 +104,7 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
   const [pastBkash, setPastBkash] = useState('');
   const [pastNagad, setPastNagad] = useState('');
   const [pastCash, setPastCash] = useState('');
+  const [pastRocket, setPastRocket] = useState('');
   const [pastDudu, setPastDudu] = useState('');
   const [pastAkash, setPastAkash] = useState('');
   const [pastBurger, setPastBurger] = useState('');
@@ -255,18 +242,27 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
   const activeDeliveriesCount = deliveries.filter(d => d.status === 'BUSY').length;
   const totalActiveCount = activeTablesCount + activeDeliveriesCount;
 
-  const todaySale = completedOrders.reduce((sum, order) => sum + (order.paidAmount || 0), 0);
+  // Date filtering helper for today
+  const todayStr = getBusinessDate();
+
+  // Filter orders for today ONLY for top statistics
+  const todaysOrders = completedOrders.filter(order => {
+    const orderDate = order.fullDate || todayStr;
+    return orderDate === todayStr;
+  });
+
+  const todaySale = todaysOrders.reduce((sum, order) => sum + (order.paidAmount || 0), 0);
   const totalExpenses = (parseFloat(dailyExpenses.duduMiah) || 0) + (parseFloat(dailyExpenses.akashChicken) || 0) + (parseFloat(dailyExpenses.burgerBun) || 0) + (parseFloat(dailyExpenses.bazar) || 0) + (parseFloat(dailyExpenses.others) || 0);
   
   // Calculate change money impact
   const ongoingChangeMoney = deliveries.filter(d => d.status === 'BUSY').reduce((sum, d) => sum + (d.changeMoneyGiven || 0), 0);
-  const completedChangeMoney = completedOrders.reduce((sum, o) => sum + (o.changeMoneyGiven || 0), 0);
+  const completedChangeMoney = todaysOrders.reduce((sum, o) => sum + (o.changeMoneyGiven || 0), 0);
   
   const totalCash = todaySale + dailyExpenses.ijara - totalExpenses - ongoingChangeMoney - completedChangeMoney;
 
-  const bkashSale = completedOrders.reduce((sum, o) => sum + (o.bkash_amount || (o.method === 'বিকাশ' ? o.paidAmount : 0) || 0), 0);
-  const nagadSale = completedOrders.reduce((sum, o) => sum + (o.nagad_amount || (o.method === 'নগদ' ? o.paidAmount : 0) || 0), 0);
-  const rocketSale = completedOrders.reduce((sum, o) => sum + (o.rocket_amount || (o.method === 'রকেট' ? o.paidAmount : 0) || 0), 0);
+  const bkashSale = todaysOrders.reduce((sum, o) => sum + (o.bkash_amount || (o.method === 'বিকাশ' ? o.paidAmount : 0) || 0), 0);
+  const nagadSale = todaysOrders.reduce((sum, o) => sum + (o.nagad_amount || (o.method === 'নগদ' ? o.paidAmount : 0) || 0), 0);
+  const rocketSale = todaysOrders.reduce((sum, o) => sum + (o.rocket_amount || (o.method === 'রকেট' ? o.paidAmount : 0) || 0), 0);
   
   const allOrdersForLog = completedOrders.map(o => ({
     ...o,
@@ -275,9 +271,9 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
     amount: (o.paidAmount || o.grandTotal || o.totalAmount) - (o.changeMoneyGiven || 0)
   }));
 
-  const filteredOrders = allOrdersForLog;
+  const filteredOrders = allOrdersForLog.filter(o => (o.fullDate || todayStr) === todayStr);
 
-  const totalDoneCount = completedOrders.length;
+  const totalDoneCount = todaysOrders.length;
   const monthlyTotalSell = (submissionHistory?.reduce((sum, item) => sum + (item.sell || 0), 0) || 0) + todaySale;
 
   return (
@@ -571,18 +567,9 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
         </View>
       </Modal>
 
-      {/* 3-DOT MENU */}
       <Modal animationType="fade" transparent={true} visible={menuModalVisible} onRequestClose={() => setMenuModalVisible(false)}>
         <TouchableOpacity style={styles.menuModalOverlay} activeOpacity={1} onPress={() => setMenuModalVisible(false)}>
           <View style={styles.menuModalContent}>
-            {/* Sync Timer Indicator (No emoji, smaller font size) */}
-            <View style={styles.syncTimerWrapper}>
-              <Text style={styles.syncTimerText}>Delete Check in: {delCountdown}s</Text>
-              <Text style={styles.syncTimerText}>Table Sync in: {tabCountdown}s</Text>
-              <Text style={styles.syncTimerText}>Full Sync in: {fullCountdown}s</Text>
-            </View>
-            <View style={styles.menuDivider} />
-
             {dailyExpenses.ijara > 0 ? (
               <TouchableOpacity 
                 style={styles.menuOption} 
@@ -681,7 +668,10 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
                 <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>bKash</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastBkash} onChangeText={setPastBkash}/></View>
                 <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>Nagad</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastNagad} onChangeText={setPastNagad}/></View>
               </View>
-              <View style={styles.expenseInputGroup}><Text style={styles.inputLabel}>Cash</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastCash} onChangeText={setPastCash}/></View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>Rocket</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastRocket} onChangeText={setPastRocket}/></View>
+                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>Cash</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastCash} onChangeText={setPastCash}/></View>
+              </View>
               
               <View style={{ marginTop: 10, marginBottom: 5 }}><Text style={{ color: '#FFB703', fontSize: 12, fontWeight: 'bold' }}>খরচসমূহ (Expenses)</Text></View>
               
@@ -1293,7 +1283,4 @@ const styles = StyleSheet.create({
   calDayText: { color: '#FFF', fontSize: 13 },
   calCloseBtn: { marginTop: 20, height: 44, backgroundColor: '#1E1E1E', borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   calCloseBtnText: { color: '#888', fontSize: 14 },
-  
-  syncTimerWrapper: { paddingVertical: 8, paddingHorizontal: 12, backgroundColor: '#161616', borderRadius: 8, marginHorizontal: 16, marginTop: 8, marginBottom: 8, alignItems: 'center', borderWidth: 1, borderColor: '#222' },
-  syncTimerText: { color: '#FFB703', fontSize: 10, fontWeight: '600', marginVertical: 2 },
 });

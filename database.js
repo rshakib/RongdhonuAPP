@@ -1541,7 +1541,7 @@ export async function testFirestoreConnection() {
 
 export async function triggerWeatherFetch() {
   try {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getBusinessDate();
     const cachedWeather = db.getFirstSync("SELECT * FROM weather_data WHERE date = ?", [todayStr]);
     if (cachedWeather) return;
 
@@ -1585,7 +1585,7 @@ export async function triggerWeatherFetch() {
 
 export function calculateAndSaveDailySummary(dateStr) {
   try {
-    const todayStr = dateStr || new Date().toISOString().split('T')[0];
+    const todayStr = dateStr || getBusinessDate();
     
     const weather = db.getFirstSync("SELECT * FROM weather_data WHERE date = ?", [todayStr]) || {
       temperature: 30.0,
@@ -1609,7 +1609,7 @@ export function calculateAndSaveDailySummary(dateStr) {
     const specialDayNote = BD_HOLIDAYS[mmDd] || (isFriday ? "Friday Weekend" : "");
 
     const ordersToday = db.getAllSync(
-      "SELECT * FROM orders WHERE SUBSTR(created_at, 1, 10) = ?",
+      "SELECT * FROM orders WHERE date(created_at, 'localtime', '-1 hour') = ?",
       [todayStr]
     );
     const totalOrders = ordersToday.length;
@@ -1641,19 +1641,19 @@ export function calculateAndSaveDailySummary(dateStr) {
     }
 
     const expensesToday = db.getAllSync(
-      "SELECT * FROM expenses WHERE SUBSTR(created_at, 1, 10) = ?",
+      "SELECT * FROM expenses WHERE date(created_at, 'localtime', '-1 hour') = ?",
       [todayStr]
     );
     const totalExpense = expensesToday.reduce((sum, e) => sum + (e.amount || 0), 0);
 
     const deliveriesToday = db.getAllSync(
-      "SELECT * FROM deliveries WHERE SUBSTR(completed_at, 1, 10) = ? AND status = 'COMPLETED'",
+      "SELECT * FROM deliveries WHERE date(completed_at, 'localtime', '-1 hour') = ? AND status = 'COMPLETED'",
       [todayStr]
     );
     const totalDelivery = deliveriesToday.reduce((sum, d) => sum + (d.amount || 0), 0);
 
     const paymentsToday = db.getAllSync(
-      "SELECT * FROM payments WHERE SUBSTR(created_at, 1, 10) = ?",
+      "SELECT * FROM payments WHERE date(created_at, 'localtime', '-1 hour') = ?",
       [todayStr]
     );
 
@@ -1702,7 +1702,7 @@ export function calculateAndSaveDailySummary(dateStr) {
     const ownerDeposit = submitRecord ? (submitRecord.net_deposit || 0) : 0;
 
     const orderItemsToday = db.getAllSync(
-      "SELECT itemName, SUM(quantity) as qty, SUM(revenue) as rev FROM order_items WHERE SUBSTR(created_at, 1, 10) = ? GROUP BY itemName",
+      "SELECT itemName, SUM(quantity) as qty, SUM(revenue) as rev FROM order_items WHERE date(created_at, 'localtime', '-1 hour') = ? GROUP BY itemName",
       [todayStr]
     );
     const itemSummaryList = orderItemsToday.map(oi => ({
@@ -1746,7 +1746,7 @@ export function calculateAndSaveDailySummary(dateStr) {
           ?, ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?, ?, 0
         )
       `, [
@@ -2231,7 +2231,7 @@ export function getCompletedOrders() {
       method: r.payment_method,
       time: r.time,
       status: 'Done',
-      fullDate: r.created_at.substring(0, 10)
+      fullDate: getBusinessDateFromISO(r.created_at)
     }));
   } catch (err) {
     console.error(err);
@@ -2393,8 +2393,8 @@ export function addCompletedOrder(orderRecord) {
 
 export function getDailyExpenses() {
   try {
-    const todayStr = new Date().toISOString().split('T')[0];
-    const rows = db.getAllSync("SELECT * FROM expenses WHERE SUBSTR(created_at, 1, 10) = ?", [todayStr]);
+    const todayStr = getBusinessDate();
+    const rows = db.getAllSync("SELECT * FROM expenses WHERE date(created_at, 'localtime', '-1 hour') = ?", [todayStr]);
     
     const expenses = {
       duduMiah: 0,
@@ -2425,15 +2425,15 @@ export function getDailyExpenses() {
     });
 
     return expenses;
-    } catch (err) {
+  } catch (err) {
     console.error(err);
     return { duduMiah: 0, akashChicken: 0, burgerBun: 0, bazar: 0, bazarNote: '', others: 0, othersNote: '', ijara: 0 };
-    }
-    }
+  }
+}
 
-    export function updateDailyExpenses(expenses) {
-    try {
-    const todayStr = new Date().toISOString().split('T')[0];
+export function updateDailyExpenses(expenses) {
+  try {
+    const todayStr = getBusinessDate();
     const now = new Date().toISOString();
 
     const categories = [
@@ -2447,7 +2447,7 @@ export function getDailyExpenses() {
 
     for (const cat of categories) {
       const stableId = `exp_${todayStr}_${cat.name.replace(/\s+/g, '_')}`;
-      const existing = db.getFirstSync("SELECT * FROM expenses WHERE id = ? OR (SUBSTR(created_at, 1, 10) = ? AND category = ?)", [stableId, todayStr, cat.name]);
+      const existing = db.getFirstSync("SELECT * FROM expenses WHERE id = ? OR (date(created_at, 'localtime', '-1 hour') = ? AND category = ?)", [stableId, todayStr, cat.name]);
       if (existing) {
         db.runSync(
           "UPDATE expenses SET amount = ?, note = ?, updated_at = ?, is_synced = 0 WHERE id = ?",
@@ -2584,7 +2584,7 @@ export function savePastAccount(record) {
 
 export function isTodaySubmitted() {
   try {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getBusinessDate();
     const row = db.getFirstSync("SELECT is_locked FROM daily_submit WHERE date = ?", [todayStr]);
     return row ? (row.is_locked === 1) : false;
   } catch (err) {
@@ -2595,7 +2595,7 @@ export function isTodaySubmitted() {
 
 export function submitDailySheet(summary, submittedBy) {
   try {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getBusinessDate();
     const now = new Date().toISOString();
     
     db.runSync(`
@@ -2627,7 +2627,7 @@ export function submitDailySheet(summary, submittedBy) {
     ]);
     enqueueSync("daily_submit", todayStr, "INSERT");
 
-    db.runSync("UPDATE orders SET locked_at = ? WHERE SUBSTR(created_at, 1, 10) = ?", [now, todayStr]);
+    db.runSync("UPDATE orders SET locked_at = ? WHERE date(created_at, 'localtime', '-1 hour') = ?", [now, todayStr]);
 
     calculateAndSaveDailySummary(todayStr);
 
@@ -2640,7 +2640,7 @@ export function submitDailySheet(summary, submittedBy) {
 
 export function resetDailySubmitLock() {
   try {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getBusinessDate();
     
     // 1. Delete from daily_submit locally and record deletion
     db.runSync("DELETE FROM daily_submit WHERE date = ?", [todayStr]);
@@ -2651,7 +2651,7 @@ export function resetDailySubmitLock() {
     recordDeletion("daily_summary", todayStr);
     
     // 3. Unlock orders locally and enqueue Firestore update sync for all today's orders
-    const todayOrders = db.getAllSync("SELECT id FROM orders WHERE SUBSTR(created_at, 1, 10) = ?", [todayStr]);
+    const todayOrders = db.getAllSync("SELECT id FROM orders WHERE date(created_at, 'localtime', '-1 hour') = ?", [todayStr]);
     todayOrders.forEach(o => {
       if (o.id) {
         db.runSync("UPDATE orders SET locked_at = NULL WHERE id = ?", [String(o.id)]);
@@ -2669,11 +2669,11 @@ export function resetDailySubmitLock() {
 
 export function resetIjaraExpense() {
   try {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getBusinessDate();
     const now = new Date().toISOString();
     
     // Reset ijara expense to 0 locally in expenses
-    db.runSync("UPDATE expenses SET amount = 0, is_synced = 0 WHERE SUBSTR(created_at, 1, 10) = ? AND category = 'ijara'", [todayStr]);
+    db.runSync("UPDATE expenses SET amount = 0, is_synced = 0 WHERE date(created_at, 'localtime', '-1 hour') = ? AND category = 'ijara'", [todayStr]);
     
     // Enqueue Firestore update sync for expenses
     enqueueSync("expenses", `${todayStr}_ijara`, "UPDATE");
@@ -2843,6 +2843,38 @@ export function getSyncQueueItems(limit = 50) {
   } catch (e) {
     return [];
   }
+}
+
+// ==========================================
+// 0. DATE & BUSINESS DAY HELPERS
+// ==========================================
+
+/**
+ * Returns the current business date string (YYYY-MM-DD).
+ * Business Day starts at 1:00 AM Local Time.
+ */
+export function getBusinessDate() {
+  // Offset by -1 hour so 12:00 AM - 12:59 AM belongs to the previous day
+  const d = new Date(Date.now() - 3600000);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/**
+ * Extracts the business date string from an ISO string (usually UTC).
+ * Uses Local Time and -1 hour rollover to match getBusinessDate().
+ */
+export function getBusinessDateFromISO(isoStr) {
+  if (!isoStr) return getBusinessDate();
+  const d = new Date(isoStr);
+  // Apply 1 hour rollover to the local time
+  const bizDate = new Date(d.getTime() - 3600000);
+  const y = bizDate.getFullYear();
+  const m = String(bizDate.getMonth() + 1).padStart(2, '0');
+  const day = String(bizDate.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 export function formatDisplayDate(dateInput) {
@@ -3098,7 +3130,7 @@ export function recordDeletion(tableName, recordId) {
 
 export function getRemainingPushes(role) {
   const maxLimit = role === 'manager' ? 1 : 2;
-  const today = new Date().toISOString().split('T')[0];
+  const today = getBusinessDate();
   const lastPushDate = getAppConfig('last_push_date');
   if (lastPushDate !== today) {
     setAppConfig('last_push_date', today);
@@ -3111,7 +3143,7 @@ export function getRemainingPushes(role) {
 
 export function getRemainingPulls(role) {
   const maxLimit = role === 'manager' ? 1 : 2;
-  const today = new Date().toISOString().split('T')[0];
+  const today = getBusinessDate();
   const lastPullDate = getAppConfig('last_pull_date');
   if (lastPullDate !== today) {
     setAppConfig('last_pull_date', today);
@@ -3123,14 +3155,14 @@ export function getRemainingPulls(role) {
 }
 
 export function incrementPushCount() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getBusinessDate();
   setAppConfig('last_push_date', today);
   const count = parseInt(getAppConfig('push_count_today') || '0', 10);
   setAppConfig('push_count_today', String(count + 1));
 }
 
 export function incrementPullCount() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getBusinessDate();
   setAppConfig('last_pull_date', today);
   const count = parseInt(getAppConfig('pull_count_today') || '0', 10);
   setAppConfig('pull_count_today', String(count + 1));

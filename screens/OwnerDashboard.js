@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { exportSalesReportPDF, exportDepositReportPDF } from '../pdfHelper';
-import { formatDisplayDate } from '../database';
+import { formatDisplayDate, getBusinessDate } from '../database';
 
 const { width } = Dimensions.get('window');
 
@@ -92,24 +92,6 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
   const [selectedTableForRename, setSelectedTableForRename] = useState(null);
   const [newTableName, setNewTableName] = useState('');
 
-  // Visual Sync Timer Countdowns
-  const [delCountdown, setDelCountdown] = useState(10);
-  const [tabCountdown, setTabCountdown] = useState(15);
-  const [fullCountdown, setFullCountdown] = useState(60);
-
-  useEffect(() => {
-    const t = setInterval(() => {
-      setDelCountdown(prev => (prev <= 1 ? 10 : prev - 1));
-      setTabCountdown(prev => (prev <= 1 ? 15 : prev - 1));
-      setFullCountdown(prev => (prev <= 1 ? 60 : prev - 1));
-    }, 1000);
-    return () => clearInterval(t);
-  }, []);
-
-  // Expenses States
-  const [expensesModalVisible, setExpensesModalVisible] = useState(false);
-  const [localExpenses, setLocalExpenses] = useState({ ...dailyExpenses });
-
   // 3-Dot Menu and Report States
   const [menuModalVisible, setMenuModalVisible] = useState(false);
   const [ijaraModalVisible, setIjaraModalVisible] = useState(false);
@@ -125,6 +107,7 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
   const [pastBkash, setPastBkash] = useState('');
   const [pastNagad, setPastNagad] = useState('');
   const [pastCash, setPastCash] = useState('');
+  const [pastRocket, setPastRocket] = useState('');
   const [pastDudu, setPastDudu] = useState('');
   const [pastAkash, setPastAkash] = useState('');
   const [pastBurger, setPastBurger] = useState('');
@@ -160,31 +143,6 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
     onUpdateTableName(selectedTableForRename.id, newTableName.trim());
     setRenameModalVisible(false);
     setSelectedTableForRename(null);
-  };
-
-  const handleOpenExpenses = () => {
-    setLocalExpenses({ ...dailyExpenses });
-    setExpensesModalVisible(true);
-  };
-
-  const handleSaveExpenses = () => {
-    if (isDailySubmitted) {
-      Alert.alert("লক করা হিসাব", "ডেইলি সাবমিট করার পর আর পরিবর্তন করা যাবে না!");
-      return;
-    }
-    onUpdateExpenses({
-      ...localExpenses,
-      duduMiah: parseFloat(localExpenses.duduMiah) || 0,
-      akashChicken: parseFloat(localExpenses.akashChicken) || 0,
-      burgerBun: parseFloat(localExpenses.burgerBun) || 0,
-      bazar: parseFloat(localExpenses.bazar) || 0,
-      bazarNote: localExpenses.bazarNote || '',
-      others: parseFloat(localExpenses.others) || 0,
-      othersNote: localExpenses.othersNote || '',
-      ijara: parseFloat(localExpenses.ijara) || 0,
-    });
-    setExpensesModalVisible(false);
-    Alert.alert("সফল", "খরচসমূহ সফলভাবে সংরক্ষণ করা হয়েছে!");
   };
 
   const handleSaveIjara = () => {
@@ -295,18 +253,27 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
   const activeDeliveriesCount = deliveries.filter(d => d.status === 'BUSY').length;
   const totalActiveCount = activeTablesCount + activeDeliveriesCount;
 
-  const todaySale = completedOrders.reduce((sum, order) => sum + (order.paidAmount || 0), 0);
+  // Date filtering helper for today
+  const todayStr = getBusinessDate();
+
+  // Filter orders for today ONLY for top statistics
+  const todaysOrders = completedOrders.filter(order => {
+    const orderDate = order.fullDate || todayStr;
+    return orderDate === todayStr;
+  });
+
+  const todaySale = todaysOrders.reduce((sum, order) => sum + (order.paidAmount || 0), 0);
   const totalExpenses = (parseFloat(dailyExpenses.duduMiah) || 0) + (parseFloat(dailyExpenses.akashChicken) || 0) + (parseFloat(dailyExpenses.burgerBun) || 0) + (parseFloat(dailyExpenses.bazar) || 0) + (parseFloat(dailyExpenses.others) || 0);
   
   // Calculate change money impact
   const ongoingChangeMoney = deliveries.filter(d => d.status === 'BUSY').reduce((sum, d) => sum + (d.changeMoneyGiven || 0), 0);
-  const completedChangeMoney = completedOrders.reduce((sum, o) => sum + (o.changeMoneyGiven || 0), 0);
+  const completedChangeMoney = todaysOrders.reduce((sum, o) => sum + (o.changeMoneyGiven || 0), 0);
   
   const totalCash = todaySale + dailyExpenses.ijara - totalExpenses - ongoingChangeMoney - completedChangeMoney;
 
-  const bkashSale = completedOrders.reduce((sum, o) => sum + (o.bkash_amount || (o.method === 'বিকাশ' ? o.paidAmount : 0) || 0), 0);
-  const nagadSale = completedOrders.reduce((sum, o) => sum + (o.nagad_amount || (o.method === 'নগদ' ? o.paidAmount : 0) || 0), 0);
-  const rocketSale = completedOrders.reduce((sum, o) => sum + (o.rocket_amount || (o.method === 'রকেট' ? o.paidAmount : 0) || 0), 0);
+  const bkashSale = todaysOrders.reduce((sum, o) => sum + (o.bkash_amount || (o.method === 'বিকাশ' ? o.paidAmount : 0) || 0), 0);
+  const nagadSale = todaysOrders.reduce((sum, o) => sum + (o.nagad_amount || (o.method === 'নগদ' ? o.paidAmount : 0) || 0), 0);
+  const rocketSale = todaysOrders.reduce((sum, o) => sum + (o.rocket_amount || (o.method === 'রকেট' ? o.paidAmount : 0) || 0), 0);
   const monthlyTotalSell = (submissionHistory?.reduce((sum, item) => sum + (item.sell || 0), 0) || 0) + todaySale;
   
   const allOrdersForLog = completedOrders.map(o => ({
@@ -316,9 +283,9 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
     amount: (o.paidAmount || o.grandTotal || o.totalAmount) - (o.changeMoneyGiven || 0)
   }));
 
-  const filteredOrders = allOrdersForLog;
+  const filteredOrders = allOrdersForLog.filter(o => (o.fullDate || todayStr) === todayStr);
 
-  const totalDoneCount = completedOrders.length;
+  const totalDoneCount = todaysOrders.length;
   // Helper to parse 'YYYY-MM-DD', 'YYYY/MM/DD', or 'DD Month YYYY' to 'Month YYYY'
   const getMonthName = (dateStr) => {
     if (!dateStr) return '';
@@ -657,7 +624,7 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
       {/* Floating Buttons */}
       <View style={styles.fabContainer}>
         <TouchableOpacity style={styles.fabItemUnified} onPress={onCreateDelivery}><Text style={styles.fabIconSmall}>🛵</Text><Text style={styles.fabLabelSmall}>ডেলিভারি</Text></TouchableOpacity>
-        <TouchableOpacity style={styles.fabItemUnified} onPress={handleOpenExpenses}><Text style={styles.fabIconSmall}>📉</Text><Text style={styles.fabLabelSmall}>খরচ</Text></TouchableOpacity>
+        <TouchableOpacity style={styles.fabItemUnified} onPress={onNavigateToExpenses}><Text style={styles.fabIconSmall}>📉</Text><Text style={styles.fabLabelSmall}>খরচ</Text></TouchableOpacity>
         <TouchableOpacity style={[styles.fabItemUnified, styles.fabHighlight]} onPress={onNavigateToSubmit}><Text style={[styles.fabIconSmall, { color: '#000' }]}>📝</Text><Text style={[styles.fabLabelSmall, { color: '#000' }]}>সাবমিট</Text></TouchableOpacity>
       </View>
 
@@ -722,34 +689,9 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
         </View></View>
       </Modal>
 
-      {/* EXPENSES MODAL */}
-      <Modal animationType="slide" transparent={true} visible={expensesModalVisible} onRequestClose={() => setExpensesModalVisible(false)}>
-        <View style={styles.modalOverlay}><View style={[styles.modalContent, { width: '90%', maxHeight: '85%' }]}><View style={styles.modalIconCircle}><Text style={styles.modalIconEmoji}>📉</Text></View>
-            <Text style={styles.modalTitle}>আজকের খরচ</Text><ScrollView style={{ width: '100%', marginTop: 10 }}>
-              <View style={styles.expenseInputGroup}><Text style={styles.inputLabel}>🛍️ দুদু মিয়া</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={localExpenses.duduMiah.toString()} onChangeText={(val) => setLocalExpenses({ ...localExpenses, duduMiah: val })}/></View>
-              <View style={styles.expenseInputGroup}><Text style={styles.inputLabel}>🐔 আকাশ মুরগী</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={localExpenses.akashChicken.toString()} onChangeText={(val) => setLocalExpenses({ ...localExpenses, akashChicken: val })}/></View>
-              
-              <View style={styles.expenseInputGroup}><Text style={styles.inputLabel}>🛒 বাজার</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={localExpenses.bazar.toString()} onChangeText={(val) => setLocalExpenses({ ...localExpenses, bazar: val })}/></View>
-              <View style={styles.expenseInputGroup}><Text style={styles.inputLabel}>📝 বাজার নোট</Text><TextInput style={[styles.modalInput, { color: '#FFF', height: 40, fontSize: 12 }]} value={localExpenses.bazarNote} onChangeText={(val) => setLocalExpenses({ ...localExpenses, bazarNote: val })} placeholder="বাজারের তালিকা..." placeholderTextColor="#555"/></View>
-
-              <View style={styles.expenseInputGroup}><Text style={styles.inputLabel}>📦 অন্যান্য</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={localExpenses.others.toString()} onChangeText={(val) => setLocalExpenses({ ...localExpenses, others: val })}/></View>
-              <View style={styles.expenseInputGroup}><Text style={styles.inputLabel}>📝 অন্যান্য নোট</Text><TextInput style={[styles.modalInput, { color: '#FFF', height: 40, fontSize: 12 }]} value={localExpenses.othersNote} onChangeText={(val) => setLocalExpenses({ ...localExpenses, othersNote: val })} placeholder="খরচের বিবরণ..." placeholderTextColor="#555"/></View>
-            </ScrollView><View style={styles.modalBtnRow}><TouchableOpacity style={styles.modalCancelBtn} onPress={() => setExpensesModalVisible(false)}><Text style={styles.modalCancelBtnText}>বন্ধ</Text></TouchableOpacity><TouchableOpacity style={styles.modalSaveBtn} onPress={handleSaveExpenses}><Text style={styles.modalSaveBtnText}>সেভ</Text></TouchableOpacity></View>
-        </View></View>
-      </Modal>
-
-      {/* 3-DOT MENU */}
       <Modal animationType="fade" transparent={true} visible={menuModalVisible} onRequestClose={() => setMenuModalVisible(false)}>
         <TouchableOpacity style={styles.menuModalOverlay} activeOpacity={1} onPress={() => setMenuModalVisible(false)}>
           <View style={styles.menuModalContent}>
-            {/* Sync Timer Indicator (No emoji, smaller font size) */}
-            <View style={styles.syncTimerWrapper}>
-              <Text style={styles.syncTimerText}>Delete Check in: {delCountdown}s</Text>
-              <Text style={styles.syncTimerText}>Table Sync in: {tabCountdown}s</Text>
-              <Text style={styles.syncTimerText}>Full Sync in: {fullCountdown}s</Text>
-            </View>
-            <View style={styles.menuDivider} />
-
             {dailyExpenses.ijara > 0 ? (
               <TouchableOpacity 
                 style={styles.menuOption} 
@@ -1021,7 +963,11 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
                 <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>bKash</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastBkash} onChangeText={setPastBkash}/></View>
                 <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>Nagad</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastNagad} onChangeText={setPastNagad}/></View>
               </View>
-              <View style={styles.expenseInputGroup}><Text style={styles.inputLabel}>Cash</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastCash} onChangeText={setPastCash}/></View>
+
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>Rocket</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastRocket} onChangeText={setPastRocket}/></View>
+                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>Cash</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastCash} onChangeText={setPastCash}/></View>
+              </View>
               
               <View style={{ marginTop: 10, marginBottom: 5 }}><Text style={{ color: '#FFB703', fontSize: 12, fontWeight: 'bold' }}>খরচসমূহ (Expenses)</Text></View>
               
@@ -1211,7 +1157,4 @@ const styles = StyleSheet.create({
   calDayText: { color: '#FFF', fontSize: 13 },
   calCloseBtn: { marginTop: 20, height: 44, backgroundColor: '#1E1E1E', borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   calCloseBtnText: { color: '#888', fontSize: 14 },
-  
-  syncTimerWrapper: { paddingVertical: 8, paddingHorizontal: 12, backgroundColor: '#161616', borderRadius: 8, marginHorizontal: 16, marginTop: 8, marginBottom: 8, alignItems: 'center', borderWidth: 1, borderColor: '#222' },
-  syncTimerText: { color: '#FFB703', fontSize: 10, fontWeight: '600', marginVertical: 2 },
 });

@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { exportSalesReportPDF, exportDepositReportPDF } from '../pdfHelper';
-import { formatDisplayDate, inspectDatabaseStats, executeInspectorQuery, getFirebaseUsageStats, verifyPinCode } from '../database';
+import { formatDisplayDate, getBusinessDate, inspectDatabaseStats, executeInspectorQuery, getFirebaseUsageStats, verifyPinCode } from '../database';
 
 const { width } = Dimensions.get('window');
 
@@ -106,10 +106,6 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     return () => clearInterval(t);
   }, []);
 
-  // Expenses States
-  const [expensesModalVisible, setExpensesModalVisible] = useState(false);
-  const [localExpenses, setLocalExpenses] = useState({ ...dailyExpenses });
-
   // 3-Dot Menu and Report States
   const [menuModalVisible, setMenuModalVisible] = useState(false);
   const [ijaraModalVisible, setIjaraModalVisible] = useState(false);
@@ -135,6 +131,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
   const [pastBkash, setPastBkash] = useState('');
   const [pastNagad, setPastNagad] = useState('');
   const [pastCash, setPastCash] = useState('');
+  const [pastRocket, setPastRocket] = useState('');
   const [pastDudu, setPastDudu] = useState('');
   const [pastAkash, setPastAkash] = useState('');
   const [pastBurger, setPastBurger] = useState('');
@@ -171,27 +168,6 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     onUpdateTableName(selectedTableForRename.id, newTableName.trim());
     setRenameModalVisible(false);
     setSelectedTableForRename(null);
-  };
-
-  const handleOpenExpenses = () => {
-    setLocalExpenses({ ...dailyExpenses });
-    setExpensesModalVisible(true);
-  };
-
-  const handleSaveExpenses = () => {
-    onUpdateExpenses({
-      ...localExpenses,
-      duduMiah: parseFloat(localExpenses.duduMiah) || 0,
-      akashChicken: parseFloat(localExpenses.akashChicken) || 0,
-      burgerBun: parseFloat(localExpenses.burgerBun) || 0,
-      bazar: parseFloat(localExpenses.bazar) || 0,
-      bazarNote: localExpenses.bazarNote || '',
-      others: parseFloat(localExpenses.others) || 0,
-      othersNote: localExpenses.othersNote || '',
-      ijara: parseFloat(localExpenses.ijara) || 0,
-    });
-    setExpensesModalVisible(false);
-    Alert.alert("সফল", "খরচসমূহ সফলভাবে সংরক্ষণ করা হয়েছে!");
   };
 
   const handleSaveIjara = () => {
@@ -345,18 +321,27 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
   const activeDeliveriesCount = deliveries.filter(d => d.status === 'BUSY').length;
   const totalActiveCount = activeTablesCount + activeDeliveriesCount;
 
-  const todaySale = completedOrders.reduce((sum, order) => sum + (order.paidAmount || 0), 0);
+  // Date filtering helper for today
+  const todayStr = getBusinessDate();
+
+  // Filter orders for today ONLY for top statistics
+  const todaysOrders = completedOrders.filter(order => {
+    const orderDate = order.fullDate || todayStr;
+    return orderDate === todayStr;
+  });
+
+  const todaySale = todaysOrders.reduce((sum, order) => sum + (order.paidAmount || 0), 0);
   const totalExpenses = (parseFloat(dailyExpenses.duduMiah) || 0) + (parseFloat(dailyExpenses.akashChicken) || 0) + (parseFloat(dailyExpenses.burgerBun) || 0) + (parseFloat(dailyExpenses.bazar) || 0) + (parseFloat(dailyExpenses.others) || 0);
   
   // Calculate change money impact
   const ongoingChangeMoney = deliveries.filter(d => d.status === 'BUSY').reduce((sum, d) => sum + (d.changeMoneyGiven || 0), 0);
-  const completedChangeMoney = completedOrders.reduce((sum, o) => sum + (o.changeMoneyGiven || 0), 0);
+  const completedChangeMoney = todaysOrders.reduce((sum, o) => sum + (o.changeMoneyGiven || 0), 0);
   
   const totalCash = todaySale + dailyExpenses.ijara - totalExpenses - ongoingChangeMoney - completedChangeMoney;
 
-  const bkashSale = completedOrders.reduce((sum, o) => sum + (o.bkash_amount || (o.method === 'বিকাশ' ? o.paidAmount : 0) || 0), 0);
-  const nagadSale = completedOrders.reduce((sum, o) => sum + (o.nagad_amount || (o.method === 'নগদ' ? o.paidAmount : 0) || 0), 0);
-  const rocketSale = completedOrders.reduce((sum, o) => sum + (o.rocket_amount || (o.method === 'রকেট' ? o.paidAmount : 0) || 0), 0);
+  const bkashSale = todaysOrders.reduce((sum, o) => sum + (o.bkash_amount || (o.method === 'বিকাশ' ? o.paidAmount : 0) || 0), 0);
+  const nagadSale = todaysOrders.reduce((sum, o) => sum + (o.nagad_amount || (o.method === 'নগদ' ? o.paidAmount : 0) || 0), 0);
+  const rocketSale = todaysOrders.reduce((sum, o) => sum + (o.rocket_amount || (o.method === 'রকেট' ? o.paidAmount : 0) || 0), 0);
   const monthlyTotalSell = (submissionHistory?.reduce((sum, item) => sum + (item.sell || 0), 0) || 0) + todaySale;
   
   const allOrdersForLog = completedOrders.map(o => ({
@@ -366,9 +351,9 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     amount: (o.paidAmount || o.grandTotal || o.totalAmount) - (o.changeMoneyGiven || 0)
   }));
 
-  const filteredOrders = allOrdersForLog;
+  const filteredOrders = allOrdersForLog.filter(o => (o.fullDate || todayStr) === todayStr);
 
-  const totalDoneCount = completedOrders.length;
+  const totalDoneCount = todaysOrders.length;
   
   const getMonthName = (dateStr) => {
     if (!dateStr) return '';
@@ -612,7 +597,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
       {/* Floating Buttons */}
       <View style={styles.fabContainer}>
         <TouchableOpacity style={styles.fabItemUnified} onPress={onCreateDelivery}><Text style={styles.fabIconSmall}>🛵</Text><Text style={styles.fabLabelSmall}>ডেলিভারি</Text></TouchableOpacity>
-        <TouchableOpacity style={styles.fabItemUnified} onPress={handleOpenExpenses}><Text style={styles.fabIconSmall}>📉</Text><Text style={styles.fabLabelSmall}>খরচ</Text></TouchableOpacity>
+        <TouchableOpacity style={styles.fabItemUnified} onPress={onNavigateToExpenses}><Text style={styles.fabIconSmall}>📉</Text><Text style={styles.fabLabelSmall}>খরচ</Text></TouchableOpacity>
         <TouchableOpacity style={[styles.fabItemUnified, styles.fabHighlight]} onPress={onNavigateToSubmit}><Text style={[styles.fabIconSmall, { color: '#000' }]}>📝</Text><Text style={[styles.fabLabelSmall, { color: '#000' }]}>সাবমিট</Text></TouchableOpacity>
       </View>
 
@@ -664,17 +649,11 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
         </View></View>
       </Modal>
 
-      {/* EXPENSES */}
-      <Modal animationType="slide" transparent={true} visible={expensesModalVisible} onRequestClose={() => setExpensesModalVisible(false)}>
-        <View style={styles.modalOverlay}><View style={[styles.modalContent, { width: '90%', maxHeight: '85%' }]}><View style={styles.modalIconCircle}><Text style={styles.modalIconEmoji}>📉</Text></View>
-            <Text style={styles.modalTitle}>আজকের খরচ</Text><ScrollView style={{ width: '100%', marginTop: 10 }}>
-              <View style={styles.expenseInputGroup}><Text style={styles.inputLabel}>🛍️ দুদু মিয়া</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={localExpenses.duduMiah.toString()} onChangeText={(val) => setLocalExpenses({ ...localExpenses, duduMiah: val })}/></View>
-              <View style={styles.expenseInputGroup}><Text style={styles.inputLabel}>🐔 আকাশ মুরগী</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={localExpenses.akashChicken.toString()} onChangeText={(val) => setLocalExpenses({ ...localExpenses, akashChicken: val })}/></View>
-              <View style={styles.expenseInputGroup}><Text style={styles.inputLabel}>🛒 বাজার</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={localExpenses.bazar.toString()} onChangeText={(val) => setLocalExpenses({ ...localExpenses, bazar: val })}/></View>
-              <View style={styles.expenseInputGroup}><Text style={styles.inputLabel}>📝 বাজার নোট</Text><TextInput style={[styles.modalInput, { color: '#FFF', height: 40, fontSize: 12 }]} value={localExpenses.bazarNote} onChangeText={(val) => setLocalExpenses({ ...localExpenses, bazarNote: val })} placeholder="বাজারের তালিকা..." placeholderTextColor="#555"/></View>
-              <View style={styles.expenseInputGroup}><Text style={styles.inputLabel}>📦 অন্যান্য</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={localExpenses.others.toString()} onChangeText={(val) => setLocalExpenses({ ...localExpenses, others: val })}/></View>
-              <View style={styles.expenseInputGroup}><Text style={styles.inputLabel}>📝 অন্যান্য নোট</Text><TextInput style={[styles.modalInput, { color: '#FFF', height: 40, fontSize: 12 }]} value={localExpenses.othersNote} onChangeText={(val) => setLocalExpenses({ ...localExpenses, othersNote: val })} placeholder="খরচের বিবরণ..." placeholderTextColor="#555"/></View>
-            </ScrollView><View style={styles.modalBtnRow}><TouchableOpacity style={styles.modalCancelBtn} onPress={() => setExpensesModalVisible(false)}><Text style={styles.modalCancelBtnText}>বন্ধ</Text></TouchableOpacity><TouchableOpacity style={styles.modalSaveBtn} onPress={handleSaveExpenses}><Text style={styles.modalSaveBtnText}>সেভ</Text></TouchableOpacity></View>
+      {/* IJARA */}
+      <Modal animationType="slide" transparent={true} visible={ijaraModalVisible} onRequestClose={() => setIjaraModalVisible(false)}>
+        <View style={styles.modalOverlay}><View style={styles.modalContent}><View style={styles.modalIconCircle}><Text style={styles.modalIconEmoji}>💰</Text></View>
+            <Text style={styles.modalTitle}>ইজা যোগ করুন</Text><View style={styles.ijaraInputWrapper}><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={tempIjara} onChangeText={setTempIjara} placeholder="ইজা পরিমাণ" placeholderTextColor="#AAA" autoFocus={true}/></View>
+            <View style={styles.modalBtnRow}><TouchableOpacity style={styles.modalCancelBtn} onPress={() => setIjaraModalVisible(false)}><Text style={styles.modalCancelBtnText}>বাতিল</Text></TouchableOpacity><TouchableOpacity style={styles.modalSaveBtn} onPress={handleSaveIjara}><Text style={styles.modalSaveBtnText}>নিশ্চিত</Text></TouchableOpacity></View>
         </View></View>
       </Modal>
 
@@ -806,15 +785,52 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
         </TouchableOpacity>
       </Modal>
 
-      {/* PAST ACCOUNT */}
+      {/* PAST ACCOUNT MODAL */}
       <Modal animationType="slide" transparent={true} visible={pastAccountModalVisible} onRequestClose={() => setPastAccountModalVisible(false)}>
-        <View style={styles.modalOverlay}><View style={[styles.modalContent, { width: '90%', maxHeight: '85%' }]}><View style={styles.modalIconCircle}><Text style={styles.modalIconEmoji}>📅</Text></View>
-            <Text style={styles.modalTitle}>অতীতের হিসাব</Text>
-            <ScrollView style={{ width: '100%' }} contentContainerStyle={{ paddingBottom: 20 }}>
-              <TouchableOpacity style={styles.expenseInputGroup} onPress={() => { setCalendarTarget('past'); setCalendarVisible(true); }}><Text style={styles.inputLabel}>তারিখ</Text><View style={styles.modalInput}><Text style={{color:'#FFF', marginTop: 14}}>{pastDate ? formatDisplayDate(pastDate) : "তারিখ সিলেক্ট"}</Text></View></TouchableOpacity>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { width: '90%', maxHeight: '85%' }]}>
+            <View style={styles.modalIconCircle}><Text style={styles.modalIconEmoji}>📅</Text></View>
+            <Text style={styles.modalTitle}>অতীতের হিসাব যোগ করুন</Text>
+            <ScrollView style={{ width: '100%' }} contentContainerStyle={{ paddingBottom: 20 }} showsVerticalScrollIndicator={false}>
+              <TouchableOpacity style={styles.expenseInputGroup} onPress={() => { setCalendarTarget('past'); setCalendarVisible(true); }}>
+                <Text style={styles.inputLabel}>তারিখ</Text>
+                <View style={[styles.modalInput, { justifyContent: 'center' }]}>
+                  <Text style={{color:'#FFF'}}>{pastDate ? formatDisplayDate(pastDate) : "তারিখ সিলেক্ট করুন"}</Text>
+                </View>
+              </TouchableOpacity>
+              
               <View style={styles.expenseInputGroup}><Text style={styles.inputLabel}>মোট বিক্রয়</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastTotalSell} onChangeText={setPastTotalSell}/></View>
-              <View style={[styles.expenseInputGroup, { backgroundColor: 'rgba(52, 211, 153, 0.05)', padding: 10, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(52, 211, 153, 0.2)' }]}><Text style={[styles.inputLabel, { color: '#34D399' }]}>👤 Owner কে জমা</Text><TextInput style={[styles.modalInput, { color: '#34D399', fontWeight: 'bold' }]} keyboardType="numeric" value={pastDeposit} onChangeText={setPastDeposit} placeholder="0"/></View>
-              <View style={styles.expenseInputGroup}><Text style={styles.inputLabel}>নোট</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} value={pastNote} onChangeText={setPastNote}/></View>
+              
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>bKash</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastBkash} onChangeText={setPastBkash}/></View>
+                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>Nagad</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastNagad} onChangeText={setPastNagad}/></View>
+              </View>
+
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>Rocket</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastRocket} onChangeText={setPastRocket}/></View>
+                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>Cash</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastCash} onChangeText={setPastCash}/></View>
+              </View>
+              
+              <View style={{ marginTop: 10, marginBottom: 5 }}><Text style={{ color: '#FFB703', fontSize: 12, fontWeight: 'bold' }}>খরচসমূহ (Expenses)</Text></View>
+              
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>🛍️ দুদু মিয়া</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastDudu} onChangeText={setPastDudu}/></View>
+                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>🐔 আকাশ মুরগী</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastAkash} onChangeText={setPastAkash}/></View>
+              </View>
+              
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>🍔 বার্গার বান</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastBurger} onChangeText={setPastBurger}/></View>
+                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>🛒 বাজার খরচ</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastBazar} onChangeText={setPastBazar}/></View>
+              </View>
+              
+              <View style={styles.expenseInputGroup}><Text style={styles.inputLabel}>📦 অন্যান্য খরচ</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastOthers} onChangeText={setPastOthers}/></View>
+
+              <View style={[styles.expenseInputGroup, { backgroundColor: 'rgba(52, 211, 153, 0.05)', padding: 10, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(52, 211, 153, 0.2)' }]}>
+                <Text style={[styles.inputLabel, { color: '#34D399' }]}>👤 Owner কে জমা (Deposit)</Text>
+                <TextInput style={[styles.modalInput, { color: '#34D399', fontWeight: 'bold', borderColor: 'rgba(52, 211, 153, 0.4)' }]} keyboardType="numeric" value={pastDeposit} onChangeText={setPastDeposit} placeholder="0"/>
+              </View>
+
+              <View style={styles.expenseInputGroup}><Text style={styles.inputLabel}>নোট (ঐচ্ছিক)</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} value={pastNote} onChangeText={setPastNote} placeholder="অতিরিক্ত তথ্য..."/></View>
             </ScrollView>
             <View style={styles.modalBtnRow}><TouchableOpacity style={styles.modalCancelBtn} onPress={() => setPastAccountModalVisible(false)}><Text style={styles.modalCancelBtnText}>বাতিল</Text></TouchableOpacity><TouchableOpacity style={styles.modalSaveBtn} onPress={handleSavePastEntry}><Text style={styles.modalSaveBtnText}>সেভ করুন</Text></TouchableOpacity></View>
         </View></View>
