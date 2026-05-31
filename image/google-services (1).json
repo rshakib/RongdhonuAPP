@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "931678906315",
+    "project_id": "rongdhonu-83b3d",
+    "storage_bucket": "rongdhonu-83b3d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:931678906315:android:5dcc6c7cee3fcf2d56384e",
+        "android_client_info": {
+          "package_name": "com.rongdhonu.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDtqgWg9oS_Nd8m299354H0AB84zgPbCrg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

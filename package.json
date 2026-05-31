@@ -1,18 +1,27 @@
 {
-  "name": "temp-expo",
+  "name": "rongdhonu",
   "version": "1.0.0",
   "main": "index.js",
   "dependencies": {
     "expo": "~56.0.8",
+    "expo-print": "^56.0.3",
+    "expo-sharing": "^56.0.15",
+    "expo-sqlite": "^56.0.4",
     "expo-status-bar": "~56.0.4",
     "react": "19.2.3",
-    "react-native": "0.85.3"
+    "react-native": "0.85.3",
+    "react-native-safe-area-context": "~5.7.0"
   },
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "build:apk": "eas build -p android --profile preview",
+    "build:previe": "eas build -p android --profile previe"
   },
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "eas-cli": "^20.0.0"
+  }
 }
