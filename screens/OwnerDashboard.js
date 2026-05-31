@@ -304,9 +304,9 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
   
   const totalCash = todaySale + dailyExpenses.ijara - totalExpenses - ongoingChangeMoney - completedChangeMoney;
 
-  const bkashSale = completedOrders.filter(o => o.method === 'বিকাশ').reduce((sum, o) => sum + (o.paidAmount || 0), 0);
-  const nagadSale = completedOrders.filter(o => o.method === 'নগদ').reduce((sum, o) => sum + (o.paidAmount || 0), 0);
-  const rocketSale = completedOrders.filter(o => o.method === 'রকেট').reduce((sum, o) => sum + (o.paidAmount || 0), 0);
+  const bkashSale = completedOrders.reduce((sum, o) => sum + (o.bkash_amount || (o.method === 'বিকাশ' ? o.paidAmount : 0) || 0), 0);
+  const nagadSale = completedOrders.reduce((sum, o) => sum + (o.nagad_amount || (o.method === 'নগদ' ? o.paidAmount : 0) || 0), 0);
+  const rocketSale = completedOrders.reduce((sum, o) => sum + (o.rocket_amount || (o.method === 'রকেট' ? o.paidAmount : 0) || 0), 0);
   const monthlyTotalSell = (submissionHistory?.reduce((sum, item) => sum + (item.sell || 0), 0) || 0) + todaySale;
   
   const allOrdersForLog = completedOrders.map(o => ({
@@ -689,7 +689,6 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
                    <View style={styles.detailRow}><Text style={[styles.detailLabel, { fontSize: 11 }]}>🐦 বিকাশ:</Text><Text style={[styles.detailValue, { fontSize: 11 }]}>৳ {selectedOrder.bkash_amount || 0}</Text></View>
                    <View style={styles.detailRow}><Text style={[styles.detailLabel, { fontSize: 11 }]}>💰 নগদ:</Text><Text style={[styles.detailValue, { fontSize: 11 }]}>৳ {selectedOrder.nagad_amount || 0}</Text></View>
                    <View style={styles.detailRow}><Text style={[styles.detailLabel, { fontSize: 11 }]}>🚀 রকেট:</Text><Text style={[styles.detailValue, { fontSize: 11 }]}>৳ {selectedOrder.rocket_amount || 0}</Text></View>
-                   <View style={styles.detailRow}><Text style={[styles.detailLabel, { fontSize: 11 }]}>😡 বাকি:</Text><Text style={[styles.detailValue, { fontSize: 11 }]}>৳ {selectedOrder.due_amount || 0}</Text></View>
                 </View>
 
                 {selectedOrder.deliveryCharge > 0 ? (

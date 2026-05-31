@@ -638,12 +638,11 @@ export default function App() {
         totalAmount: paymentAmount,
         deliveryCharge: deliveryCharge,
         changeMoneyGiven: changeMoneyGiven,
-        // Split payment breakdown
+        // Split payment breakdown (Due removed)
         cashAmount: breakdown.cash || 0,
         bkashAmount: breakdown.bkash || 0,
         nagadAmount: breakdown.nagad || 0,
         rocketAmount: breakdown.rocket || 0,
-        dueAmount: breakdown.due || 0,
         paidAmount: paid,
         method: method,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),

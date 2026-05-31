@@ -46,11 +46,10 @@ export default function DailySubmitScreen({ dailyExpenses, completedOrders = [],
   const bkashSell = completedOrders.reduce((sum, o) => sum + (o.bkash_amount || (o.method === 'বিকাশ' ? o.paidAmount : 0) || 0), 0);
   const nagadSell = completedOrders.reduce((sum, o) => sum + (o.nagad_amount || (o.method === 'নগদ' ? o.paidAmount : 0) || 0), 0);
   const rocketSell = completedOrders.reduce((sum, o) => sum + (o.rocket_amount || (o.method === 'রকেট' ? o.paidAmount : 0) || 0), 0);
-  const dueSell = completedOrders.reduce((sum, o) => sum + (o.due_amount || (o.method === 'বাকি' ? o.paidAmount : 0) || 0), 0);
   
   const deliverySell = completedOrders.filter(o => o.tableId && (o.tableId.toString().includes('D-') || o.tableId.toString().includes('Delivery'))).reduce((sum, o) => sum + (o.paidAmount || 0), 0);
   const deliveryChargeTotal = completedOrders.reduce((sum, o) => sum + (o.deliveryCharge || 0), 0);
-  const totalSell = cashSell + bkashSell + nagadSell + rocketSell + dueSell;
+  const totalSell = cashSell + bkashSell + nagadSell + rocketSell;
   
   // Net Cash = মোট বিক্রয় - মোট খরচ
   const netCash = totalSell - totalExpenses;
@@ -190,6 +189,10 @@ export default function DailySubmitScreen({ dailyExpenses, completedOrders = [],
           <View style={styles.rowBorder}>
             <Text style={styles.rowSubLabel}>🟠 Nagad Payment</Text>
             <Text style={styles.rowSubValue}>৳ {nagadSell.toLocaleString()}</Text>
+          </View>
+          <View style={styles.rowBorder}>
+            <Text style={styles.rowSubLabel}>🟣 Rocket Payment</Text>
+            <Text style={styles.rowSubValue}>৳ {rocketSell.toLocaleString()}</Text>
           </View>
           <View style={styles.rowBorder}>
             <Text style={styles.rowSubLabel}>🛵 Delivery Sell</Text>

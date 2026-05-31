@@ -275,6 +275,7 @@ const TABLE_SCHEMAS = {
       cash_payment REAL,
       bkash_payment REAL,
       nagad_payment REAL,
+      rocket_payment REAL DEFAULT 0,
       eja REAL,
       dudu_store REAL,
       akash_murgi REAL,
@@ -318,7 +319,7 @@ const TABLE_SCHEMAS = {
       cashTotal REAL,
       bkashTotal REAL,
       nagadTotal REAL,
-      dueCollection REAL,
+      rocketTotal REAL DEFAULT 0,
       ejaAmount REAL,
       netCash REAL,
       ownerDeposit REAL,
@@ -569,6 +570,7 @@ export function migrateSplitPayments() {
   try {
     const ordersCols = db.getAllSync("PRAGMA table_info(orders)");
     const paymentsCols = db.getAllSync("PRAGMA table_info(payments)");
+    const submitCols = db.getAllSync("PRAGMA table_info(daily_submit)");
     
     const fields = ['cash_amount', 'bkash_amount', 'nagad_amount', 'rocket_amount', 'due_amount'];
     
@@ -581,6 +583,17 @@ export function migrateSplitPayments() {
         console.log(`[DB Migration] Adding ${f} to payments table...`);
         db.execSync(`ALTER TABLE payments ADD COLUMN ${f} REAL DEFAULT 0`);
       }
+    }
+
+    if (!submitCols.some(c => c.name === 'rocket_payment')) {
+       console.log("[DB Migration] Adding rocket_payment to daily_submit table...");
+       db.execSync("ALTER TABLE daily_submit ADD COLUMN rocket_payment REAL DEFAULT 0");
+    }
+
+    const summaryCols = db.getAllSync("PRAGMA table_info(daily_summary)");
+    if (!summaryCols.some(c => c.name === 'rocketTotal')) {
+       console.log("[DB Migration] Adding rocketTotal to daily_summary table...");
+       db.execSync("ALTER TABLE daily_summary ADD COLUMN rocketTotal REAL DEFAULT 0");
     }
   } catch (err) {
     console.error("[DB Migration] Split payment migration failed:", err);
@@ -1648,7 +1661,6 @@ export function calculateAndSaveDailySummary(dateStr) {
     let bkashTotal = 0;
     let nagadTotal = 0;
     let rocketTotal = 0;
-    let dueCollection = 0;
 
     paymentsToday.forEach(p => {
       // Logic for new Split Payment system
@@ -1656,10 +1668,9 @@ export function calculateAndSaveDailySummary(dateStr) {
       bkashTotal += (p.bkash_amount || 0);
       nagadTotal += (p.nagad_amount || 0);
       rocketTotal += (p.rocket_amount || 0);
-      dueCollection += (p.due_amount || 0);
 
       // Legacy fallback for records created before split payments
-      if (!p.cash_amount && !p.bkash_amount && !p.nagad_amount && !p.rocket_amount && !p.due_amount) {
+      if (!p.cash_amount && !p.bkash_amount && !p.nagad_amount && !p.rocket_amount) {
         const amt = p.customer_paid || 0;
         const method = String(p.payment_method).toLowerCase();
         if (method.includes('cash') || method.includes('ক্যাশ')) {
@@ -1670,8 +1681,6 @@ export function calculateAndSaveDailySummary(dateStr) {
           nagadTotal += amt;
         } else if (method.includes('rocket') || method.includes('রকেট')) {
           rocketTotal += amt;
-        } else if (method.includes('later') || method.includes('বাকি')) {
-          dueCollection += amt;
         }
       }
     });
@@ -1713,7 +1722,7 @@ export function calculateAndSaveDailySummary(dateStr) {
           temperature = ?, humidity = ?, condition = ?, isRainy = ?, windSpeed = ?,
           totalOrders = ?, totalSales = ?, totalDiscount = ?, totalExpense = ?, totalDelivery = ?,
           total_delivery_charge = ?, averageOrderValue = ?, peakHour = ?, firstOrderTime = ?, lastOrderTime = ?,
-          cashTotal = ?, bkashTotal = ?, nagadTotal = ?, rocketTotal = ?, dueCollection = ?, ejaAmount = ?,
+          cashTotal = ?, bkashTotal = ?, nagadTotal = ?, rocketTotal = ?, ejaAmount = ?,
           netCash = ?, ownerDeposit = ?, itemSummary = ?, updated_at = ?, is_synced = 0
         WHERE date = ?
       `, [
@@ -1721,7 +1730,7 @@ export function calculateAndSaveDailySummary(dateStr) {
         weather.temperature, weather.humidity, weather.condition, weather.isRainy, weather.windSpeed,
         totalOrders, totalSales, totalDiscount, totalExpense, totalDelivery,
         totalDeliveryCharge, averageOrderValue, peakHour, firstOrderTime, lastOrderTime,
-        cashTotal, bkashTotal, nagadTotal, rocketTotal, dueCollection, ejaAmount,
+        cashTotal, bkashTotal, nagadTotal, rocketTotal, ejaAmount,
         netCash, ownerDeposit, itemSummary, now, todayStr
       ]);
       enqueueSync("daily_summary", todayStr, "UPDATE");
@@ -1731,13 +1740,13 @@ export function calculateAndSaveDailySummary(dateStr) {
           id, date, dayOfWeek, weekOfMonth, isFriday, isHoliday, specialDayNote,
           temperature, humidity, condition, isRainy, windSpeed, totalOrders, totalSales,
           totalDiscount, totalExpense, totalDelivery, total_delivery_charge, averageOrderValue, peakHour,
-          firstOrderTime, lastOrderTime, cashTotal, bkashTotal, nagadTotal, rocketTotal, dueCollection,
+          firstOrderTime, lastOrderTime, cashTotal, bkashTotal, nagadTotal, rocketTotal,
           ejaAmount, netCash, ownerDeposit, itemSummary, created_at, updated_at, is_synced
         ) VALUES (
           ?, ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?,
           ?, ?, ?, ?, ?, ?, 0
         )
       `, [
@@ -1745,7 +1754,7 @@ export function calculateAndSaveDailySummary(dateStr) {
         weather.temperature, weather.humidity, weather.condition, weather.isRainy, weather.windSpeed,
         totalOrders, totalSales, totalDiscount, totalExpense, totalDelivery, totalDeliveryCharge,
         averageOrderValue, peakHour, firstOrderTime, lastOrderTime, 
-        cashTotal, bkashTotal, nagadTotal, rocketTotal, dueCollection,
+        cashTotal, bkashTotal, nagadTotal, rocketTotal,
         ejaAmount, netCash, ownerDeposit, itemSummary, now, now
       ]);
       enqueueSync("daily_summary", todayStr, "INSERT");
@@ -1798,7 +1807,7 @@ export async function triggerGoogleSheetExportCheck() {
       CashTotal: summary.cashTotal,
       BkashTotal: summary.bkashTotal,
       NagadTotal: summary.nagadTotal,
-      DueCollection: summary.dueCollection,
+      RocketTotal: summary.rocketTotal || 0,
       EjaAmount: summary.ejaAmount,
       NetCash: summary.netCash,
       OwnerDeposit: summary.ownerDeposit
@@ -2213,6 +2222,10 @@ export function getCompletedOrders() {
       totalAmount: (r.subtotal !== null && r.subtotal !== undefined) ? r.subtotal : r.grand_total,
       deliveryCharge: r.delivery_charge || 0,
       changeMoneyGiven: r.change_money_given || 0,
+      cash_amount: r.cash_amount || 0,
+      bkash_amount: r.bkash_amount || 0,
+      nagad_amount: r.nagad_amount || 0,
+      rocket_amount: r.rocket_amount || 0,
       grandTotal: r.grand_total,
       paidAmount: r.grand_total,
       method: r.payment_method,
@@ -2239,14 +2252,13 @@ export function addCompletedOrder(orderRecord) {
     const bkashAmt = orderRecord.bkashAmount || 0;
     const nagadAmt = orderRecord.nagadAmount || 0;
     const rocketAmt = orderRecord.rocketAmount || 0;
-    const dueAmt = orderRecord.dueAmount || 0;
 
     // Check if order already exists in SQLite to prevent duplicate creation
     const existingOrder = db.getFirstSync("SELECT id FROM orders WHERE id = ?", [idStr]);
     if (existingOrder) {
       db.runSync(`
         UPDATE orders SET table_id = ?, items = ?, subtotal = ?, discount = ?, delivery_charge = ?, change_money_given = ?, 
-        cash_amount = ?, bkash_amount = ?, nagad_amount = ?, rocket_amount = ?, due_amount = ?,
+        cash_amount = ?, bkash_amount = ?, nagad_amount = ?, rocket_amount = ?,
         grand_total = ?, payment_status = 'Paid', payment_method = ?, time = ?, updated_at = ?, is_synced = 0
         WHERE id = ?
       `, [
@@ -2260,7 +2272,6 @@ export function addCompletedOrder(orderRecord) {
         bkashAmt,
         nagadAmt,
         rocketAmt,
-        dueAmt,
         orderRecord.paidAmount,
         orderRecord.method,
         orderRecord.time,
@@ -2272,10 +2283,10 @@ export function addCompletedOrder(orderRecord) {
       db.runSync(`
         INSERT OR REPLACE INTO orders (
           id, table_id, items, subtotal, discount, delivery_charge, change_money_given,
-          cash_amount, bkash_amount, nagad_amount, rocket_amount, due_amount,
+          cash_amount, bkash_amount, nagad_amount, rocket_amount,
           grand_total, payment_status, payment_method, time, created_at, updated_at, locked_at, is_synced
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Paid', ?, ?, ?, ?, ?, 0)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Paid', ?, ?, ?, ?, ?, 0)
       `, [
         idStr,
         orderRecord.tableId,
@@ -2288,7 +2299,6 @@ export function addCompletedOrder(orderRecord) {
         bkashAmt,
         nagadAmt,
         rocketAmt,
-        dueAmt,
         orderRecord.paidAmount,
         orderRecord.method,
         orderRecord.time,
@@ -2304,19 +2314,19 @@ export function addCompletedOrder(orderRecord) {
     if (existingPay) {
       db.runSync(`
         UPDATE payments SET total_amount = ?, customer_paid = ?, discount_amount = 0.0, delivery_charge = ?, change_money_given = ?, 
-        cash_amount = ?, bkash_amount = ?, nagad_amount = ?, rocket_amount = ?, due_amount = ?,
+        cash_amount = ?, bkash_amount = ?, nagad_amount = ?, rocket_amount = ?,
         payment_method = ?, payment_status = 'Paid', paid_at = ?, updated_at = ?, is_synced = 0
         WHERE id = ?
-      `, [orderRecord.paidAmount, orderRecord.paidAmount, deliveryCharge, changeMoneyGiven, cashAmt, bkashAmt, nagadAmt, rocketAmt, dueAmt, orderRecord.method, nowIso, nowIso, payId]);
+      `, [orderRecord.paidAmount, orderRecord.paidAmount, deliveryCharge, changeMoneyGiven, cashAmt, bkashAmt, nagadAmt, rocketAmt, orderRecord.method, nowIso, nowIso, payId]);
       enqueueSync("payments", payId, "UPDATE");
     } else {
       db.runSync(`
         INSERT OR REPLACE INTO payments (
           id, order_id, total_amount, customer_paid, discount_amount, delivery_charge, 
-          change_money_given, cash_amount, bkash_amount, nagad_amount, rocket_amount, due_amount,
+          change_money_given, cash_amount, bkash_amount, nagad_amount, rocket_amount,
           payment_method, payment_status, paid_at, created_at, updated_at, is_synced
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Paid', ?, ?, ?, 0)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Paid', ?, ?, ?, 0)
       `, [
         payId,
         idStr,
@@ -2329,7 +2339,6 @@ export function addCompletedOrder(orderRecord) {
         bkashAmt,
         nagadAmt,
         rocketAmt,
-        dueAmt,
         orderRecord.method,
         nowIso,
         nowIso,
@@ -2499,6 +2508,7 @@ export function getSubmissionHistory() {
       breakdown: {
         bkash: r.bkash_payment,
         nagad: r.nagad_payment,
+        rocket: r.rocket_payment || 0,
         cash: r.cash_payment,
         dudu: r.dudu_store,
         akash: r.akash_murgi,
@@ -2549,18 +2559,18 @@ export function savePastAccount(record) {
         id, date, dayOfWeek, weekOfMonth, isFriday, isHoliday, specialDayNote,
         temperature, humidity, condition, isRainy, windSpeed, totalOrders, totalSales,
         totalDiscount, totalExpense, totalDelivery, averageOrderValue, peakHour,
-        firstOrderTime, lastOrderTime, cashTotal, bkashTotal, nagadTotal, dueCollection,
+        firstOrderTime, lastOrderTime, cashTotal, bkashTotal, nagadTotal, rocketTotal,
         ejaAmount, netCash, ownerDeposit, itemSummary, created_at, updated_at, is_synced
       ) VALUES (
         ?, ?, 'Yesterday', 1, 0, 0, 'Past Manual Entry',
         30.0, 70.0, 'Clear', 0, 8.0, 10, ?,
         0.0, ?, 0.0, 0.0, '12:00 PM',
-        '10:00 AM', '09:00 PM', ?, ?, ?, 0.0,
+        '10:00 AM', '09:00 PM', ?, ?, ?, ?,
         0.0, ?, ?, '[]', ?, ?, 0
       )
     `, [
       dateStr, dateStr, record.sell, record.expense,
-      record.breakdown?.cash || 0, record.breakdown?.bkash || 0, record.breakdown?.nagad || 0,
+      record.breakdown?.cash || 0, record.breakdown?.bkash || 0, record.breakdown?.nagad || 0, record.breakdown?.rocket || 0,
       record.deposit, record.deposit, now, now
     ]);
     enqueueSync("daily_summary", dateStr, "INSERT");
@@ -2590,10 +2600,10 @@ export function submitDailySheet(summary, submittedBy) {
     
     db.runSync(`
       INSERT OR REPLACE INTO daily_submit (
-        id, date, total_sell, cash_payment, bkash_payment, nagad_payment, eja,
+        id, date, total_sell, cash_payment, bkash_payment, nagad_payment, rocket_payment, eja,
         dudu_store, akash_murgi, burger_bun, bazar, others, total_expense, net_deposit,
         submitted_by, submitted_at, is_locked, created_at, updated_at, is_synced
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 0)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 0)
     `, [
       todayStr,
       todayStr,
@@ -2601,6 +2611,7 @@ export function submitDailySheet(summary, submittedBy) {
       summary.breakdown?.cash || 0,
       summary.breakdown?.bkash || 0,
       summary.breakdown?.nagad || 0,
+      summary.breakdown?.rocket || 0,
       summary.breakdown?.ijara || 0,
       summary.breakdown?.dudu || 0,
       summary.breakdown?.akash || 0,

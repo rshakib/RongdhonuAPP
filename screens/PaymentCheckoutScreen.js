@@ -34,8 +34,7 @@ export default function PaymentCheckoutScreen({
     cash: 0,
     bkash: 0,
     nagad: 0,
-    rocket: 0,
-    due: 0
+    rocket: 0
   });
 
   const handleFullAmount = () => {
@@ -57,13 +56,7 @@ export default function PaymentCheckoutScreen({
 
     const parsedAmount = parseFloat(amountInput);
     
-    // Allow 0 specifically for 'Baki', but require > 0 for all other methods
-    if (selectedMethod !== 'বাকি' && (isNaN(parsedAmount) || parsedAmount <= 0)) {
-      Alert.alert("ত্রুটি", "সঠিক মূল্য টাইপ করুন!");
-      return;
-    }
-
-    if (selectedMethod === 'বাকি' && isNaN(parsedAmount)) {
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
       Alert.alert("ত্রুটি", "সঠিক মূল্য টাইপ করুন!");
       return;
     }
@@ -74,7 +67,6 @@ export default function PaymentCheckoutScreen({
       bkash: selectedMethod === 'বিকাশ' ? parsedAmount : 0,
       nagad: selectedMethod === 'নগদ' ? parsedAmount : 0,
       rocket: selectedMethod === 'রকেট' ? parsedAmount : 0,
-      due: selectedMethod === 'বাকি' ? parsedAmount : 0,
     };
 
     // Pass paid amount, method, and breakdown to completion handler
@@ -89,9 +81,7 @@ export default function PaymentCheckoutScreen({
     }
     setIsSplitMode(false);
     setSelectedMethod(methodId);
-    if (methodId === 'বাকি') {
-      setAmountInput('0'); // Default to 0 when Baki is selected
-    } else if (amountInput === '0') {
+    if (amountInput === '0') {
       setAmountInput(grandTotal.toString()); // Revert to full total if switching back
     }
   };
@@ -104,15 +94,14 @@ export default function PaymentCheckoutScreen({
     Alert.alert("প্রিন্ট করুন", "রসিদ প্রিন্টারে পাঠানো হয়েছে...");
   };
 
-  // Payment methods configuration matching mockup
+  // Payment methods configuration (Due removed)
   const paymentMethods = [
     { id: 'ক্যাশ', name: 'ক্যাশ', icon: '💵' },
     { id: 'বিকাশ', name: 'বিকাশ', icon: '🐦' },
     { id: 'রকেট', name: 'রকেট', icon: '🚀' },
     { id: 'নগদ', name: 'নগদ', icon: '💰' },
-    { id: 'বাকি', name: 'বাকি', icon: '😡' },
     { id: 'Split', name: 'Split', icon: '🔀' }
-  ].filter(method => !(userRole === 'owner' && method.id === 'বাকি'));
+  ];
 
   return (
     <SafeAreaView style={styles.container}>
@@ -172,8 +161,7 @@ export default function PaymentCheckoutScreen({
                 { id: 'cash', label: '💵 ক্যাশ (Cash)', color: '#FFFFFF' },
                 { id: 'bkash', label: '🐦 বিকাশ (bKash)', color: '#E2136E' },
                 { id: 'nagad', label: '💰 নগদ (Nagad)', color: '#F7941D' },
-                { id: 'rocket', label: '🚀 রকেট (Rocket)', color: '#8C3494' },
-                { id: 'due', label: '😡 বাকি (Due)', color: '#EF4444' }
+                { id: 'rocket', label: '🚀 রকেট (Rocket)', color: '#8C3494' }
               ].map((item) => (
                 <View key={item.id} style={styles.splitRowEnhanced}>
                   <Text style={[styles.splitLabelEnhanced, { color: item.color }]}>{item.label}</Text>
