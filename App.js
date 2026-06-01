@@ -4,6 +4,39 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 const { height } = Dimensions.get('window');
+const AUTO_PULL_HANG_MS = 25000;
+
+const runAutoPull = async (name, syncFn, refreshData) => {
+  const startedAtMs = Date.now();
+  const timestamp = new Date(startedAtMs).toISOString();
+  if (AppState.currentState !== 'active') {
+    recordAutoSyncEvent(name, 'skipped', `timestamp=${timestamp} appState=${AppState.currentState}`);
+    return false;
+  }
+
+  let watchdog = null;
+  try {
+    console.log(`[Auto Pull Tick] timestamp=${timestamp} timer=${name} result=started appState=${AppState.currentState}`);
+    recordAutoSyncEvent(name, 'started', `timestamp=${timestamp} appState=${AppState.currentState}`);
+    watchdog = setTimeout(() => {
+      recordAutoSyncEvent(name, 'hang', `no-return-after-ms=${AUTO_PULL_HANG_MS}`);
+      console.log(`[Auto Pull Tick] timestamp=${new Date().toISOString()} timer=${name} result=hang no-return-after-ms=${AUTO_PULL_HANG_MS}`);
+    }, AUTO_PULL_HANG_MS);
+    const didChange = await syncFn();
+    const durationMs = Date.now() - startedAtMs;
+    recordAutoSyncEvent(name, 'success', `durationMs=${durationMs} didChange=${didChange}`);
+    console.log(`[Auto Pull Tick] timestamp=${new Date().toISOString()} timer=${name} result=success durationMs=${durationMs} didChange=${didChange}`);
+    if (didChange) refreshData();
+    return didChange;
+  } catch (err) {
+    const durationMs = Date.now() - startedAtMs;
+    recordAutoSyncEvent(name, 'failure', `durationMs=${durationMs} error=${err.message}`);
+    console.log(`[Auto Pull Tick] timestamp=${new Date().toISOString()} timer=${name} result=failure durationMs=${durationMs} error=${err.message}`);
+    return false;
+  } finally {
+    if (watchdog) clearTimeout(watchdog);
+  }
+};
 
 // Import SQLite and cloud synchronization layer
 import {
@@ -28,6 +61,7 @@ import {
   updateDailyExpenses,
   getSubmissionHistory,
   savePastAccount,
+  deleteSubmission,
   getBusinessDate,
   isTodaySubmitted,
   submitDailySheet,
@@ -47,7 +81,11 @@ import {
   syncHighFrequencyCollections,
   syncLowFrequencyCollections,
   startSyncService,
-  performAutoSubmitChecks
+  performAutoSubmitChecks,
+  registerSyncTimer,
+  markSyncTimerInactive,
+  recordAutoSyncEvent,
+  getSyncRuntimeDiagnostics
 } from './database';
 
 // Import all 9 high-fidelity screens
@@ -214,6 +252,13 @@ export default function App() {
 
   // Database initialization and state loading on mount
   useEffect(() => {
+    recordAutoSyncEvent('app-startup', 'started', `appState=${AppState.currentState}`);
+    const previousHandler = global.ErrorUtils?.getGlobalHandler?.();
+    global.ErrorUtils?.setGlobalHandler?.((error, isFatal) => {
+      recordAutoSyncEvent('global-js-error', 'uncaught', `fatal=${!!isFatal} message=${error?.message || String(error)}`);
+      if (previousHandler) previousHandler(error, isFatal);
+    });
+
     const checkAndInitialize = async () => {
       try {
         // 1. Just create schemas (no seeding yet)
@@ -264,71 +309,110 @@ export default function App() {
     checkAndInitialize();
   }, []);
 
+  // Runtime event-loop lag monitor. Large lag means synchronous work may be blocking timer ticks.
+  useEffect(() => {
+    let expectedAt = Date.now() + 5000;
+    registerSyncTimer('event-loop-lag-monitor', 5000, 'setInterval drift check');
+    const lagTimer = setInterval(() => {
+      const now = Date.now();
+      const lagMs = now - expectedAt;
+      if (lagMs > 2000) {
+        recordAutoSyncEvent('event-loop-lag-monitor', 'event-loop-lag', `lagMs=${lagMs}`);
+        console.log(`[Sync Runtime] event-loop-lag-monitor lagMs=${lagMs} at ${new Date(now).toISOString()}`);
+      }
+      expectedAt = now + 5000;
+    }, 5000);
+
+    return () => {
+      clearInterval(lagTimer);
+      markSyncTimerInactive('event-loop-lag-monitor');
+    };
+  }, []);
+
   // --- REALTIME SYNC ENGINE ---
   // Periodically check for remote changes (Simulating Firestore Listeners via REST)
   useEffect(() => {
     if (!isLoggedIn) return;
 
+    registerSyncTimer('auto-high-frequency-pull', 30000, 'syncHighFrequencyCollections');
     const realtimePoll = setInterval(async () => {
-       // Only sync if the app is active (in the foreground)
-       if (AppState.currentState !== 'active') return;
-
-       try {
-         // Pull only high-frequency collections since lastSyncTime (delta pulls)
-         const didChange = await syncHighFrequencyCollections();
-         if (didChange) {
-           refreshData();
-         }
-       } catch (err) {
-         console.log("[Sync] Offline or network error during poll, skipped cycle:", err.message);
-       }
+       await runAutoPull('auto-high-frequency-pull', syncHighFrequencyCollections, refreshData);
     }, 30000); // Check every 30 seconds
 
-    return () => clearInterval(realtimePoll);
+    return () => {
+      clearInterval(realtimePoll);
+      markSyncTimerInactive('auto-high-frequency-pull');
+    };
   }, [isLoggedIn]);
 
   // --- HYBRID SYNC: FAST DELETIONS CHANNEL (10s) ---
   useEffect(() => {
     if (!isLoggedIn) return;
 
+    registerSyncTimer('auto-deletions-pull', 10000, 'syncDeletionsOnly');
     const deletionsChannel = setInterval(async () => {
-       if (AppState.currentState !== 'active') return;
-
-       try {
-         // Pull ONLY the deletions collection every 10 seconds for instant propagation
-         const didChange = await syncDeletionsOnly();
-         if (didChange) {
-           console.log("[Hybrid Sync] Deletions detected. Refreshing UI...");
-           refreshData();
-         }
-       } catch (err) {
-         // Silently fail to minimize UI disruption on network issues
-       }
+       await runAutoPull('auto-deletions-pull', syncDeletionsOnly, refreshData);
     }, 10000); // Check every 10 seconds
 
-    return () => clearInterval(deletionsChannel);
+    return () => {
+      clearInterval(deletionsChannel);
+      markSyncTimerInactive('auto-deletions-pull');
+    };
   }, [isLoggedIn]);
 
   // --- HYBRID SYNC: FAST TABLES CHANNEL (15s) ---
   useEffect(() => {
     if (!isLoggedIn) return;
 
+    registerSyncTimer('auto-tables-pull', 15000, 'syncTablesOnly');
     const tablesChannel = setInterval(async () => {
-       if (AppState.currentState !== 'active') return;
-
-       try {
-         // Pull ONLY the restaurant_tables collection every 15 seconds
-         const didChange = await syncTablesOnly();
-         if (didChange) {
-           console.log("[Hybrid Sync] Table status changes detected. Refreshing UI...");
-           refreshData();
-         }
-       } catch (err) {
-         // Silently fail to minimize UI disruption on network issues
-       }
+       await runAutoPull('auto-tables-pull', syncTablesOnly, refreshData);
     }, 15000); // Check every 15 seconds
 
-    return () => clearInterval(tablesChannel);
+    return () => {
+      clearInterval(tablesChannel);
+      markSyncTimerInactive('auto-tables-pull');
+    };
+  }, [isLoggedIn]);
+
+  // --- LOW FREQUENCY AUTO PULL ---
+  // Keeps owner/admin data such as expenses and eja_history alive without requiring Manual Pull.
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    registerSyncTimer('auto-low-frequency-pull', 120000, 'syncLowFrequencyCollections');
+    const lowFrequencyPoll = setInterval(async () => {
+      await runAutoPull('auto-low-frequency-pull', syncLowFrequencyCollections, refreshData);
+    }, 120000);
+
+    return () => {
+      clearInterval(lowFrequencyPoll);
+      markSyncTimerInactive('auto-low-frequency-pull');
+    };
+  }, [isLoggedIn]);
+
+  // --- FOREGROUND RECOVERY ---
+  // React Native may suspend JS timers in background; run one pull immediately when app returns active.
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    registerSyncTimer('foreground-recovery-pull', 0, 'syncHighFrequencyCollections + syncLowFrequencyCollections + syncTablesOnly');
+    let previousState = AppState.currentState;
+    const subscription = AppState.addEventListener('change', async (nextState) => {
+      console.log(`[AppState Sync] ${previousState} -> ${nextState} at ${new Date().toISOString()}`);
+      recordAutoSyncEvent('app-state', 'appstate', nextState);
+      if (previousState !== 'active' && nextState === 'active') {
+        await runAutoPull('foreground-tables-pull', syncTablesOnly, refreshData);
+        await runAutoPull('foreground-high-frequency-pull', syncHighFrequencyCollections, refreshData);
+        await runAutoPull('foreground-low-frequency-pull', syncLowFrequencyCollections, refreshData);
+      }
+      previousState = nextState;
+    });
+
+    return () => {
+      subscription.remove();
+      markSyncTimerInactive('foreground-recovery-pull');
+    };
   }, [isLoggedIn]);
 
   // Pull low-frequency collections when the menu management screens are opened
@@ -457,11 +541,38 @@ export default function App() {
     }
   };
 
-  const handleLoginSuccess = (role, displayName) => {
+  const handleLoginSuccess = async (role, displayName) => {
     setUserRole(role);
     setUserDisplayName(displayName);
     setIsLoggedIn(true);
     setCurrentScreen('DASHBOARD');
+
+    // --- STARTUP DELTA SYNC ---
+    // Automatically fetch changes since last_sync_time for all collections immediately after login
+    try {
+      console.log("[Startup Sync] PIN Login successful. Initiating delta sync...");
+      
+      // 1. Initial local refresh to show what we have
+      refreshData();
+
+      // 2. High Frequency (Orders, Payments, Deliveries)
+      await syncHighFrequencyCollections();
+      
+      // 3. Tables State
+      await syncTablesOnly();
+      
+      // 4. Low Frequency (Expenses, Ijara, Users, Daily Submit)
+      await syncLowFrequencyCollections();
+
+      // 5. Deletions
+      await syncDeletionsOnly();
+
+      // 6. Final refresh to update UI with newly downloaded data
+      refreshData();
+      console.log("[Startup Sync] Initial delta sync completed successfully.");
+    } catch (err) {
+      console.log("[Startup Sync] Delta sync failed (possibly offline):", err.message);
+    }
   };
 
   const handleLogout = () => {
@@ -565,11 +676,19 @@ export default function App() {
   const handleSavePastAccount = async (record) => {
     savePastAccount(record);
     refreshData();
-    
+
     const success = await syncRecordImmediately('daily_submit', record.date);
     showToast(success ? "✅ ডাটা সেভ হয়েছে" : "📱 অফলাইনে সেভ হয়েছে", success ? 'online' : 'offline');
   };
 
+  // Deletes a manual past entry or submission from SQLite and Cloud
+  const handleDeletePastAccount = async (dateStr) => {
+    deleteSubmission(dateStr);
+    refreshData();
+
+    const success = await syncRecordImmediately('deletions', `daily_submit_${dateStr}`);
+    showToast(success ? "🗑️ ডাটা ডিলিট হয়েছে" : "📱 অফলাইনে ডিলিট হয়েছে", success ? 'online' : 'offline');
+  };
   // Owner Price editing trigger
   const handleUpdateMenuPrice = async (itemName, newPrice, category = null) => {
     updateMenuPrice(itemName, newPrice, category);
@@ -887,6 +1006,7 @@ export default function App() {
             showToast("🔄 ডাটা পুল করা হচ্ছে...", "sync");
             const result = await executeManualPull();
             if (result.success) {
+              console.log("[Manual Pull] Runtime diagnostics after pull:", JSON.stringify(getSyncRuntimeDiagnostics()));
               incrementPullCount();
               refreshData();
               Alert.alert("সফল", result.didChange ? "Cloud থেকে নতুন ডাটা লোকাল ডাটাবেজে সফলভাবে ডাউনলোড এবং আপডেট করা হয়েছে।" : "লোকাল ডাটাবেজ ইতিমধ্যে সম্পূর্ণ আপ-টু-ডেট আছে।");
@@ -929,6 +1049,8 @@ export default function App() {
               onNavigateToEditMenu={() => setCurrentScreen('EDIT_MENU')}
               submissionHistory={submissionHistory}
               onSavePastAccount={handleSavePastAccount}
+              onDeletePastAccount={handleDeletePastAccount}
+
               dailyExpenses={dailyExpenses}
               onUpdateExpenses={handleUpdateExpenses}
               isDailySubmitted={isDailySubmitted}
@@ -958,6 +1080,8 @@ export default function App() {
               onNavigateToEditMenu={() => setCurrentScreen('EDIT_MENU')}
               submissionHistory={submissionHistory}
               onSavePastAccount={handleSavePastAccount}
+              onDeletePastAccount={handleDeletePastAccount}
+
               dailyExpenses={dailyExpenses}
               onUpdateExpenses={handleUpdateExpenses}
               isDailySubmitted={isDailySubmitted}
@@ -981,6 +1105,7 @@ export default function App() {
               onNavigateToSubmit={() => setCurrentScreen('DAILY_SUBMIT')}
               submissionHistory={submissionHistory}
               onSavePastAccount={handleSavePastAccount}
+              onDeletePastAccount={handleDeletePastAccount}
               onUpdateTableName={handleUpdateTableName}
               onNavigateToExpenses={() => setCurrentScreen('EXPENSES')}
               dailyExpenses={dailyExpenses}
@@ -1241,4 +1366,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-

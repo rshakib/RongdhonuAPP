@@ -25,6 +25,13 @@ const getBengaliDate = () => {
   return `${formattedDate}, ${dayName}`;
 };
 
+const getBengaliMonthRange = () => {
+  const months = ['জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন', 'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'];
+  const d = new Date(Date.now() - 3600000); // Business Day offset
+  const monthName = months[d.getMonth()];
+  return `(১ ${monthName} - বর্তমান)`;
+};
+
 // --- CUSTOM CALENDAR PICKER COMPONENT ---
 const CalendarPicker = ({ visible, onClose, onSelectDate, initialDate }) => {
   const [viewDate, setViewDate] = useState(new Date());
@@ -86,7 +93,7 @@ const CalendarPicker = ({ visible, onClose, onSelectDate, initialDate }) => {
   );
 };
 
-export default function ManagerDashboard({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onNavigateToSubmit, onUpdateTableName, onNavigateToExpenses, onSavePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, remainingPushes = 2, remainingPulls = 2, onManualPush, onManualPull }) {
+export default function ManagerDashboard({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onNavigateToSubmit, onUpdateTableName, onNavigateToExpenses, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, remainingPushes = 2, remainingPulls = 2, onManualPush, onManualPull }) {
   const [renameModalVisible, setRenameModalVisible] = useState(false);
   const [selectedTableForRename, setSelectedTableForRename] = useState(null);
   const [newTableName, setNewTableName] = useState('');
@@ -110,6 +117,10 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
   const [pastBurger, setPastBurger] = useState('');
   const [pastBazar, setPastBazar] = useState('');
   const [pastOthers, setPastOthers] = useState('');
+  const [pastDeliverySell, setPastDeliverySell] = useState('');
+  const [pastDeliveryCharge, setPastDeliveryCharge] = useState('');
+  const [pastIjara, setPastIjara] = useState('');
+  const [pastNetCash, setPastNetCash] = useState('');
   const [pastDeposit, setPastDeposit] = useState('');
   const [pastNote, setPastNote] = useState('');
 
@@ -153,34 +164,17 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
     Alert.alert("সফল", "ইজা সফলভাবে যোগ করা হয়েছে!");
   };
 
-  const handleEditPastAccount = (item) => {
-    setIsEditingPast(true);
-    setPastDate(item.date);
-    setPastTotalSell(item.sell.toString());
-    setPastBkash(item.breakdown?.bkash?.toString() || '');
-    setPastNagad(item.breakdown?.nagad?.toString() || '');
-    setPastCash(item.breakdown?.cash?.toString() || '');
-    setPastDudu(item.breakdown?.dudu?.toString() || '');
-    setPastAkash(item.breakdown?.akash?.toString() || '');
-    setPastBurger(item.breakdown?.burger?.toString() || '');
-    setPastBazar(item.breakdown?.bazar?.toString() || '');
-    setPastOthers(item.breakdown?.others?.toString() || '');
-    setPastDeposit(item.deposit?.toString() || '');
-    setPastNote(item.notes || '');
-    setPastAccountModalVisible(true);
-  };
-
-  const handleOpenPastAccount = () => {
-    setMenuModalVisible(false);
-    setIsEditingPast(false);
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const dateStr = formatDisplayDate(yesterday);
-    setPastDate(dateStr);
+  const resetPastStates = () => {
+    setPastDate('');
     setPastTotalSell('');
     setPastBkash('');
     setPastNagad('');
     setPastCash('');
+    setPastRocket('');
+    setPastDeliverySell('');
+    setPastDeliveryCharge('');
+    setPastIjara('');
+    setPastNetCash('');
     setPastDudu('');
     setPastAkash('');
     setPastBurger('');
@@ -188,6 +182,39 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
     setPastOthers('');
     setPastDeposit('');
     setPastNote('');
+  };
+
+  const handleEditPastAccount = (item) => {
+    setIsEditingPast(true);
+    setPastDate(item.date);
+    setPastTotalSell(item.sell.toString());
+    setPastBkash(item.breakdown?.bkash?.toString() || item.bkash_payment?.toString() || '');
+    setPastNagad(item.breakdown?.nagad?.toString() || item.nagad_payment?.toString() || '');
+    setPastCash(item.breakdown?.cash?.toString() || item.cash_payment?.toString() || '');
+    setPastRocket(item.breakdown?.rocket?.toString() || item.rocket_payment?.toString() || '');
+    setPastDeliverySell(item.breakdown?.delivery_sell?.toString() || item.delivery_sell?.toString() || '');
+    setPastDeliveryCharge(item.breakdown?.delivery_charge?.toString() || item.delivery_charge?.toString() || '');
+    setPastIjara(item.breakdown?.ijara?.toString() || item.eja?.toString() || '');
+    setPastDudu(item.breakdown?.dudu?.toString() || item.dudu_store?.toString() || '');
+    setPastAkash(item.breakdown?.akash?.toString() || item.akash_murgi?.toString() || '');
+    setPastBurger(item.breakdown?.burger?.toString() || item.burger_bun?.toString() || '');
+    setPastBazar(item.breakdown?.bazar?.toString() || item.bazar?.toString() || '');
+    setPastOthers(item.breakdown?.others?.toString() || item.others?.toString() || '');
+    setPastNetCash(item.net_cash?.toString() || '');
+    setPastDeposit(item.deposit?.toString() || item.net_deposit?.toString() || '');
+    setPastNote(item.notes || '');
+    setPastAccountModalVisible(true);
+  };
+
+  const handleOpenPastAccount = () => {
+    setMenuModalVisible(false);
+    setIsEditingPast(false);
+    resetPastStates();
+    // Default to yesterday
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const dateStr = formatDisplayDate(yesterday);
+    setPastDate(dateStr);
     setPastAccountModalVisible(true);
   };
 
@@ -210,7 +237,7 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
         return;
       }
     }
-    
+
     const dudu = parseFloat(pastDudu) || 0;
     const akash = parseFloat(pastAkash) || 0;
     const burger = parseFloat(pastBurger) || 0;
@@ -224,19 +251,23 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
       sell: sell,
       expense: totalExpense,
       deposit: parseFloat(pastDeposit) || 0,
+      net_cash: parseFloat(pastNetCash) || 0,
       isManualEntry: true,
       notes: pastNote,
       breakdown: {
+        cash: parseFloat(pastCash) || 0,
         bkash: parseFloat(pastBkash) || 0,
         nagad: parseFloat(pastNagad) || 0,
-        cash: parseFloat(pastCash) || 0,
+        rocket: parseFloat(pastRocket) || 0,
+        delivery_sell: parseFloat(pastDeliverySell) || 0,
+        delivery_charge: parseFloat(pastDeliveryCharge) || 0,
+        ijara: parseFloat(pastIjara) || 0,
         dudu, akash, burger, bazar, others
       }
     };
     onSavePastAccount(record);
     setPastAccountModalVisible(false);
   };
-
   // Real calculations
   const activeTablesCount = tables.filter(t => t.status === 'BUSY').length;
   const activeDeliveriesCount = deliveries.filter(d => d.status === 'BUSY').length;
@@ -344,9 +375,8 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
               <Text style={styles.statsEmoji}>💰</Text>
             </View>
             <Text style={styles.statsCardAmount}>৳ {monthlyTotalSell.toLocaleString()}</Text>
-            <Text style={styles.statsCardSubOrange}>(১ মে - ৩০ মে)</Text>
-          </View>
-
+            <Text style={styles.statsCardSubOrange}>{getBengaliMonthRange()}</Text>
+            </View>
           {/* Card 4: Active Tables */}
           <View style={[styles.statsCard, styles.cardRed]}>
             <View style={styles.statsCardHeader}>
@@ -675,6 +705,11 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
                 <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>Rocket</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastRocket} onChangeText={setPastRocket}/></View>
                 <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>Cash</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastCash} onChangeText={setPastCash}/></View>
               </View>
+
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>🛵 Delivery Sell</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastDeliverySell} onChangeText={setPastDeliverySell}/></View>
+                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>🏷️ Delivery Charge</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastDeliveryCharge} onChangeText={setPastDeliveryCharge}/></View>
+              </View>
               
               <View style={{ marginTop: 10, marginBottom: 5 }}><Text style={{ color: '#FFB703', fontSize: 12, fontWeight: 'bold' }}>খরচসমূহ (Expenses)</Text></View>
               
@@ -689,6 +724,11 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
               </View>
               
               <View style={styles.expenseInputGroup}><Text style={styles.inputLabel}>📦 অন্যান্য খরচ</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastOthers} onChangeText={setPastOthers}/></View>
+
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>🏛️ ইজা (Ijara)</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastIjara} onChangeText={setPastIjara}/></View>
+                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>💵 নেট ক্যাশ (Net Cash)</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastNetCash} onChangeText={setPastNetCash}/></View>
+              </View>
 
               <View style={[styles.expenseInputGroup, { backgroundColor: 'rgba(52, 211, 153, 0.05)', padding: 10, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(52, 211, 153, 0.2)' }]}>
                 <Text style={[styles.inputLabel, { color: '#34D399' }]}>👤 Owner কে জমা (Deposit)</Text>

@@ -276,6 +276,8 @@ const TABLE_SCHEMAS = {
       bkash_payment REAL,
       nagad_payment REAL,
       rocket_payment REAL DEFAULT 0,
+      delivery_sell REAL DEFAULT 0,
+      delivery_charge REAL DEFAULT 0,
       eja REAL,
       dudu_store REAL,
       akash_murgi REAL,
@@ -283,13 +285,16 @@ const TABLE_SCHEMAS = {
       bazar REAL,
       others REAL,
       total_expense REAL,
+      net_cash REAL DEFAULT 0,
       net_deposit REAL,
+      notes TEXT,
       submitted_by TEXT,
       submitted_at TEXT,
       is_locked INTEGER DEFAULT 0,
       created_at TEXT,
       updated_at TEXT,
-      is_synced INTEGER DEFAULT 0
+      is_synced INTEGER DEFAULT 0,
+      submission_type TEXT DEFAULT 'MANUAL'
     );
   `,
   daily_summary: `
@@ -405,7 +410,10 @@ const TABLE_SCHEMAS = {
       table_name TEXT,
       action TEXT, -- INSERT, UPDATE, DELETE
       status TEXT DEFAULT 'PENDING', -- PENDING, SUCCESS, FAILED
-      created_at TEXT
+      created_at TEXT,
+      retry_count INTEGER DEFAULT 0,
+      last_error TEXT,
+      last_attempt_at TEXT
     );
   `,
   notifications: `
@@ -605,6 +613,50 @@ export function migrateSplitPayments() {
   }
 }
 
+export function migrateSyncQueueDiagnostics() {
+  try {
+    const queueColumns = db.getAllSync("PRAGMA table_info(sync_queue)");
+    if (!queueColumns || queueColumns.length === 0) return;
+
+    const hasRetryCount = queueColumns.some(col => col.name === 'retry_count');
+    const hasLastError = queueColumns.some(col => col.name === 'last_error');
+    const hasLastAttemptAt = queueColumns.some(col => col.name === 'last_attempt_at');
+
+    if (!hasRetryCount) {
+      db.execSync("ALTER TABLE sync_queue ADD COLUMN retry_count INTEGER DEFAULT 0");
+    }
+    if (!hasLastError) {
+      db.execSync("ALTER TABLE sync_queue ADD COLUMN last_error TEXT");
+    }
+    if (!hasLastAttemptAt) {
+      db.execSync("ALTER TABLE sync_queue ADD COLUMN last_attempt_at TEXT");
+    }
+  } catch (err) {
+    console.error("[DB Migration] Sync queue diagnostics migration failed:", err);
+  }
+}
+
+export function migrateDailySubmitUnified() {
+  try {
+    const submitCols = db.getAllSync("PRAGMA table_info(daily_submit)");
+    const columnsToAdd = [
+      { name: 'delivery_sell', type: 'REAL DEFAULT 0' },
+      { name: 'delivery_charge', type: 'REAL DEFAULT 0' },
+      { name: 'net_cash', type: 'REAL DEFAULT 0' },
+      { name: 'notes', type: 'TEXT' }
+    ];
+
+    for (const col of columnsToAdd) {
+      if (!submitCols.some(c => c.name === col.name)) {
+        console.log(`[DB Migration] Adding ${col.name} to daily_submit table...`);
+        db.execSync(`ALTER TABLE daily_submit ADD COLUMN ${col.name} ${col.type}`);
+      }
+    }
+  } catch (err) {
+    console.error("[DB Migration] Daily submit unified migration failed:", err);
+  }
+}
+
 // ==========================================
 // 1. AUTO INITIALIZATION ENGINE
 // ==========================================
@@ -616,11 +668,13 @@ export function initDatabase(skipSeeding = false) {
     migrateMenuItemsTable();
     migrateDeliveryCharge();
     migrateSplitPayments();
+    migrateDailySubmitUnified();
 
     // 1. Create tables
     for (const [tableName, sql] of Object.entries(TABLE_SCHEMAS)) {
       db.execSync(sql);
     }
+    migrateSyncQueueDiagnostics();
     console.log("[DB] SQLite Tables Verified/Created successfully.");
 
     // Check if one-off database wipe is required to prepare a completely fresh environment
@@ -883,14 +937,133 @@ function toFirestoreDocument(obj) {
 
 // Global Sync Service Processor (Offline-first Background Worker)
 let syncIntervalId = null;
+const MAX_FAILED_RETRY_DELAY_MS = 10 * 60 * 1000;
+
+function getFailedQueueRetryDelayMs(retryCount = 0) {
+  const safeRetryCount = Math.max(0, Number(retryCount) || 0);
+  return Math.min(MAX_FAILED_RETRY_DELAY_MS, Math.pow(2, safeRetryCount) * 30000);
+}
+
+function isFailedQueueItemRetryDue(item, nowMs = Date.now()) {
+  if (!item.last_attempt_at) return true;
+  const lastAttemptMs = new Date(item.last_attempt_at).getTime();
+  if (!Number.isFinite(lastAttemptMs)) return true;
+  return nowMs - lastAttemptMs >= getFailedQueueRetryDelayMs(item.retry_count || 0);
+}
+
+const syncRuntimeDiagnostics = {
+  timers: {},
+  lastSuccess: {},
+  lastFailure: {},
+  lastSkipped: {},
+  lastStarted: {},
+  lastFinished: {},
+  lastHung: {},
+  inFlight: {},
+  eventLoopLag: {},
+  appStates: [],
+  uncaughtErrors: [],
+  appState: AppState?.currentState || 'unknown'
+};
+
+export function registerSyncTimer(name, intervalMs, functionName) {
+  syncRuntimeDiagnostics.timers[name] = {
+    function: functionName,
+    intervalMs,
+    registeredAt: new Date().toISOString(),
+    active: true
+  };
+  console.log(`[Sync Timer] ACTIVE name=${name} function=${functionName} interval=${intervalMs}ms`);
+}
+
+export function markSyncTimerInactive(name) {
+  if (syncRuntimeDiagnostics.timers[name]) {
+    syncRuntimeDiagnostics.timers[name].active = false;
+    syncRuntimeDiagnostics.timers[name].clearedAt = new Date().toISOString();
+  }
+  console.log(`[Sync Timer] INACTIVE name=${name}`);
+}
+
+export function recordAutoSyncEvent(name, status, details = '') {
+  const now = new Date().toISOString();
+  if (status === 'started') {
+    syncRuntimeDiagnostics.lastStarted[name] = { at: now, details };
+    syncRuntimeDiagnostics.inFlight[name] = { startedAt: now, details };
+  } else if (status === 'finished') {
+    syncRuntimeDiagnostics.lastFinished[name] = { at: now, details };
+    delete syncRuntimeDiagnostics.inFlight[name];
+  } else if (status === 'hang') {
+    syncRuntimeDiagnostics.lastHung[name] = { at: now, details };
+  } else if (status === 'appstate') {
+    syncRuntimeDiagnostics.appState = details;
+    syncRuntimeDiagnostics.appStates.push({ at: now, state: details });
+    if (syncRuntimeDiagnostics.appStates.length > 20) syncRuntimeDiagnostics.appStates.shift();
+  } else if (status === 'uncaught') {
+    syncRuntimeDiagnostics.uncaughtErrors.push({ at: now, details });
+    if (syncRuntimeDiagnostics.uncaughtErrors.length > 20) syncRuntimeDiagnostics.uncaughtErrors.shift();
+  } else if (status === 'event-loop-lag') {
+    syncRuntimeDiagnostics.eventLoopLag[name] = { at: now, details };
+  }
+
+  if (status === 'success') {
+    syncRuntimeDiagnostics.lastSuccess[name] = now;
+    delete syncRuntimeDiagnostics.inFlight[name];
+  } else if (status === 'failure') {
+    syncRuntimeDiagnostics.lastFailure[name] = { at: now, details };
+    delete syncRuntimeDiagnostics.inFlight[name];
+  } else if (status === 'skipped') {
+    syncRuntimeDiagnostics.lastSkipped[name] = { at: now, details };
+  }
+  const suffix = details ? ` details=${details}` : '';
+  console.log(`[Sync Runtime] ${name} ${status} at ${now}${suffix}`);
+}
+
+export async function traceSyncOperation(name, operation) {
+  const startedAtMs = Date.now();
+  recordAutoSyncEvent(name, 'started', `timestamp=${new Date(startedAtMs).toISOString()}`);
+  try {
+    const result = await operation();
+    const durationMs = Date.now() - startedAtMs;
+    recordAutoSyncEvent(name, 'finished', `durationMs=${durationMs} result=${JSON.stringify(result)}`);
+    return result;
+  } catch (err) {
+    const durationMs = Date.now() - startedAtMs;
+    recordAutoSyncEvent(name, 'failure', `durationMs=${durationMs} error=${err.message}`);
+    throw err;
+  }
+}
+
+export function getSyncRuntimeDiagnostics() {
+  return {
+    ...syncRuntimeDiagnostics,
+    appState: AppState?.currentState || syncRuntimeDiagnostics.appState,
+    daemonRunning: syncIntervalId !== null
+  };
+}
 
 export function startSyncService() {
   if (syncIntervalId) return;
   console.log("[Sync] Starting Background Sync Daemon...");
+  registerSyncTimer('queue-push-daemon', 30000, 'processSyncQueue');
   
   syncIntervalId = setInterval(async () => {
-    if (AppState && AppState.currentState === 'active') {
-      await processSyncQueue();
+    const timerName = 'queue-push-daemon';
+    if (AppState && AppState.currentState !== 'active') {
+      recordAutoSyncEvent(timerName, 'skipped', `appState=${AppState.currentState}`);
+      return;
+    }
+
+    let watchdog = null;
+    try {
+      watchdog = setTimeout(() => {
+        recordAutoSyncEvent(timerName, 'hang', 'processSyncQueue has not returned after 25000ms');
+      }, 25000);
+      const result = await traceSyncOperation(`${timerName}:processSyncQueue`, () => processSyncQueue());
+      recordAutoSyncEvent(timerName, 'success', `writes=${result.successfulWrites || 0} failed=${result.failedWrites || 0}`);
+    } catch (err) {
+      recordAutoSyncEvent(timerName, 'failure', err.message);
+    } finally {
+      if (watchdog) clearTimeout(watchdog);
     }
   }, 30000); // Check and push changes every 30 seconds
 }
@@ -935,10 +1108,23 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
         "SELECT COUNT(*) as count FROM sync_queue WHERE status = 'PENDING' OR status = 'FAILED'"
       );
       beforeCount = beforeRes ? beforeRes.count : 0;
-      
+
       pendingItems = db.getAllSync(
-        "SELECT * FROM sync_queue WHERE status = 'PENDING' OR status = 'FAILED' ORDER BY status DESC, id ASC LIMIT 20"
+        "SELECT * FROM sync_queue WHERE status = 'PENDING' ORDER BY id ASC LIMIT 20"
       );
+
+      if (pendingItems.length < 20) {
+        const failedCandidates = db.getAllSync(
+          "SELECT * FROM sync_queue WHERE status = 'FAILED' ORDER BY id ASC LIMIT 100"
+        );
+        const nowMs = Date.now();
+        const retryDue = failedCandidates.filter(item => isFailedQueueItemRetryDue(item, nowMs));
+        const skippedFailed = failedCandidates.length - retryDue.length;
+        if (skippedFailed > 0) {
+          console.log(`[Queue Audit] Backoff skipped ${skippedFailed} failed records this cycle. New pending records are not blocked.`);
+        }
+        pendingItems = pendingItems.concat(retryDue.slice(0, 20 - pendingItems.length));
+      }
     }
 
     if (pendingItems.length === 0) {
@@ -947,6 +1133,22 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
 
     if (!singleRecordId) {
       console.log(`[Sync Processor] Starting batch sync. Queue size before: ${beforeCount}. Items in batch: ${pendingItems.length}`);
+      const queueSnapshot = pendingItems.map(item => ({
+        queueId: item.id,
+        collection: item.table_name,
+        recordId: item.record_id,
+        action: item.action,
+        status: item.status,
+        retryCount: item.retry_count || 0,
+        lastError: item.last_error || '',
+        createdAt: item.created_at,
+        lastAttemptAt: item.last_attempt_at || ''
+      }));
+      const oldestFailed = db.getFirstSync(
+        "SELECT * FROM sync_queue WHERE status = 'FAILED' ORDER BY datetime(created_at) ASC, id ASC LIMIT 1"
+      );
+      console.log(`[Queue Audit] First ${pendingItems.length} pending/failed records: ${JSON.stringify(queueSnapshot)}`);
+      console.log(`[Queue Audit] Oldest failed queue item: ${JSON.stringify(oldestFailed || null)}`);
     }
 
     for (const item of pendingItems) {
@@ -955,12 +1157,21 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
       if (!queueId) continue;
       if (!tableName || !recordId) {
         // Delete invalid/empty sync queue records to clear them from SQLite
+        console.log(`[Queue Audit] Removing invalid queue item queueId=${queueId} collection=${tableName || ''} recordId=${recordId || ''} action=${action || ''}`);
         db.runSync("DELETE FROM sync_queue WHERE id = ?", [Number(queueId)]);
         successfulWrites++;
         continue;
       }
 
       try {
+        const attemptAt = new Date().toISOString();
+        const currentRetryCount = Number(item.retry_count || 0);
+        db.runSync(
+          "UPDATE sync_queue SET last_attempt_at = ?, retry_count = ? WHERE id = ?",
+          [attemptAt, currentRetryCount + 1, Number(queueId)]
+        );
+        console.log(`[Queue Audit] Attempt queueId=${queueId} collection=${tableName} recordId=${recordId} action=${action} retry=${currentRetryCount + 1}`);
+
         const encodedId = encodeURIComponent(recordId);
         if (action === 'DELETE') {
           const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${tableName}/${encodedId}?key=${apiKey}`;
@@ -978,7 +1189,11 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
           } else {
             const errText = await res.text();
             lastSyncError = `HTTP ${res.status}: ${errText}`;
-            db.runSync("UPDATE sync_queue SET status = 'FAILED' WHERE id = ?", [Number(queueId)]);
+            db.runSync(
+              "UPDATE sync_queue SET status = 'FAILED', last_error = ? WHERE id = ?",
+              [lastSyncError, Number(queueId)]
+            );
+            console.log(`[Queue Audit] FAIL queueId=${queueId} collection=${tableName} recordId=${recordId} action=${action} retry=${currentRetryCount + 1} error=${lastSyncError}`);
             failedWrites++;
           }
         } else {
@@ -992,6 +1207,7 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
 
           if (!row) {
             // Record deleted locally before sync; delete it from the queue
+            console.log(`[Queue Audit] Missing local row, removing queue item queueId=${queueId} collection=${tableName} recordId=${recordId} action=${action}`);
             db.runSync("DELETE FROM sync_queue WHERE id = ?", [Number(queueId)]);
             successfulWrites++;
             continue;
@@ -1025,13 +1241,21 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
           } else {
             const errText = await res.text();
             lastSyncError = `HTTP ${res.status}: ${errText}`;
-            db.runSync("UPDATE sync_queue SET status = 'FAILED' WHERE id = ?", [Number(queueId)]);
+            db.runSync(
+              "UPDATE sync_queue SET status = 'FAILED', last_error = ? WHERE id = ?",
+              [lastSyncError, Number(queueId)]
+            );
+            console.log(`[Queue Audit] FAIL queueId=${queueId} collection=${tableName} recordId=${recordId} action=${action} retry=${currentRetryCount + 1} error=${lastSyncError}`);
             failedWrites++;
           }
         }
       } catch (err) {
         lastSyncError = `Sync Error: ${err.message}`;
-        db.runSync("UPDATE sync_queue SET status = 'FAILED' WHERE id = ?", [Number(queueId)]);
+        db.runSync(
+          "UPDATE sync_queue SET status = 'FAILED', last_error = ? WHERE id = ?",
+          [lastSyncError, Number(queueId)]
+        );
+        console.log(`[Queue Audit] FAIL queueId=${queueId} collection=${tableName} recordId=${recordId} action=${action} retry=${Number(item.retry_count || 0) + 1} error=${lastSyncError}`);
         failedWrites++;
       }
     }
@@ -1228,12 +1452,6 @@ async function syncCollections(collectionsList) {
           localRow = db.getFirstSync(`SELECT * FROM ${table} WHERE id = ?`, [docId]);
         } catch (e) {}
 
-        // Check if there are unsynced changes locally for this record
-        if (localRow && localRow.is_synced === 0) {
-          // Local changes take priority
-          continue;
-        }
-
         // Compare timestamps to see if it actually changed
         let shouldUpdate = false;
         if (!localRow) {
@@ -1244,6 +1462,9 @@ async function syncCollections(collectionsList) {
           
           if (cloudTime > localTime) {
             shouldUpdate = true;
+          } else if (localRow.is_synced === 0) {
+            // Keep newer/equal local edits, but allow newer cloud data to repair stale unsynced rows.
+            continue;
           } else {
             // Property equality fallback check
             for (const key of Object.keys(row)) {
@@ -1287,17 +1508,39 @@ async function syncCollections(collectionsList) {
             }
           }
 
-          // Insert or update SQLite locally
-          const keys = Object.keys(row);
+          // --- SCHEMA GUARDIAN ---
+          // Ensure we only insert keys that actually exist in the target SQLite table schema.
+          // This prevents crashes (prepareSync rejected) if Firestore contains unknown columns.
+          let validColumns = [];
+          try {
+            validColumns = db.getAllSync(`PRAGMA table_info(${table})`).map(c => c.name);
+          } catch (err) {
+            console.error(`[Pull Sync] Failed to get schema for ${table}:`, err.message);
+            continue;
+          }
+
+          const filteredRow = {};
+          for (const key of Object.keys(row)) {
+            // Exclude is_synced from the filtered set because we add it manually as '1' in the SQL
+            if (validColumns.includes(key) && key !== 'is_synced') {
+              filteredRow[key] = row[key];
+            }
+          }
+
+          const keys = Object.keys(filteredRow);
+          if (keys.length === 0) continue;
+
           const placeholders = keys.map(() => '?').join(', ');
           const sql = `INSERT OR REPLACE INTO ${table} (${keys.join(', ')}, is_synced) VALUES (${placeholders}, 1)`;
-          const values = keys.map(k => row[k]);
+          const values = keys.map(k => filteredRow[k]);
           
           try {
             db.runSync(sql, values);
             hasChanges = true;
           } catch (e) {
             console.error(`[Pull Sync] Failed to update row in table "${table}":`, e.message);
+            console.log(`[Pull Sync] Faulty SQL: ${sql}`);
+            console.log(`[Pull Sync] Faulty Values: ${JSON.stringify(values)}`);
           }
         }
       }
@@ -1318,25 +1561,46 @@ let isPullingSyncHigh = false;
 let isPullingSyncLow = false;
 
 export async function syncDeletionsOnly() {
-  return await syncCollections(['deletions']);
+  try {
+    return await traceSyncOperation('syncDeletionsOnly', () => syncCollections(['deletions']));
+  } catch (err) {
+    recordAutoSyncEvent('syncDeletionsOnly', 'failure', err.message);
+    return false;
+  }
 }
 
 export async function syncMenuOnly() {
-  return await syncCollections(['menu_items', 'menu_categories']);
+  try {
+    return await traceSyncOperation('syncMenuOnly', () => syncCollections(['menu_items', 'menu_categories']));
+  } catch (err) {
+    recordAutoSyncEvent('syncMenuOnly', 'failure', err.message);
+    return false;
+  }
 }
 
 export async function syncTablesOnly() {
-  return await syncCollections(['restaurant_tables']);
+  try {
+    return await traceSyncOperation('syncTablesOnly', () => syncCollections(['restaurant_tables']));
+  } catch (err) {
+    recordAutoSyncEvent('syncTablesOnly', 'failure', err.message);
+    return false;
+  }
 }
 
 export async function syncHighFrequencyCollections() {
-  if (isPullingSyncHigh) return false;
+  if (isPullingSyncHigh) {
+    recordAutoSyncEvent('syncHighFrequencyCollections', 'skipped', 'already-running');
+    return false;
+  }
   isPullingSyncHigh = true;
   let hasChanges = false;
   try {
     // restaurant_tables removed from 60s pool; moved to 15s dedicated pool
     const highFreq = ['orders', 'order_items', 'payments', 'deliveries', 'deletions'];
-    hasChanges = await syncCollections(highFreq);
+    hasChanges = await traceSyncOperation('syncHighFrequencyCollections', () => syncCollections(highFreq));
+  } catch (err) {
+    recordAutoSyncEvent('syncHighFrequencyCollections', 'failure', err.message);
+    return false;
   } finally {
     isPullingSyncHigh = false;
   }
@@ -1344,13 +1608,19 @@ export async function syncHighFrequencyCollections() {
 }
 
 export async function syncLowFrequencyCollections() {
-  if (isPullingSyncLow) return false;
+  if (isPullingSyncLow) {
+    recordAutoSyncEvent('syncLowFrequencyCollections', 'skipped', 'already-running');
+    return false;
+  }
   isPullingSyncLow = true;
   let hasChanges = false;
   try {
     // Menu collections removed from periodic polling to optimize Firestore reads.
-    const lowFreq = ['users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 'app_config', 'expenses', 'eja_history'];
-    hasChanges = await syncCollections(lowFreq);
+    const lowFreq = ['users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 'app_config', 'expenses', 'eja_history', 'daily_submit'];
+    hasChanges = await traceSyncOperation('syncLowFrequencyCollections', () => syncCollections(lowFreq));
+  } catch (err) {
+    recordAutoSyncEvent('syncLowFrequencyCollections', 'failure', err.message);
+    return false;
   } finally {
     isPullingSyncLow = false;
   }
@@ -1428,7 +1698,7 @@ function fromFirestoreDocument(doc) {
 export async function restoreDatabaseFromCloud() {
   const tables = [
     'users', 'restaurant_tables', 'menu_categories', 'menu_items', 
-    'orders', 'order_items', 'payments', 'expenses', 'deliveries', 
+    'orders', 'order_items', 'payments', 'expenses', 'deliveries', 'eja_history',
     'daily_summary', 'due_payments', 'off_days', 'app_config', 'daily_submit'
   ];
 
@@ -1446,17 +1716,37 @@ export async function restoreDatabaseFromCloud() {
 
       for (const doc of docs) {
         const row = fromFirestoreDocument(doc);
-        const keys = Object.keys(row);
+        
+        // --- SCHEMA GUARDIAN ---
+        let validColumns = [];
+        try {
+          validColumns = db.getAllSync(`PRAGMA table_info(${table})`).map(c => c.name);
+        } catch (err) {
+          console.error(`[Restore] Failed to get schema for ${table}:`, err.message);
+          continue;
+        }
+
+        const filteredRow = {};
+        for (const key of Object.keys(row)) {
+          if (validColumns.includes(key) && key !== 'is_synced') {
+            filteredRow[key] = row[key];
+          }
+        }
+
+        const keys = Object.keys(filteredRow);
+        if (keys.length === 0) continue;
+
         const placeholders = keys.map(() => '?').join(', ');
         
         // Add is_synced = 1 since it's coming from cloud
         const sql = `INSERT OR REPLACE INTO ${table} (${keys.join(', ')}, is_synced) VALUES (${placeholders}, 1)`;
-        const values = keys.map(k => row[k]);
+        const values = keys.map(k => filteredRow[k]);
         
         try {
           db.runSync(sql, values);
         } catch (e) {
           console.error(`[Restore] Failed to insert row into ${table}:`, e.message);
+          console.log(`[Restore] Faulty SQL: ${sql}`);
         }
       }
       console.log(`[Restore] Successfully restored ${docs.length} records into ${table}.`);
@@ -2511,14 +2801,20 @@ export function getSubmissionHistory() {
       sell: r.total_sell,
       expense: r.total_expense,
       deposit: r.net_deposit,
+      net_cash: r.net_cash || 0,
+      notes: r.notes || '',
+      submitted_by: r.submitted_by,
+      submitted_at: r.submitted_at,
       submissionType: r.submission_type || 'MANUAL',
       isManualEntry: r.submitted_by === 'Manual Entry',
-      notes: r.submitted_by === 'Manual Entry' ? 'Manual Past Entry' : '',
       breakdown: {
+        cash: r.cash_payment,
         bkash: r.bkash_payment,
         nagad: r.nagad_payment,
         rocket: r.rocket_payment || 0,
-        cash: r.cash_payment,
+        delivery_sell: r.delivery_sell || 0,
+        delivery_charge: r.delivery_charge || 0,
+        ijara: r.eja,
         dudu: r.dudu_store,
         akash: r.akash_murgi,
         burger: r.burger_bun,
@@ -2539,10 +2835,11 @@ export function savePastAccount(record) {
     
     db.runSync(`
       INSERT OR REPLACE INTO daily_submit (
-        id, date, total_sell, cash_payment, bkash_payment, nagad_payment, eja,
-        dudu_store, akash_murgi, burger_bun, bazar, others, total_expense, net_deposit,
+        id, date, total_sell, cash_payment, bkash_payment, nagad_payment, rocket_payment,
+        delivery_sell, delivery_charge, eja, dudu_store, akash_murgi, burger_bun, bazar, 
+        others, total_expense, net_cash, net_deposit, notes,
         submitted_by, submitted_at, is_locked, created_at, updated_at, is_synced, submission_type
-      ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, 'Manual Entry', ?, 1, ?, ?, 0, 'MANUAL')
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Manual Entry', ?, 1, ?, ?, 0, 'MANUAL')
     `, [
       dateStr,
       dateStr,
@@ -2550,13 +2847,19 @@ export function savePastAccount(record) {
       record.breakdown?.cash || 0,
       record.breakdown?.bkash || 0,
       record.breakdown?.nagad || 0,
+      record.breakdown?.rocket || 0,
+      record.breakdown?.delivery_sell || 0,
+      record.breakdown?.delivery_charge || 0,
+      record.breakdown?.ijara || 0,
       record.breakdown?.dudu || 0,
       record.breakdown?.akash || 0,
       record.breakdown?.burger || 0,
       record.breakdown?.bazar || 0,
       record.breakdown?.others || 0,
       record.expense,
+      record.net_cash || 0,
       record.deposit,
+      record.notes || '',
       now,
       now,
       now
@@ -2573,20 +2876,33 @@ export function savePastAccount(record) {
       ) VALUES (
         ?, ?, 'Yesterday', 1, 0, 0, 'Past Manual Entry',
         30.0, 70.0, 'Clear', 0, 8.0, 10, ?,
-        0.0, ?, 0.0, 0.0, '12:00 PM',
+        0.0, ?, ?, 0.0, '12:00 PM',
         '10:00 AM', '09:00 PM', ?, ?, ?, ?,
-        0.0, ?, ?, '[]', ?, ?, 0
+        ?, ?, ?, '[]', ?, ?, 0
       )
     `, [
-      dateStr, dateStr, record.sell, record.expense,
+      dateStr, dateStr, record.sell, record.expense, record.breakdown?.delivery_sell || 0,
       record.breakdown?.cash || 0, record.breakdown?.bkash || 0, record.breakdown?.nagad || 0, record.breakdown?.rocket || 0,
-      record.deposit, record.deposit, now, now
+      record.breakdown?.ijara || 0, record.net_cash || 0, record.deposit, now, now
     ]);
     enqueueSync("daily_summary", dateStr, "INSERT");
 
     return true;
   } catch (err) {
     console.error("Save past account error:", err);
+    return false;
+  }
+}
+
+export function deleteSubmission(dateStr) {
+  try {
+    db.runSync("DELETE FROM daily_submit WHERE date = ?", [dateStr]);
+    db.runSync("DELETE FROM daily_summary WHERE date = ?", [dateStr]);
+    recordDeletion("daily_submit", dateStr);
+    recordDeletion("daily_summary", dateStr);
+    return true;
+  } catch (err) {
+    console.error("Delete submission error:", err);
     return false;
   }
 }
@@ -2609,10 +2925,11 @@ export function submitDailySheet(summary, submittedBy, submissionType = 'MANUAL'
     
     db.runSync(`
       INSERT OR REPLACE INTO daily_submit (
-        id, date, total_sell, cash_payment, bkash_payment, nagad_payment, rocket_payment, eja,
-        dudu_store, akash_murgi, burger_bun, bazar, others, total_expense, net_deposit,
+        id, date, total_sell, cash_payment, bkash_payment, nagad_payment, rocket_payment,
+        delivery_sell, delivery_charge, eja, dudu_store, akash_murgi, burger_bun, bazar, 
+        others, total_expense, net_cash, net_deposit, notes,
         submitted_by, submitted_at, is_locked, created_at, updated_at, is_synced, submission_type
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 0, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 0, ?)
     `, [
       todayStr,
       todayStr,
@@ -2621,6 +2938,8 @@ export function submitDailySheet(summary, submittedBy, submissionType = 'MANUAL'
       summary.breakdown?.bkash || 0,
       summary.breakdown?.nagad || 0,
       summary.breakdown?.rocket || 0,
+      summary.breakdown?.delivery_sell || 0,
+      summary.breakdown?.delivery_charge || 0,
       summary.breakdown?.ijara || 0,
       summary.breakdown?.dudu || 0,
       summary.breakdown?.akash || 0,
@@ -2628,7 +2947,9 @@ export function submitDailySheet(summary, submittedBy, submissionType = 'MANUAL'
       summary.breakdown?.bazar || 0,
       summary.breakdown?.others || 0,
       summary.expense,
+      summary.net_cash || 0,
       summary.deposit,
+      summary.notes || '',
       submittedBy,
       now,
       now,
@@ -2784,11 +3105,27 @@ export function resetIjaraExpense() {
     const todayStr = getBusinessDate();
     const now = new Date().toISOString();
     
-    // Reset ijara expense to 0 locally in expenses
-    db.runSync("UPDATE expenses SET amount = 0, is_synced = 0 WHERE date(created_at, 'localtime', '-1 hour') = ? AND category = 'ijara'", [todayStr]);
+    const ijaraExpenseId = `exp_${todayStr}_ijara`;
+    
+    // Reset ijara expense to 0 locally in expenses and normalize to the stable sync id.
+    const existingIjaraExpense = db.getFirstSync(
+      "SELECT * FROM expenses WHERE id = ? OR (date(created_at, 'localtime', '-1 hour') = ? AND category = 'ijara') ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END LIMIT 1",
+      [ijaraExpenseId, todayStr, ijaraExpenseId]
+    );
+    if (existingIjaraExpense) {
+      db.runSync(
+        "UPDATE expenses SET id = ?, category = 'ijara', amount = 0, updated_at = ?, is_synced = 0 WHERE id = ?",
+        [ijaraExpenseId, now, existingIjaraExpense.id]
+      );
+    } else {
+      db.runSync(
+        "INSERT OR REPLACE INTO expenses (id, category, amount, note, is_due, given_amount, used_amount, returned_amount, created_at, updated_at, is_synced) VALUES (?, 'ijara', 0, '', 0, 0, 0, 0, ?, ?, 0)",
+        [ijaraExpenseId, now, now]
+      );
+    }
     
     // Enqueue Firestore update sync for expenses
-    enqueueSync("expenses", `${todayStr}_ijara`, "UPDATE");
+    enqueueSync("expenses", ijaraExpenseId, "UPDATE");
     
     // ALSO reset ijara expense in eja_history table!
     const existingEja = db.getFirstSync("SELECT * FROM eja_history WHERE date = ?", [todayStr]);
@@ -2954,6 +3291,30 @@ export function getSyncQueueItems(limit = 50) {
     return db.getAllSync("SELECT * FROM sync_queue ORDER BY id DESC LIMIT ?", [limit]);
   } catch (e) {
     return [];
+  }
+}
+
+export function inspectFailedSyncQueue(limit = 20) {
+  try {
+    const firstItems = db.getAllSync(
+      "SELECT id as queueId, table_name as collection, record_id as recordId, action, status, retry_count as retryCount, last_error as error, created_at as createdAt, last_attempt_at as lastAttemptAt FROM sync_queue WHERE status = 'PENDING' OR status = 'FAILED' ORDER BY status DESC, id ASC LIMIT ?",
+      [limit]
+    );
+    const oldestFailed = db.getFirstSync(
+      "SELECT id as queueId, table_name as collection, record_id as recordId, action, status, retry_count as retryCount, last_error as error, created_at as createdAt, last_attempt_at as lastAttemptAt FROM sync_queue WHERE status = 'FAILED' ORDER BY datetime(created_at) ASC, id ASC LIMIT 1"
+    );
+    const total = db.getFirstSync(
+      "SELECT COUNT(*) as count FROM sync_queue WHERE status = 'PENDING' OR status = 'FAILED'"
+    );
+    console.log(`[Queue Audit] inspectFailedSyncQueue total=${total?.count || 0} first=${JSON.stringify(firstItems)} oldestFailed=${JSON.stringify(oldestFailed || null)}`);
+    return {
+      total: total?.count || 0,
+      firstItems,
+      oldestFailed: oldestFailed || null
+    };
+  } catch (err) {
+    console.error("[Queue Audit] Failed to inspect failed sync queue:", err);
+    return { total: 0, firstItems: [], oldestFailed: null, error: err.message };
   }
 }
 
@@ -3377,11 +3738,13 @@ export async function executeManualPull() {
   try {
     console.log("[Manual Pull] Pulling latest updates from Firestore...");
     const highFreqChanged = await syncHighFrequencyCollections();
+    const tablesChanged = await syncTablesOnly();
     const lowFreqChanged = await syncLowFrequencyCollections();
-    return { success: true, didChange: highFreqChanged || lowFreqChanged };
+    recordAutoSyncEvent('manual-pull', 'success', `highFreqChanged=${highFreqChanged} tablesChanged=${tablesChanged} lowFreqChanged=${lowFreqChanged}`);
+    return { success: true, didChange: highFreqChanged || tablesChanged || lowFreqChanged };
   } catch (err) {
     console.error("[Manual Pull] Pull failed:", err);
+    recordAutoSyncEvent('manual-pull', 'failure', err.message);
     return { success: false, error: err.message };
   }
 }
-

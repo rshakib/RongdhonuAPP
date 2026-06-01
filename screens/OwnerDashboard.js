@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+        import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -24,6 +24,13 @@ const getBengaliDate = () => {
   const dayName = days[now.getDay()];
   const formattedDate = formatDisplayDate(now);
   return `${formattedDate}, ${dayName}`;
+};
+
+const getBengaliMonthRange = () => {
+  const months = ['জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন', 'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'];
+  const d = new Date(Date.now() - 3600000); // Business Day offset
+  const monthName = months[d.getMonth()];
+  return `(১ ${monthName} - বর্তমান)`;
 };
 
 // --- CUSTOM CALENDAR PICKER COMPONENT ---
@@ -87,7 +94,7 @@ const CalendarPicker = ({ visible, onClose, onSelectDate, initialDate }) => {
   );
 };
 
-export default function OwnerDashboard({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onUpdateTableName, onNavigateToExpenses, onNavigateToSubmit, onNavigateToEditMenu, onSavePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, remainingPushes = 2, remainingPulls = 2, onManualPush, onManualPull }) {
+export default function OwnerDashboard({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onUpdateTableName, onNavigateToExpenses, onNavigateToSubmit, onNavigateToEditMenu, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, remainingPushes = 2, remainingPulls = 2, onManualPush, onManualPull }) {
   const [renameModalVisible, setRenameModalVisible] = useState(false);
   const [selectedTableForRename, setSelectedTableForRename] = useState(null);
   const [newTableName, setNewTableName] = useState('');
@@ -113,14 +120,50 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
   const [pastBurger, setPastBurger] = useState('');
   const [pastBazar, setPastBazar] = useState('');
   const [pastOthers, setPastOthers] = useState('');
+  const [pastDeliverySell, setPastDeliverySell] = useState('');
+  const [pastDeliveryCharge, setPastDeliveryCharge] = useState('');
+  const [pastIjara, setPastIjara] = useState('');
+  const [pastNetCash, setPastNetCash] = useState('');
   const [pastDeposit, setPastDeposit] = useState('');
   const [pastNote, setPastNote] = useState('');
 
   // Filter States
   const [salesFilter, setSalesFilter] = useState('Today'); 
-  const [depositMonthFilter, setDepositMonthFilter] = useState('May 2026');
+  
+  // Helper to get Month Year from date string
+  const getMonthName = (dateStr) => {
+    if (!dateStr) return '';
+    const str = String(dateStr).trim();
+    
+    // Handle YYYY-MM-DD
+    if (str.includes('-')) {
+      const parts = str.split('-');
+      if (parts.length >= 2 && parts[0].length === 4) {
+        const year = parts[0];
+        const monthInt = parseInt(parts[1], 10);
+        const monthNamesList = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+        if (monthInt >= 1 && monthInt <= 12) return `${monthNamesList[monthInt - 1]} ${year}`;
+      }
+    }
+    
+    // Handle DD MMM YYYY or similar
+    const parts = str.split(' ');
+    if (parts.length === 3) {
+      return `${parts[1]} ${parts[2]}`;
+    }
+    return '';
+  };
+
+  const businessDateObj = new Date(Date.now() - 3600000);
+  const [selectedMonth, setSelectedMonth] = useState(businessDateObj.getMonth());
+  const [selectedYear, setSelectedYear] = useState(businessDateObj.getFullYear());
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const yearsList = [2024, 2025, 2026, 2027, 2028, 2029, 2030];
+  const activeFilter = `${monthNames[selectedMonth]} ${selectedYear}`;
+  
   const [pickDate, setPickDate] = useState('📅 তারিখ সিলেক্ট করুন');
   const [monthPickerVisible, setMonthPickerVisible] = useState(false);
+  const [yearPickerVisible, setYearPickerVisible] = useState(false);
 
   // Calendar State
   const [calendarVisible, setCalendarVisible] = useState(false);
@@ -163,34 +206,17 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
     Alert.alert("সফল", "ইজা সফলভাবে যোগ করা হয়েছে!");
   };
 
-  const handleEditPastAccount = (item) => {
-    setIsEditingPast(true);
-    setPastDate(item.date);
-    setPastTotalSell(item.sell.toString());
-    setPastBkash(item.breakdown?.bkash?.toString() || '');
-    setPastNagad(item.breakdown?.nagad?.toString() || '');
-    setPastCash(item.breakdown?.cash?.toString() || '');
-    setPastDudu(item.breakdown?.dudu?.toString() || '');
-    setPastAkash(item.breakdown?.akash?.toString() || '');
-    setPastBurger(item.breakdown?.burger?.toString() || '');
-    setPastBazar(item.breakdown?.bazar?.toString() || '');
-    setPastOthers(item.breakdown?.others?.toString() || '');
-    setPastDeposit(item.deposit?.toString() || '');
-    setPastNote(item.notes || '');
-    setPastAccountModalVisible(true);
-  };
-
-  const handleOpenPastAccount = () => {
-    setMenuModalVisible(false);
-    setIsEditingPast(false);
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const dateStr = formatDisplayDate(yesterday);
-    setPastDate(dateStr);
+  const resetPastStates = () => {
+    setPastDate('');
     setPastTotalSell('');
     setPastBkash('');
     setPastNagad('');
     setPastCash('');
+    setPastRocket('');
+    setPastDeliverySell('');
+    setPastDeliveryCharge('');
+    setPastIjara('');
+    setPastNetCash('');
     setPastDudu('');
     setPastAkash('');
     setPastBurger('');
@@ -198,6 +224,39 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
     setPastOthers('');
     setPastDeposit('');
     setPastNote('');
+  };
+
+  const handleEditPastAccount = (item) => {
+    setIsEditingPast(true);
+    setPastDate(item.date);
+    setPastTotalSell(item.sell.toString());
+    setPastBkash(item.breakdown?.bkash?.toString() || item.bkash_payment?.toString() || '');
+    setPastNagad(item.breakdown?.nagad?.toString() || item.nagad_payment?.toString() || '');
+    setPastCash(item.breakdown?.cash?.toString() || item.cash_payment?.toString() || '');
+    setPastRocket(item.breakdown?.rocket?.toString() || item.rocket_payment?.toString() || '');
+    setPastDeliverySell(item.breakdown?.delivery_sell?.toString() || item.delivery_sell?.toString() || '');
+    setPastDeliveryCharge(item.breakdown?.delivery_charge?.toString() || item.delivery_charge?.toString() || '');
+    setPastIjara(item.breakdown?.ijara?.toString() || item.eja?.toString() || '');
+    setPastDudu(item.breakdown?.dudu?.toString() || item.dudu_store?.toString() || '');
+    setPastAkash(item.breakdown?.akash?.toString() || item.akash_murgi?.toString() || '');
+    setPastBurger(item.breakdown?.burger?.toString() || item.burger_bun?.toString() || '');
+    setPastBazar(item.breakdown?.bazar?.toString() || item.bazar?.toString() || '');
+    setPastOthers(item.breakdown?.others?.toString() || item.others?.toString() || '');
+    setPastNetCash(item.net_cash?.toString() || '');
+    setPastDeposit(item.deposit?.toString() || item.net_deposit?.toString() || '');
+    setPastNote(item.notes || '');
+    setPastAccountModalVisible(true);
+  };
+
+  const handleOpenPastAccount = () => {
+    setMenuModalVisible(false);
+    setIsEditingPast(false);
+    resetPastStates();
+    // Default to yesterday
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const dateStr = formatDisplayDate(yesterday);
+    setPastDate(dateStr);
     setPastAccountModalVisible(true);
   };
 
@@ -235,12 +294,17 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
       sell: sell,
       expense: totalExpense,
       deposit: parseFloat(pastDeposit) || 0,
+      net_cash: parseFloat(pastNetCash) || 0,
       isManualEntry: true,
       notes: pastNote,
       breakdown: {
+        cash: parseFloat(pastCash) || 0,
         bkash: parseFloat(pastBkash) || 0,
         nagad: parseFloat(pastNagad) || 0,
-        cash: parseFloat(pastCash) || 0,
+        rocket: parseFloat(pastRocket) || 0,
+        delivery_sell: parseFloat(pastDeliverySell) || 0,
+        delivery_charge: parseFloat(pastDeliveryCharge) || 0,
+        ijara: parseFloat(pastIjara) || 0,
         dudu, akash, burger, bazar, others
       }
     };
@@ -289,112 +353,6 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
   const filteredOrders = allOrdersForLog.filter(o => (o.fullDate || todayStr) === todayStr);
 
   const totalDoneCount = todaysOrders.length;
-  // Helper to parse 'YYYY-MM-DD', 'YYYY/MM/DD', or 'DD Month YYYY' to 'Month YYYY'
-  const getMonthName = (dateStr) => {
-    if (!dateStr) return '';
-    
-    const str = String(dateStr).trim().replace(/\s+/g, ' ');
-    
-    // 1. Try parsing as a pure timestamp number
-    const num = Number(str);
-    if (!isNaN(num) && num > 0) {
-      try {
-        const ms = num < 10000000000 ? num * 1000 : num;
-        const d = new Date(ms);
-        if (!isNaN(d.getTime())) {
-          const monthNames = [
-            'January', 'February', 'March', 'April', 'May', 'June',
-            'July', 'August', 'September', 'October', 'November', 'December'
-          ];
-          return `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
-        }
-      } catch (e) {}
-    }
-    
-    // 2. Try native Date.parse
-    try {
-      const timestamp = Date.parse(str);
-      if (!isNaN(timestamp)) {
-        const d = new Date(timestamp);
-        const monthNames = [
-          'January', 'February', 'March', 'April', 'May', 'June',
-          'July', 'August', 'September', 'October', 'November', 'December'
-        ];
-        return `${monthNames[d.getMonth()]} ${d.getFullYear()}`;
-      }
-    } catch (e) {}
-    
-    // 3. Fallback Split rules:
-    
-    // Split by hyphens (e.g. YYYY-MM-DD or DD-MM-YYYY)
-    if (str.includes('-')) {
-      const parts = str.split('-');
-      if (parts.length >= 2) {
-        if (parts[0].length === 4) {
-          const year = parts[0];
-          const monthInt = parseInt(parts[1], 10);
-          const monthNames = [
-            'January', 'February', 'March', 'April', 'May', 'June',
-            'July', 'August', 'September', 'October', 'November', 'December'
-          ];
-          if (monthInt >= 1 && monthInt <= 12) {
-            return `${monthNames[monthInt - 1]} ${year}`;
-          }
-        } else if (parts[2]) {
-          const year = parts[2].split('T')[0].split(' ')[0];
-          const monthInt = parseInt(parts[1], 10);
-          const monthNames = [
-            'January', 'February', 'March', 'April', 'May', 'June',
-            'July', 'August', 'September', 'October', 'November', 'December'
-          ];
-          if (monthInt >= 1 && monthInt <= 12) {
-            return `${monthNames[monthInt - 1]} ${year}`;
-          }
-        }
-      }
-    }
-    
-    // Split by slashes (e.g. YYYY/MM/DD or DD/MM/YYYY)
-    if (str.includes('/')) {
-      const parts = str.split('/');
-      if (parts.length >= 2) {
-        if (parts[0].length === 4) {
-          const year = parts[0];
-          const monthInt = parseInt(parts[1], 10);
-          const monthNames = [
-            'January', 'February', 'March', 'April', 'May', 'June',
-            'July', 'August', 'September', 'October', 'November', 'December'
-          ];
-          if (monthInt >= 1 && monthInt <= 12) {
-            return `${monthNames[monthInt - 1]} ${year}`;
-          }
-        } else if (parts[2]) {
-          const year = parts[2].split('T')[0].split(' ')[0];
-          const monthInt = parseInt(parts[1], 10);
-          const monthNames = [
-            'January', 'February', 'March', 'April', 'May', 'June',
-            'July', 'August', 'September', 'October', 'November', 'December'
-          ];
-          if (monthInt >= 1 && monthInt <= 12) {
-            return `${monthNames[monthInt - 1]} ${year}`;
-          }
-        }
-      }
-    }
-    
-    // Split by spaces (e.g. "29 May 2026" or "May 2026")
-    const parts = str.split(' ');
-    if (parts.length === 3) {
-      const month = parts[1];
-      const year = parts[2];
-      return `${month} ${year}`;
-    } else if (parts.length === 2) {
-      return str;
-    }
-    
-    return '';
-  };
-
   // Get unique months present in the history dynamically
   const availableMonthsRaw = Array.from(new Set(
     submissionHistory.map(item => getMonthName(item.date)).filter(Boolean)
@@ -423,10 +381,6 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
     });
   };
 
-  const availableMonths = sortMonths(availableMonthsRaw);
-
-  const monthsList = availableMonths.length > 0 ? availableMonths : ['May 2026', 'April 2026', 'March 2026'];
-  const activeFilter = monthsList.includes(depositMonthFilter) ? depositMonthFilter : monthsList[0];
   const filteredHistory = submissionHistory
     .filter(item => getMonthName(item.date) === activeFilter)
     .sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -547,7 +501,7 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
           <View style={[styles.statsCard, styles.cardYellow]}>
             <View style={styles.statsCardHeader}><Text style={styles.statsCardTitle}>এই মাসের মোট</Text><Text style={styles.statsEmoji}>💰</Text></View>
             <Text style={styles.statsCardAmount}>৳ {monthlyTotalSell.toLocaleString()}</Text>
-            <Text style={styles.statsCardSubYellow}>(১ মে - ৩০ মে)</Text>
+            <Text style={styles.statsCardSubYellow}>{getBengaliMonthRange()}</Text>
           </View>
         </ScrollView>
 
@@ -827,33 +781,54 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
             </View>
             <View style={{ width: '100%', paddingHorizontal: 12, marginBottom: 12, marginTop: 4 }}>
               <Text style={{ color: '#888', fontSize: 11, marginBottom: 4 }}>মাস ও বছর নির্বাচন করুন:</Text>
-              <TouchableOpacity 
-                style={{ 
-                  flexDirection: 'row', 
-                  justifyContent: 'space-between', 
-                  alignItems: 'center', 
-                  backgroundColor: '#1E1E1E', 
-                  paddingVertical: 10, 
-                  paddingHorizontal: 14, 
-                  borderRadius: 6,
-                  borderWidth: 1,
-                  borderColor: '#333'
-                }}
-                onPress={() => setMonthPickerVisible(true)}
-              >
-                <Text style={{ color: '#FFF', fontSize: 13, fontWeight: 'bold' }}>{activeFilter}</Text>
-                <Text style={{ color: '#FFB703', fontSize: 11 }}>▼ পরিবর্তন করুন</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity 
+                  style={{ 
+                    flex: 1,
+                    flexDirection: 'row', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center', 
+                    backgroundColor: '#1E1E1E', 
+                    paddingVertical: 10, 
+                    paddingHorizontal: 14, 
+                    borderRadius: 6,
+                    borderWidth: 1,
+                    borderColor: '#333'
+                  }}
+                  onPress={() => setMonthPickerVisible(true)}
+                >
+                  <Text style={{ color: '#FFF', fontSize: 13, fontWeight: 'bold' }}>{monthNames[selectedMonth]}</Text>
+                  <Text style={{ color: '#FFB703', fontSize: 10 }}>মাস ▼</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={{ 
+                    flex: 1,
+                    flexDirection: 'row', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center', 
+                    backgroundColor: '#1E1E1E', 
+                    paddingVertical: 10, 
+                    paddingHorizontal: 14, 
+                    borderRadius: 6,
+                    borderWidth: 1,
+                    borderColor: '#333'
+                  }}
+                  onPress={() => setYearPickerVisible(true)}
+                >
+                  <Text style={{ color: '#FFF', fontSize: 13, fontWeight: 'bold' }}>{selectedYear}</Text>
+                  <Text style={{ color: '#FFB703', fontSize: 10 }}>বছর ▼</Text>
+                </TouchableOpacity>
+              </View>
             </View>
             <View style={styles.sheetContainer}><ScrollView horizontal showsHorizontalScrollIndicator={true}><View>
                   <View style={styles.sheetHeader}>
                     <Text style={[styles.sheetHeaderText, { width: 100, textAlign: 'left' }]}>তারিখ</Text>
-                    <Text style={[styles.sheetHeaderText, { width: 80 }]}>বিক্রয়</Text>
-                    <Text style={[styles.sheetHeaderText, { width: 70 }]}>🛍️ দুду</Text>
-                    <Text style={[styles.sheetHeaderText, { width: 70 }]}>🐔 আকাশ</Text>
-                    <Text style={[styles.sheetHeaderText, { width: 70 }]}>🍔 বার্গার</Text>
-                    <Text style={[styles.sheetHeaderText, { width: 70 }]}>🛒 বাজার</Text>
-                    <Text style={[styles.sheetHeaderText, { width: 70 }]}>📦 অন্য</Text>
+                    <Text style={[styles.sheetHeaderText, { width: 80 }]}>মোট বিক্রয়</Text>
+                    <Text style={[styles.sheetHeaderText, { width: 70 }]}>bKash</Text>
+                    <Text style={[styles.sheetHeaderText, { width: 70 }]}>Nagad</Text>
+                    <Text style={[styles.sheetHeaderText, { width: 70 }]}>Cash</Text>
+                    <Text style={[styles.sheetHeaderText, { width: 70 }]}>🏛️ ইজা</Text>
                     <Text style={[styles.sheetHeaderText, { width: 80 }]}>মোট খরচ</Text>
                     <Text style={[styles.sheetHeaderText, { width: 80 }]}>জমা</Text>
                   </View>
@@ -871,11 +846,10 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
                             </TouchableOpacity>
                           </View>
                           <Text style={[styles.sheetCell, { width: 80, fontWeight: 'bold' }]}>৳{item.sell.toLocaleString()}</Text>
-                          <Text style={[styles.sheetCell, { width: 70 }]}>৳{item.breakdown?.dudu || 0}</Text>
-                          <Text style={[styles.sheetCell, { width: 70 }]}>৳{item.breakdown?.akash || 0}</Text>
-                          <Text style={[styles.sheetCell, { width: 70 }]}>৳{item.breakdown?.burger || 0}</Text>
-                          <Text style={[styles.sheetCell, { width: 70 }]}>৳{item.breakdown?.bazar || 0}</Text>
-                          <Text style={[styles.sheetCell, { width: 70 }]}>৳{item.breakdown?.others || 0}</Text>
+                          <Text style={[styles.sheetCell, { width: 70 }]}>৳{item.breakdown?.bkash || 0}</Text>
+                          <Text style={[styles.sheetCell, { width: 70 }]}>৳{item.breakdown?.nagad || 0}</Text>
+                          <Text style={[styles.sheetCell, { width: 70 }]}>৳{item.breakdown?.cash || 0}</Text>
+                          <Text style={[styles.sheetCell, { width: 70 }]}>৳{item.breakdown?.ijara || 0}</Text>
                           <Text style={[styles.sheetCell, { width: 80, color: '#EF4444' }]}>৳{item.expense.toLocaleString()}</Text>
                           <Text style={[styles.sheetCell, { width: 80, color: '#34D399', fontWeight: 'bold' }]}>৳{item.deposit.toLocaleString()}</Text>
                         </View>
@@ -885,17 +859,16 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
                       <View style={styles.sheetFooter}>
                         <Text style={[styles.sheetFooterText, { width: 100, textAlign: 'left' }]}>মোট (Total)</Text>
                         <Text style={[styles.sheetFooterText, { width: 80 }]}>৳{filteredHistory.reduce((sum, i) => sum + i.sell, 0).toLocaleString()}</Text>
-                        <Text style={[styles.sheetFooterText, { width: 70 }]}>৳{filteredHistory.reduce((sum, i) => sum + (i.breakdown?.dudu || 0), 0).toLocaleString()}</Text>
-                        <Text style={[styles.sheetFooterText, { width: 70 }]}>৳{filteredHistory.reduce((sum, i) => sum + (i.breakdown?.akash || 0), 0).toLocaleString()}</Text>
-                        <Text style={[styles.sheetFooterText, { width: 70 }]}>৳{filteredHistory.reduce((sum, i) => sum + (i.breakdown?.burger || 0), 0).toLocaleString()}</Text>
-                        <Text style={[styles.sheetFooterText, { width: 70 }]}>৳{filteredHistory.reduce((sum, i) => sum + (i.breakdown?.bazar || 0), 0).toLocaleString()}</Text>
-                        <Text style={[styles.sheetFooterText, { width: 70 }]}>৳{filteredHistory.reduce((sum, i) => sum + (i.breakdown?.others || 0), 0).toLocaleString()}</Text>
+                        <Text style={[styles.sheetFooterText, { width: 70 }]}>৳{filteredHistory.reduce((sum, i) => sum + (i.breakdown?.bkash || 0), 0).toLocaleString()}</Text>
+                        <Text style={[styles.sheetFooterText, { width: 70 }]}>৳{filteredHistory.reduce((sum, i) => sum + (i.breakdown?.nagad || 0), 0).toLocaleString()}</Text>
+                        <Text style={[styles.sheetFooterText, { width: 70 }]}>৳{filteredHistory.reduce((sum, i) => sum + (i.breakdown?.cash || 0), 0).toLocaleString()}</Text>
+                        <Text style={[styles.sheetFooterText, { width: 70 }]}>৳{filteredHistory.reduce((sum, i) => sum + (i.breakdown?.ijara || 0), 0).toLocaleString()}</Text>
                         <Text style={[styles.sheetFooterText, { width: 80 }]}>৳{filteredHistory.reduce((sum, i) => sum + i.expense, 0).toLocaleString()}</Text>
                         <Text style={[styles.sheetFooterText, { width: 80, color: '#34D399' }]}>৳{filteredHistory.reduce((sum, i) => sum + i.deposit, 0).toLocaleString()}</Text>
                       </View>
                     )}
-                  </ScrollView>
-            </View></ScrollView></View>
+                  </ScrollView></View></ScrollView></View>
+
             {filteredHistory.length > 0 && (
               <View style={styles.breakdownSummaryCard}>
                 <Text style={styles.breakdownTitle}>📉 মাসিক খরচের বিবরণ (Breakdown)</Text>
@@ -913,18 +886,16 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
         </View>
       </Modal>
 
-      {/* Month & Year Picker Modal */}
+      {/* Month Picker Modal */}
       <Modal animationType="fade" transparent={true} visible={monthPickerVisible} onRequestClose={() => setMonthPickerVisible(false)}>
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setMonthPickerVisible(false)}>
           <View style={[styles.modalContent, { width: '85%', maxHeight: '60%' }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', alignItems: 'center', marginBottom: 15 }}>
-              <Text style={[styles.modalTitle, { marginBottom: 0, fontSize: 16 }]}>মাস ও বছর সিলেক্ট করুন</Text>
-              <TouchableOpacity onPress={() => setMonthPickerVisible(false)} style={styles.closeCircle}>
-                <Text style={styles.closeCircleText}>✕</Text>
-              </TouchableOpacity>
+              <Text style={[styles.modalTitle, { marginBottom: 0, fontSize: 16 }]}>মাস সিলেক্ট করুন</Text>
+              <TouchableOpacity onPress={() => setMonthPickerVisible(false)} style={styles.closeCircle}><Text style={styles.closeCircleText}>✕</Text></TouchableOpacity>
             </View>
             <ScrollView style={{ width: '100%' }} showsVerticalScrollIndicator={false}>
-              {monthsList.map((m) => (
+              {monthNames.map((m, idx) => (
                 <TouchableOpacity 
                   key={m} 
                   style={{ 
@@ -932,15 +903,48 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
                     borderBottomWidth: 1, 
                     borderColor: '#262626', 
                     alignItems: 'center',
-                    backgroundColor: activeFilter === m ? 'rgba(255, 183, 3, 0.15)' : 'transparent',
+                    backgroundColor: selectedMonth === idx ? 'rgba(255, 183, 3, 0.15)' : 'transparent',
                     borderRadius: 4
                   }}
                   onPress={() => {
-                    setDepositMonthFilter(m);
+                    setSelectedMonth(idx);
                     setMonthPickerVisible(false);
                   }}
                 >
-                  <Text style={{ color: activeFilter === m ? '#FFB703' : '#FFF', fontSize: 15, fontWeight: activeFilter === m ? 'bold' : 'normal' }}>{m}</Text>
+                  <Text style={{ color: selectedMonth === idx ? '#FFB703' : '#FFF', fontSize: 15, fontWeight: selectedMonth === idx ? 'bold' : 'normal' }}>{m}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Year Picker Modal */}
+      <Modal animationType="fade" transparent={true} visible={yearPickerVisible} onRequestClose={() => setYearPickerVisible(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setYearPickerVisible(false)}>
+          <View style={[styles.modalContent, { width: '85%', maxHeight: '60%' }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', alignItems: 'center', marginBottom: 15 }}>
+              <Text style={[styles.modalTitle, { marginBottom: 0, fontSize: 16 }]}>বছর সিলেক্ট করুন</Text>
+              <TouchableOpacity onPress={() => setYearPickerVisible(false)} style={styles.closeCircle}><Text style={styles.closeCircleText}>✕</Text></TouchableOpacity>
+            </View>
+            <ScrollView style={{ width: '100%' }} showsVerticalScrollIndicator={false}>
+              {yearsList.map((y) => (
+                <TouchableOpacity 
+                  key={y} 
+                  style={{ 
+                    paddingVertical: 14, 
+                    borderBottomWidth: 1, 
+                    borderColor: '#262626', 
+                    alignItems: 'center',
+                    backgroundColor: selectedYear === y ? 'rgba(255, 183, 3, 0.15)' : 'transparent',
+                    borderRadius: 4
+                  }}
+                  onPress={() => {
+                    setSelectedYear(y);
+                    setYearPickerVisible(false);
+                  }}
+                >
+                  <Text style={{ color: selectedYear === y ? '#FFB703' : '#FFF', fontSize: 15, fontWeight: selectedYear === y ? 'bold' : 'normal' }}>{y}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -971,6 +975,11 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
                 <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>Rocket</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastRocket} onChangeText={setPastRocket}/></View>
                 <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>Cash</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastCash} onChangeText={setPastCash}/></View>
               </View>
+
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>🛵 Delivery Sell</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastDeliverySell} onChangeText={setPastDeliverySell}/></View>
+                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>🏷️ Delivery Charge</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastDeliveryCharge} onChangeText={setPastDeliveryCharge}/></View>
+              </View>
               
               <View style={{ marginTop: 10, marginBottom: 5 }}><Text style={{ color: '#FFB703', fontSize: 12, fontWeight: 'bold' }}>খরচসমূহ (Expenses)</Text></View>
               
@@ -985,6 +994,11 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
               </View>
               
               <View style={styles.expenseInputGroup}><Text style={styles.inputLabel}>📦 অন্যান্য খরচ</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastOthers} onChangeText={setPastOthers}/></View>
+
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>🏛️ ইজা (Ijara)</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastIjara} onChangeText={setPastIjara}/></View>
+                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>💵 নেট ক্যাশ (Net Cash)</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastNetCash} onChangeText={setPastNetCash}/></View>
+              </View>
 
               <View style={[styles.expenseInputGroup, { backgroundColor: 'rgba(52, 211, 153, 0.05)', padding: 10, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(52, 211, 153, 0.2)' }]}>
                 <Text style={[styles.inputLabel, { color: '#34D399' }]}>👤 Owner কে জমা (Deposit)</Text>

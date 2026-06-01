@@ -17,6 +17,42 @@ import { exportDepositReportPDF } from '../pdfHelper';
 
 export default function DailySubmitScreen({ dailyExpenses, completedOrders = [], submissionHistory = [], onUpdateExpenses, isDailySubmitted, userRole, onBack, onSubmit }) {
   const [depositAmount, setDepositAmount] = useState('0');
+  const businessDateObj = new Date(Date.now() - 3600000);
+  const [selectedMonth, setSelectedMonth] = useState(businessDateObj.getMonth());
+  const [selectedYear, setSelectedYear] = useState(businessDateObj.getFullYear());
+  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const yearsList = [2024, 2025, 2026, 2027, 2028, 2029, 2030];
+  const activeFilter = `${monthNames[selectedMonth]} ${selectedYear}`;
+  
+  const [monthPickerVisible, setMonthPickerVisible] = useState(false);
+  const [yearPickerVisible, setYearPickerVisible] = useState(false);
+
+  // Helper to get Month Year from date string
+  const getMonthName = (dateStr) => {
+    if (!dateStr) return '';
+    const str = String(dateStr).trim();
+    
+    // Handle YYYY-MM-DD
+    if (str.includes('-')) {
+      const parts = str.split('-');
+      if (parts.length >= 2 && parts[0].length === 4) {
+        const year = parts[0];
+        const monthInt = parseInt(parts[1], 10);
+        const monthNamesList = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+        if (monthInt >= 1 && monthInt <= 12) return `${monthNamesList[monthInt - 1]} ${year}`;
+      }
+    }
+    
+    // Handle DD MMM YYYY or similar
+    const parts = str.split(' ');
+    if (parts.length === 3) {
+      // If middle part is month name
+      return `${parts[1]} ${parts[2]}`;
+    }
+    return '';
+  };
+
+  const filteredHistory = submissionHistory.filter(item => getMonthName(item.date) === activeFilter);
 
   // Load from dailyExpenses props
   const [duduMiah, setDuduMiah] = useState(dailyExpenses.duduMiah.toString());
@@ -123,10 +159,20 @@ export default function DailySubmitScreen({ dailyExpenses, completedOrders = [],
 
       const summary = {
         date: currentDateText,
+        bizDate: todayStr,
         sell: totalSell,
         expense: totalExpenses,
         deposit: parseFloat(depositAmount) || 0,
+        net_cash: netCash,
+        notes: othersNote,
         breakdown: {
+          cash: cashSell,
+          bkash: bkashSell,
+          nagad: nagadSell,
+          rocket: rocketSell,
+          delivery_sell: deliverySell,
+          delivery_charge: deliveryChargeTotal,
+          ijara: dailyExpenses.ijara,
           dudu: numDudu,
           akash: numAkash,
           burger: numBurger,
@@ -446,132 +492,213 @@ export default function DailySubmitScreen({ dailyExpenses, completedOrders = [],
                   <Text style={[styles.modalIconEmoji, { fontSize: 18 }]}>📊</Text>
                 </View>
                 <View>
-                  <Text style={[styles.modalTitle, { textAlign: 'left', marginBottom: 2 }]}>মাসিক জমা রিপোর্ট</Text>
-                  <Text style={[styles.modalSubtitle, { marginBottom: 0 }]}>রংধনু ক্যাফে এন্ড রেস্টুরেন্ট</Text>
+                <Text style={[styles.modalTitle, { textAlign: 'left', marginBottom: 2 }]}>মাসিক জমা রিপোর্ট</Text>
+                <Text style={[styles.modalSubtitle, { marginBottom: 0 }]}>রংধনু ক্যাফে এন্ড রেস্টুরেন্ট</Text>
                 </View>
-              </View>
-              <TouchableOpacity onPress={() => setHistoryModalVisible(false)} style={styles.closeCircle}>
+                </View>
+                <TouchableOpacity onPress={() => setHistoryModalVisible(false)} style={styles.closeCircle}>
                 <Text style={styles.closeCircleText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.sheetContainer}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={true}>
-                <View>
-                  {/* Header Row */}
-                  <View style={styles.sheetHeader}>
-                    <Text style={[styles.sheetHeaderText, { width: 100, textAlign: 'left' }]}>তারিখ</Text>
-                    <Text style={[styles.sheetHeaderText, { width: 80 }]}>বিক্রয়</Text>
-                    <Text style={[styles.sheetHeaderText, { width: 70 }]}>🛍️ দুদু</Text>
-                    <Text style={[styles.sheetHeaderText, { width: 70 }]}>🐔 আকাশ</Text>
-                    <Text style={[styles.sheetHeaderText, { width: 70 }]}>🍔 বার্গার</Text>
-                    <Text style={[styles.sheetHeaderText, { width: 70 }]}>🛒 বাজার</Text>
-                    <Text style={[styles.sheetHeaderText, { width: 70 }]}>📦 অন্য</Text>
-                    <Text style={[styles.sheetHeaderText, { width: 80 }]}>মোট খরচ</Text>
-                    <Text style={[styles.sheetHeaderText, { width: 80 }]}>জমা</Text>
-                  </View>
-
-                  <ScrollView style={styles.sheetBody}>
-                    {submissionHistory.length === 0 ? (
-                      <Text style={[styles.emptySheetText, { width: 690 }]}>কোনো জমা ইতিহাস পাওয়া যায়নি।</Text>
-                    ) : (
-                      submissionHistory.map((item, index) => (
-                        <View key={index} style={[styles.sheetRow, index % 2 === 1 && styles.sheetRowAlt]}>
-                          <Text style={[styles.sheetCell, { width: 100, textAlign: 'left' }]}>{formatDisplayDate(item.date)}</Text>
-                          <Text style={[styles.sheetCell, { width: 80, fontWeight: 'bold' }]}>৳{item.sell.toLocaleString()}</Text>
-                          <Text style={[styles.sheetCell, { width: 70 }]}>৳{item.breakdown?.dudu || 0}</Text>
-                          <Text style={[styles.sheetCell, { width: 70 }]}>৳{item.breakdown?.akash || 0}</Text>
-                          <Text style={[styles.sheetCell, { width: 70 }]}>৳{item.breakdown?.burger || 0}</Text>
-                          <Text style={[styles.sheetCell, { width: 70 }]}>৳{item.breakdown?.bazar || 0}</Text>
-                          <Text style={[styles.sheetCell, { width: 70 }]}>৳{item.breakdown?.others || 0}</Text>
-                          <Text style={[styles.sheetCell, { width: 80, color: '#EF4444' }]}>৳{item.expense.toLocaleString()}</Text>
-                          <Text style={[styles.sheetCell, { width: 80, color: '#34D399', fontWeight: 'bold' }]}>৳{item.deposit.toLocaleString()}</Text>
-                        </View>
-                      ))
-                    )}
-                    
-                    {/* Monthly Totals Row */}
-                    {submissionHistory.length > 0 && (
-                      <View style={styles.sheetFooter}>
-                        <Text style={[styles.sheetFooterText, { width: 100, textAlign: 'left' }]}>মোট (Total)</Text>
-                        <Text style={[styles.sheetFooterText, { width: 80 }]}>
-                          ৳{submissionHistory.reduce((sum, i) => sum + i.sell, 0).toLocaleString()}
-                        </Text>
-                        <Text style={[styles.sheetFooterText, { width: 70 }]}>
-                          ৳{submissionHistory.reduce((sum, i) => sum + (i.breakdown?.dudu || 0), 0).toLocaleString()}
-                        </Text>
-                        <Text style={[styles.sheetFooterText, { width: 70 }]}>
-                          ৳{submissionHistory.reduce((sum, i) => sum + (i.breakdown?.akash || 0), 0).toLocaleString()}
-                        </Text>
-                        <Text style={[styles.sheetFooterText, { width: 70 }]}>
-                          ৳{submissionHistory.reduce((sum, i) => sum + (i.breakdown?.burger || 0), 0).toLocaleString()}
-                        </Text>
-                        <Text style={[styles.sheetFooterText, { width: 70 }]}>
-                          ৳{submissionHistory.reduce((sum, i) => sum + (i.breakdown?.bazar || 0), 0).toLocaleString()}
-                        </Text>
-                        <Text style={[styles.sheetFooterText, { width: 70 }]}>
-                          ৳{submissionHistory.reduce((sum, i) => sum + (i.breakdown?.others || 0), 0).toLocaleString()}
-                        </Text>
-                        <Text style={[styles.sheetFooterText, { width: 80 }]}>
-                          ৳{submissionHistory.reduce((sum, i) => sum + i.expense, 0).toLocaleString()}
-                        </Text>
-                        <Text style={[styles.sheetFooterText, { width: 80, color: '#34D399' }]}>
-                          ৳{submissionHistory.reduce((sum, i) => sum + i.deposit, 0).toLocaleString()}
-                        </Text>
-                      </View>
-                    )}
-                  </ScrollView>
+                </TouchableOpacity>
                 </View>
-              </ScrollView>
-            </View>
 
-            {/* Expense Breakdown Summary Section */}
-            {submissionHistory.length > 0 && (
-              <View style={styles.breakdownSummaryCard}>
+                {/* Month & Year Selection */}
+                <View style={{ flexDirection: 'row', gap: 8, width: '100%', marginBottom: 12 }}>
+                  <TouchableOpacity 
+                    style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1E1E1E', padding: 10, borderRadius: 6, borderWidth: 1, borderColor: '#333' }} 
+                    onPress={() => setMonthPickerVisible(true)}
+                  >
+                    <Text style={{ color: '#FFF', fontSize: 13, fontWeight: 'bold' }}>{monthNames[selectedMonth]}</Text>
+                    <Text style={{ color: '#FFB703', fontSize: 10 }}>মাস ▼</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    style={{ flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1E1E1E', padding: 10, borderRadius: 6, borderWidth: 1, borderColor: '#333' }} 
+                    onPress={() => setYearPickerVisible(true)}
+                  >
+                    <Text style={{ color: '#FFF', fontSize: 13, fontWeight: 'bold' }}>{selectedYear}</Text>
+                    <Text style={{ color: '#FFB703', fontSize: 10 }}>বছর ▼</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.sheetContainer}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={true}>
+                <View>
+                {/* Header Row */}
+                <View style={styles.sheetHeader}>
+                  <Text style={[styles.sheetHeaderText, { width: 100, textAlign: 'left' }]}>তারিখ</Text>
+                  <Text style={[styles.sheetHeaderText, { width: 80 }]}>মোট বিক্রয়</Text>
+                  <Text style={[styles.sheetHeaderText, { width: 70 }]}>bKash</Text>
+                  <Text style={[styles.sheetHeaderText, { width: 70 }]}>Nagad</Text>
+                  <Text style={[styles.sheetHeaderText, { width: 70 }]}>Cash</Text>
+                  <Text style={[styles.sheetHeaderText, { width: 70 }]}>🏛️ ইজা</Text>
+                  <Text style={[styles.sheetHeaderText, { width: 80 }]}>মোট খরচ</Text>
+                  <Text style={[styles.sheetHeaderText, { width: 80 }]}>জমা</Text>
+                </View>
+
+                <ScrollView style={styles.sheetBody}>
+                  {filteredHistory.length === 0 ? (
+                    <Text style={[styles.emptySheetText, { width: 1100 }]}>কোনো জমা ইতিহাস পাওয়া যায়নি।</Text>
+                  ) : (
+                    filteredHistory.map((item, index) => (
+                      <View key={index} style={[styles.sheetRow, index % 2 === 1 && styles.sheetRowAlt]}>
+                        <Text style={[styles.sheetCell, { width: 100, textAlign: 'left' }]}>{formatDisplayDate(item.date)}</Text>
+                        <Text style={[styles.sheetCell, { width: 80, fontWeight: 'bold' }]}>৳{item.sell.toLocaleString()}</Text>
+                        <Text style={[styles.sheetCell, { width: 70 }]}>৳{item.breakdown?.bkash || 0}</Text>
+                        <Text style={[styles.sheetCell, { width: 70 }]}>৳{item.breakdown?.nagad || 0}</Text>
+                        <Text style={[styles.sheetCell, { width: 70 }]}>৳{item.breakdown?.cash || 0}</Text>
+                        <Text style={[styles.sheetCell, { width: 70 }]}>৳{item.breakdown?.ijara || 0}</Text>
+                        <Text style={[styles.sheetCell, { width: 80, color: '#EF4444' }]}>৳{item.expense.toLocaleString()}</Text>
+                        <Text style={[styles.sheetCell, { width: 80, color: '#34D399', fontWeight: 'bold' }]}>৳{item.deposit.toLocaleString()}</Text>
+                      </View>
+                    ))
+                  )}
+
+                  {/* Monthly Totals Row */}
+                  {filteredHistory.length > 0 && (
+                    <View style={styles.sheetFooter}>
+                      <Text style={[styles.sheetFooterText, { width: 100, textAlign: 'left' }]}>মোট (Total)</Text>
+                      <Text style={[styles.sheetFooterText, { width: 80 }]}>
+                        ৳{filteredHistory.reduce((sum, i) => sum + i.sell, 0).toLocaleString()}
+                      </Text>
+                      <Text style={[styles.sheetFooterText, { width: 70 }]}>
+                        ৳{filteredHistory.reduce((sum, i) => sum + (i.breakdown?.bkash || 0), 0).toLocaleString()}
+                      </Text>
+                      <Text style={[styles.sheetFooterText, { width: 70 }]}>
+                        ৳{filteredHistory.reduce((sum, i) => sum + (i.breakdown?.nagad || 0), 0).toLocaleString()}
+                      </Text>
+                      <Text style={[styles.sheetFooterText, { width: 70 }]}>
+                        ৳{filteredHistory.reduce((sum, i) => sum + (i.breakdown?.cash || 0), 0).toLocaleString()}
+                      </Text>
+                      <Text style={[styles.sheetFooterText, { width: 70 }]}>
+                        ৳{filteredHistory.reduce((sum, i) => sum + (i.breakdown?.ijara || 0), 0).toLocaleString()}
+                      </Text>
+                      <Text style={[styles.sheetFooterText, { width: 80 }]}>
+                        ৳{filteredHistory.reduce((sum, i) => sum + i.expense, 0).toLocaleString()}
+                      </Text>
+                      <Text style={[styles.sheetFooterText, { width: 80, color: '#34D399' }]}>
+                        ৳{filteredHistory.reduce((sum, i) => sum + i.deposit, 0).toLocaleString()}
+                      </Text>
+                    </View>
+                  )}
+                </ScrollView>
+
+                </View>
+                </ScrollView>
+                </View>
+
+                {/* Expense Breakdown Summary Section */}
+                {filteredHistory.length > 0 && (
+                <View style={styles.breakdownSummaryCard}>
                 <Text style={styles.breakdownTitle}>📉 মাসিক খরচের বিবরণ (Breakdown)</Text>
                 <View style={styles.breakdownGrid}>
-                  <View style={styles.breakdownItem}>
-                    <Text style={styles.breakdownLabel}>🛍️ দুদু মিয়া:</Text>
-                    <Text style={styles.breakdownValue}>৳{submissionHistory.reduce((sum, i) => sum + (i.breakdown?.dudu || 0), 0).toLocaleString()}</Text>
-                  </View>
-                  <View style={styles.breakdownItem}>
-                    <Text style={styles.breakdownLabel}>🐔 আকাশ মুরগী:</Text>
-                    <Text style={styles.breakdownValue}>৳{submissionHistory.reduce((sum, i) => sum + (i.breakdown?.akash || 0), 0).toLocaleString()}</Text>
-                  </View>
-                  <View style={styles.breakdownItem}>
-                    <Text style={styles.breakdownLabel}>🍔 বার্গার বান:</Text>
-                    <Text style={styles.breakdownValue}>৳{submissionHistory.reduce((sum, i) => sum + (i.breakdown?.burger || 0), 0).toLocaleString()}</Text>
-                  </View>
-                  <View style={styles.breakdownItem}>
-                    <Text style={styles.breakdownLabel}>🛒 বাজার খরচ:</Text>
-                    <Text style={styles.breakdownValue}>৳{submissionHistory.reduce((sum, i) => sum + (i.breakdown?.bazar || 0), 0).toLocaleString()}</Text>
-                  </View>
-                  <View style={styles.breakdownItem}>
-                    <Text style={styles.breakdownLabel}>📦 অন্যান্য:</Text>
-                    <Text style={styles.breakdownValue}>৳{submissionHistory.reduce((sum, i) => sum + (i.breakdown?.others || 0), 0).toLocaleString()}</Text>
-                  </View>
+                <View style={styles.breakdownItem}>
+                  <Text style={styles.breakdownLabel}>🛍️ দুদু মিয়া:</Text>
+                  <Text style={styles.breakdownValue}>৳{filteredHistory.reduce((sum, i) => sum + (i.breakdown?.dudu || 0), 0).toLocaleString()}</Text>
                 </View>
-              </View>
-            )}
+                <View style={styles.breakdownItem}>
+                  <Text style={styles.breakdownLabel}>🐔 আকাশ মুরগী:</Text>
+                  <Text style={styles.breakdownValue}>৳{filteredHistory.reduce((sum, i) => sum + (i.breakdown?.akash || 0), 0).toLocaleString()}</Text>
+                </View>
+                <View style={styles.breakdownItem}>
+                  <Text style={styles.breakdownLabel}>🍔 বার্গার বান:</Text>
+                  <Text style={styles.breakdownValue}>৳{filteredHistory.reduce((sum, i) => sum + (i.breakdown?.burger || 0), 0).toLocaleString()}</Text>
+                </View>
+                <View style={styles.breakdownItem}>
+                  <Text style={styles.breakdownLabel}>🛒 বাজার খরচ:</Text>
+                  <Text style={styles.breakdownValue}>৳{filteredHistory.reduce((sum, i) => sum + (i.breakdown?.bazar || 0), 0).toLocaleString()}</Text>
+                </View>
+                <View style={styles.breakdownItem}>
+                  <Text style={styles.breakdownLabel}>📦 অন্যান্য:</Text>
+                  <Text style={styles.breakdownValue}>৳{filteredHistory.reduce((sum, i) => sum + (i.breakdown?.others || 0), 0).toLocaleString()}</Text>
+                </View>
+                </View>
+                </View>
+                )}
 
-            <View style={styles.modalFooterActions}>
-              <TouchableOpacity 
+                <View style={styles.modalFooterActions}>
+                <TouchableOpacity 
                 style={styles.exportBtn} 
-                onPress={() => exportDepositReportPDF(submissionHistory, "মাসিক জমা রিপোর্ট")}
-              >
+                onPress={() => exportDepositReportPDF(filteredHistory, activeFilter)}
+                >
                 <Text style={styles.exportBtnIcon}>📄</Text>
                 <Text style={styles.exportBtnText}>PDF ডাউনলোড</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
+                </TouchableOpacity>
+
+                <TouchableOpacity 
                 style={styles.historyCloseBtn} 
                 onPress={() => setHistoryModalVisible(false)}
-              >
+                >
                 <Text style={styles.historyCloseBtnText}>বন্ধ করুন</Text>
-              </TouchableOpacity>
-            </View>
+                </TouchableOpacity>
+                </View>
+
           </View>
         </View>
+      </Modal>
+
+      {/* Month Picker Modal */}
+      <Modal animationType="fade" transparent={true} visible={monthPickerVisible} onRequestClose={() => setMonthPickerVisible(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setMonthPickerVisible(false)}>
+          <View style={[styles.modalContent, { width: '85%', maxHeight: '60%' }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', alignItems: 'center', marginBottom: 15 }}>
+              <Text style={[styles.modalTitle, { marginBottom: 0, fontSize: 16 }]}>মাস সিলেক্ট করুন</Text>
+              <TouchableOpacity onPress={() => setMonthPickerVisible(false)} style={styles.closeCircle}><Text style={styles.closeCircleText}>✕</Text></TouchableOpacity>
+            </View>
+            <ScrollView style={{ width: '100%' }} showsVerticalScrollIndicator={false}>
+              {monthNames.map((m, idx) => (
+                <TouchableOpacity 
+                  key={m} 
+                  style={{ 
+                    paddingVertical: 14, 
+                    borderBottomWidth: 1, 
+                    borderColor: '#262626', 
+                    alignItems: 'center',
+                    backgroundColor: selectedMonth === idx ? 'rgba(255, 183, 3, 0.15)' : 'transparent',
+                    borderRadius: 4
+                  }}
+                  onPress={() => {
+                    setSelectedMonth(idx);
+                    setMonthPickerVisible(false);
+                  }}
+                >
+                  <Text style={{ color: selectedMonth === idx ? '#FFB703' : '#FFF', fontSize: 15, fontWeight: selectedMonth === idx ? 'bold' : 'normal' }}>{m}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Year Picker Modal */}
+      <Modal animationType="fade" transparent={true} visible={yearPickerVisible} onRequestClose={() => setYearPickerVisible(false)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setYearPickerVisible(false)}>
+          <View style={[styles.modalContent, { width: '85%', maxHeight: '60%' }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', alignItems: 'center', marginBottom: 15 }}>
+              <Text style={[styles.modalTitle, { marginBottom: 0, fontSize: 16 }]}>বছর সিলেক্ট করুন</Text>
+              <TouchableOpacity onPress={() => setYearPickerVisible(false)} style={styles.closeCircle}><Text style={styles.closeCircleText}>✕</Text></TouchableOpacity>
+            </View>
+            <ScrollView style={{ width: '100%' }} showsVerticalScrollIndicator={false}>
+              {yearsList.map((y) => (
+                <TouchableOpacity 
+                  key={y} 
+                  style={{ 
+                    paddingVertical: 14, 
+                    borderBottomWidth: 1, 
+                    borderColor: '#262626', 
+                    alignItems: 'center',
+                    backgroundColor: selectedYear === y ? 'rgba(255, 183, 3, 0.15)' : 'transparent',
+                    borderRadius: 4
+                  }}
+                  onPress={() => {
+                    setSelectedYear(y);
+                    setYearPickerVisible(false);
+                  }}
+                >
+                  <Text style={{ color: selectedYear === y ? '#FFB703' : '#FFF', fontSize: 15, fontWeight: selectedYear === y ? 'bold' : 'normal' }}>{y}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
       </Modal>
     </SafeAreaView>
   );
