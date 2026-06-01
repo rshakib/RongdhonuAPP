@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Alert, TouchableOpacity, Modal, ScrollView, Text, Platform, Dimensions, ActivityIndicator, AppState } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import NetInfo from '@react-native-community/netinfo';
 
 const { height } = Dimensions.get('window');
 const AUTO_PULL_HANG_MS = 25000;
@@ -417,6 +418,44 @@ export default function App() {
       subscription.remove();
       markSyncTimerInactive('foreground-recovery-pull');
     };
+  }, [isLoggedIn]);
+
+  // --- NETWORK RECOVERY SYNC ---
+  // Instantly process queue and pull delta sync when internet returns
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    let wasOffline = false;
+    
+    const unsubscribe = NetInfo.addEventListener(async state => {
+      // isInternetReachable can be null initially, we treat explicitly false as offline
+      const isOnline = state.isConnected && state.isInternetReachable !== false;
+      
+      if (!isOnline) {
+        wasOffline = true;
+        return;
+      }
+
+      if (wasOffline && isOnline) {
+        wasOffline = false; // Reset to prevent duplicate loops
+        console.log("[Network Recovery] online detected");
+        
+        console.log("[Network Recovery] push started");
+        await processSyncQueue();
+        console.log("[Network Recovery] push finished");
+        
+        console.log("[Network Recovery] pull started");
+        await syncHighFrequencyCollections();
+        await syncLowFrequencyCollections();
+        await syncTablesOnly();
+        await syncDeletionsOnly();
+        console.log("[Network Recovery] pull finished");
+        
+        refreshData();
+      }
+    });
+
+    return () => unsubscribe();
   }, [isLoggedIn]);
 
   // Pull low-frequency collections when the menu management screens are opened
