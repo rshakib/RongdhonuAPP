@@ -2474,14 +2474,21 @@ export function deleteMenuItem(itemName, category = null) {
 
 export function getTables() {
   try {
-    const rows = db.getAllSync("SELECT * FROM restaurant_tables ORDER BY CAST(id AS INTEGER) ASC");
-    return rows.map(r => ({
+    const rows = db.getAllSync("SELECT * FROM restaurant_tables");
+    const mapped = rows.map(r => ({
       id: r.id,
       name: r.table_name,
       status: r.status,
       items: JSON.parse(r.items || '[]'),
       startTime: r.startTime || ''
     }));
+
+    // Stable Numeric Sort: Extracts digits from IDs like 'table_1'
+    return mapped.sort((a, b) => {
+      const numA = parseInt(String(a.id).replace(/\D/g, '')) || 0;
+      const numB = parseInt(String(b.id).replace(/\D/g, '')) || 0;
+      return numA - numB;
+    });
   } catch (err) {
     console.error(err);
     return [];
