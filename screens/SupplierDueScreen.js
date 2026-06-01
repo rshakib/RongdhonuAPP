@@ -31,8 +31,7 @@ export default function SupplierDueScreen({ userRole, userDisplayName, onBack })
     const initInputs = {};
     data.forEach(item => {
       initInputs[item.id] = {
-        previousDue: item.previous_due.toString(),
-        purchaseAmount: item.today_purchase === 0 ? '' : item.today_purchase.toString(),
+        purchaseAmount: '',
         note: item.note || ''
       };
     });
@@ -52,14 +51,14 @@ export default function SupplierDueScreen({ userRole, userDisplayName, onBack })
 
   const handleSave = (supplier) => {
     const id = supplier.id;
-    const previousDue = parseFloat(inputs[id].previousDue) || 0;
+    const currentDueBeforeSave = parseFloat(supplier.current_due) || 0;
     const purchaseAmount = parseFloat(inputs[id].purchaseAmount) || 0;
     const note = inputs[id].note.trim();
 
-    const success = saveSupplierDue(id, previousDue, purchaseAmount, note, userDisplayName);
+    const success = saveSupplierDue(id, currentDueBeforeSave, purchaseAmount, note, userDisplayName);
     
     if (success) {
-      Alert.alert('সফল', `${supplier.supplier_name} এর বাকির হিসাব সংরক্ষণ করা হয়েছে।`);
+      Alert.alert('সফল', `${supplier.supplier_name} এর বাকির হিসাব হালনাগাদ করা হয়েছে।`);
       loadData();
     } else {
       Alert.alert('ত্রুটি', 'ডাটা সংরক্ষণ করতে সমস্যা হয়েছে।');
@@ -100,10 +99,9 @@ export default function SupplierDueScreen({ userRole, userDisplayName, onBack })
     );
   };
 
-  const calculateCurrentDue = (supplierId, paymentAmount) => {
-    const prev = parseFloat(inputs[supplierId]?.previousDue) || 0;
+  const calculatePreviewDue = (supplierId, currentDue, paymentAmount) => {
     const pur = parseFloat(inputs[supplierId]?.purchaseAmount) || 0;
-    return prev + pur - paymentAmount;
+    return currentDue + pur - paymentAmount;
   };
 
   if (loading) {
@@ -116,7 +114,7 @@ export default function SupplierDueScreen({ userRole, userDisplayName, onBack })
 
   // Calculate Total Due
   const totalDue = dueData.reduce((sum, supplier) => {
-    return sum + calculateCurrentDue(supplier.id, supplier.payment_amount);
+    return sum + (supplier.current_due || 0);
   }, 0);
 
   return (
@@ -150,15 +148,10 @@ export default function SupplierDueScreen({ userRole, userDisplayName, onBack })
               </View>
 
               <View style={styles.cardBody}>
-                {/* Previous Due */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>পূর্বের বকেয়া (Previous Due)</Text>
-                  <TextInput
-                    style={styles.input}
-                    keyboardType="numeric"
-                    value={inputs[supplier.id]?.previousDue}
-                    onChangeText={(val) => handleInputChange(supplier.id, 'previousDue', val)}
-                  />
+                {/* Current Due (Read Only) */}
+                <View style={styles.resultBox}>
+                  <Text style={styles.resultLabel}>বর্তমান বকেয়া (Current Due)</Text>
+                  <Text style={styles.resultValue}>৳ {(supplier.current_due || 0).toLocaleString()}</Text>
                 </View>
 
                 {/* Today's Purchase */}
@@ -174,9 +167,6 @@ export default function SupplierDueScreen({ userRole, userDisplayName, onBack })
                   />
                 </View>
 
-                {/* Divider Math */}
-                <View style={styles.mathDivider} />
-
                 {/* Today's Payment (Auto from Expense) */}
                 <View style={styles.inputGroup}>
                   <Text style={styles.labelAuto}>আজকের জমা (Payment - Auto)</Text>
@@ -185,14 +175,8 @@ export default function SupplierDueScreen({ userRole, userDisplayName, onBack })
                   </View>
                 </View>
 
-                {/* Current Due Result */}
-                <View style={styles.resultBox}>
-                  <Text style={styles.resultLabel}>বর্তমান বকেয়া (Current Due)</Text>
-                  <Text style={styles.resultValue}>৳ {calculateCurrentDue(supplier.id, supplier.payment_amount).toLocaleString()}</Text>
-                </View>
-
                 {/* Note */}
-                <View style={[styles.inputGroup, { marginTop: 15 }]}>
+                <View style={[styles.inputGroup, { marginTop: 5 }]}>
                   <Text style={styles.label}>নোট (ঐচ্ছিক)</Text>
                   <TextInput
                     style={styles.input}
@@ -204,7 +188,7 @@ export default function SupplierDueScreen({ userRole, userDisplayName, onBack })
                 </View>
 
                 <TouchableOpacity style={styles.saveBtn} onPress={() => handleSave(supplier)}>
-                  <Text style={styles.saveBtnText}>💾 সেভ করুন</Text>
+                  <Text style={styles.saveBtnText}>💾 সেভ করুন (New Due: ৳{calculatePreviewDue(supplier.id, supplier.current_due, supplier.payment_amount).toLocaleString()})</Text>
                 </TouchableOpacity>
               </View>
             </View>

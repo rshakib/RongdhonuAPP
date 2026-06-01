@@ -451,8 +451,7 @@ const TABLE_SCHEMAS = {
     CREATE TABLE IF NOT EXISTS supplier_due (
       id TEXT PRIMARY KEY,
       supplier_name TEXT,
-      previous_due REAL DEFAULT 0,
-      today_purchase REAL DEFAULT 0,
+      current_due REAL DEFAULT 0,
       note TEXT,
       created_at TEXT,
       updated_at TEXT,
@@ -688,19 +687,26 @@ export function migrateDailySubmitUnified() {
 
 export function migrateSupplierDue() {
   try {
+    const tableInfo = db.getAllSync("PRAGMA table_info(supplier_due)");
+    const hasPreviousDue = tableInfo.some(c => c.name === 'previous_due');
+    if (hasPreviousDue) {
+      db.execSync("DROP TABLE IF EXISTS supplier_due");
+      db.execSync(TABLE_SCHEMAS.supplier_due);
+    }
+
     const now = new Date().toISOString();
     const dudu = db.getFirstSync("SELECT id FROM supplier_due WHERE id = 'dudu_store'");
     if (!dudu) {
       db.runSync(
-        "INSERT INTO supplier_due (id, supplier_name, previous_due, today_purchase, note, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, ?, ?, 0)",
-        ['dudu_store', '🥛 দুদু স্টোর', 4000, 0, '', now, now]
+        "INSERT INTO supplier_due (id, supplier_name, current_due, note, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, ?, 0)",
+        ['dudu_store', '🥛 দুদু স্টোর', 4000, '', now, now]
       );
     }
     const akash = db.getFirstSync("SELECT id FROM supplier_due WHERE id = 'akash_murgi'");
     if (!akash) {
       db.runSync(
-        "INSERT INTO supplier_due (id, supplier_name, previous_due, today_purchase, note, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, ?, ?, 0)",
-        ['akash_murgi', '🐔 আকাশ মুরগি', 5000, 0, '', now, now]
+        "INSERT INTO supplier_due (id, supplier_name, current_due, note, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, ?, 0)",
+        ['akash_murgi', '🐔 আকাশ মুরগি', 5000, '', now, now]
       );
     }
   } catch (err) {
@@ -2820,11 +2826,9 @@ export function getSupplierDueData() {
     const rows = db.getAllSync("SELECT * FROM supplier_due");
     return rows.map(r => {
       const payment = payments[r.id] || 0;
-      const currentDue = (r.previous_due || 0) + (r.today_purchase || 0) - payment;
       return {
         ...r,
-        payment_amount: payment,
-        current_due: currentDue
+        payment_amount: payment
       };
     });
   } catch (err) {
@@ -2833,21 +2837,21 @@ export function getSupplierDueData() {
   }
 }
 
-export function saveSupplierDue(supplierId, previousDue, todayPurchase, note, userDisplayName) {
+export function saveSupplierDue(supplierId, currentDueBeforeSave, todayPurchase, note, userDisplayName) {
   try {
     const todayStr = getBusinessDate();
     const now = new Date().toISOString();
     const expenses = getDailyExpenses();
     const payment = supplierId === 'dudu_store' ? expenses.duduMiah : (supplierId === 'akash_murgi' ? expenses.akashChicken : 0);
-    const currentDue = previousDue + todayPurchase - payment;
+    const newCurrentDue = currentDueBeforeSave + todayPurchase - payment;
 
     db.runSync(
-      "UPDATE supplier_due SET previous_due = ?, today_purchase = ?, note = ?, updated_at = ?, is_synced = 0 WHERE id = ?",
-      [previousDue, todayPurchase, note, now, supplierId]
+      "UPDATE supplier_due SET current_due = ?, note = ?, updated_at = ?, is_synced = 0 WHERE id = ?",
+      [newCurrentDue, note, now, supplierId]
     );
     enqueueSync("supplier_due", supplierId, "UPDATE");
 
-    const historyId = `${supplierId}_${todayStr}`;
+    const historyId = `${supplierId}_${Date.now()}`;
     const supplierRow = db.getFirstSync("SELECT supplier_name FROM supplier_due WHERE id = ?", [supplierId]);
     const supplierName = supplierRow ? supplierRow.supplier_name : supplierId;
 
@@ -2856,7 +2860,7 @@ export function saveSupplierDue(supplierId, previousDue, todayPurchase, note, us
         id, date, supplier_id, supplier_name, previous_due, purchase_amount, payment_amount, current_due, note, created_by, created_at, updated_at, is_synced
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
     `, [
-      historyId, todayStr, supplierId, supplierName, previousDue, todayPurchase, payment, currentDue, note, userDisplayName || 'System', now, now
+      historyId, todayStr, supplierId, supplierName, currentDueBeforeSave, todayPurchase, payment, newCurrentDue, note, userDisplayName || 'System', now, now
     ]);
     enqueueSync("supplier_due_history", historyId, "INSERT");
 
