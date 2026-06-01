@@ -22,8 +22,5 @@
     "build:apk": "eas build -p android --profile preview",
     "build:previe": "eas build -p android --profile previe"
   },
-  "private": true,
-  "devDependencies": {
-    "eas-cli": "^20.0.0"
-  }
+  "private": true
 }
