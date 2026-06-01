@@ -100,6 +100,7 @@ import DailySubmitScreen from './screens/DailySubmitScreen';
 import AddItemScreen from './screens/AddItemScreen';
 import PaymentCheckoutScreen from './screens/PaymentCheckoutScreen';
 import ExpensesScreen from './screens/ExpensesScreen';
+import SupplierDueScreen from './screens/SupplierDueScreen';
 
 
 // Default Restaurant Menu (56 items)
@@ -1090,6 +1091,7 @@ export default function App() {
               onNavigateToExpenses={() => setCurrentScreen('EXPENSES')}
               onNavigateToSubmit={() => setCurrentScreen('DAILY_SUBMIT')}
               onNavigateToEditMenu={() => setCurrentScreen('EDIT_MENU')}
+              onNavigateToSupplierDue={() => setCurrentScreen('SUPPLIER_DUE')}
               submissionHistory={submissionHistory}
               onSavePastAccount={handleSavePastAccount}
               onDeletePastAccount={handleDeletePastAccount}
@@ -1121,6 +1123,7 @@ export default function App() {
               onNavigateToExpenses={() => setCurrentScreen('EXPENSES')}
               onNavigateToSubmit={() => setCurrentScreen('DAILY_SUBMIT')}
               onNavigateToEditMenu={() => setCurrentScreen('EDIT_MENU')}
+              onNavigateToSupplierDue={() => setCurrentScreen('SUPPLIER_DUE')}
               submissionHistory={submissionHistory}
               onSavePastAccount={handleSavePastAccount}
               onDeletePastAccount={handleDeletePastAccount}
@@ -1151,6 +1154,7 @@ export default function App() {
               onDeletePastAccount={handleDeletePastAccount}
               onUpdateTableName={handleUpdateTableName}
               onNavigateToExpenses={() => setCurrentScreen('EXPENSES')}
+              onNavigateToSupplierDue={() => setCurrentScreen('SUPPLIER_DUE')}
               dailyExpenses={dailyExpenses}
               onUpdateExpenses={handleUpdateExpenses}
               isDailySubmitted={isDailySubmitted}
@@ -1313,6 +1317,15 @@ export default function App() {
             onUpdateExpenses={handleUpdateExpenses}
             isDailySubmitted={isDailySubmitted}
             userRole={userRole}
+            onBack={() => setCurrentScreen('DASHBOARD')}
+          />
+        );
+
+      case 'SUPPLIER_DUE':
+        return (
+          <SupplierDueScreen
+            userRole={userRole}
+            userDisplayName={userDisplayName}
             onBack={() => setCurrentScreen('DASHBOARD')}
           />
         );

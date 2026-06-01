@@ -447,6 +447,35 @@ const TABLE_SCHEMAS = {
       is_synced INTEGER DEFAULT 0
     );
   `,
+  supplier_due: `
+    CREATE TABLE IF NOT EXISTS supplier_due (
+      id TEXT PRIMARY KEY,
+      supplier_name TEXT,
+      previous_due REAL DEFAULT 0,
+      today_purchase REAL DEFAULT 0,
+      note TEXT,
+      created_at TEXT,
+      updated_at TEXT,
+      is_synced INTEGER DEFAULT 0
+    );
+  `,
+  supplier_due_history: `
+    CREATE TABLE IF NOT EXISTS supplier_due_history (
+      id TEXT PRIMARY KEY,
+      date TEXT,
+      supplier_id TEXT,
+      supplier_name TEXT,
+      previous_due REAL,
+      purchase_amount REAL,
+      payment_amount REAL,
+      current_due REAL,
+      note TEXT,
+      created_by TEXT,
+      created_at TEXT,
+      updated_at TEXT,
+      is_synced INTEGER DEFAULT 0
+    );
+  `,
   deletions: `
     CREATE TABLE IF NOT EXISTS deletions (
       id TEXT PRIMARY KEY, -- tableName_recordId
@@ -657,6 +686,28 @@ export function migrateDailySubmitUnified() {
   }
 }
 
+export function migrateSupplierDue() {
+  try {
+    const now = new Date().toISOString();
+    const dudu = db.getFirstSync("SELECT id FROM supplier_due WHERE id = 'dudu_store'");
+    if (!dudu) {
+      db.runSync(
+        "INSERT INTO supplier_due (id, supplier_name, previous_due, today_purchase, note, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, ?, ?, 0)",
+        ['dudu_store', '🥛 দুদু স্টোর', 4000, 0, '', now, now]
+      );
+    }
+    const akash = db.getFirstSync("SELECT id FROM supplier_due WHERE id = 'akash_murgi'");
+    if (!akash) {
+      db.runSync(
+        "INSERT INTO supplier_due (id, supplier_name, previous_due, today_purchase, note, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, ?, ?, 0)",
+        ['akash_murgi', '🐔 আকাশ মুরগি', 5000, 0, '', now, now]
+      );
+    }
+  } catch (err) {
+    console.error("[DB Migration] Supplier Due migration failed:", err);
+  }
+}
+
 // ==========================================
 // 1. AUTO INITIALIZATION ENGINE
 // ==========================================
@@ -669,6 +720,7 @@ export function initDatabase(skipSeeding = false) {
     migrateDeliveryCharge();
     migrateSplitPayments();
     migrateDailySubmitUnified();
+    migrateSupplierDue();
 
     // 1. Create tables
     for (const [tableName, sql] of Object.entries(TABLE_SCHEMAS)) {
@@ -1639,7 +1691,7 @@ export async function syncLowFrequencyCollections() {
   let hasChanges = false;
   try {
     // Menu collections removed from periodic polling to optimize Firestore reads.
-    const lowFreq = ['users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 'app_config', 'expenses', 'eja_history', 'daily_submit'];
+    const lowFreq = ['users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 'app_config', 'expenses', 'eja_history', 'daily_submit', 'supplier_due', 'supplier_due_history'];
     hasChanges = await traceSyncOperation('syncLowFrequencyCollections', () => syncCollections(lowFreq));
   } catch (err) {
     recordAutoSyncEvent('syncLowFrequencyCollections', 'failure', err.message);
@@ -1722,7 +1774,8 @@ export async function restoreDatabaseFromCloud() {
   const tables = [
     'users', 'restaurant_tables', 'menu_categories', 'menu_items', 
     'orders', 'order_items', 'payments', 'expenses', 'deliveries', 'eja_history',
-    'daily_summary', 'due_payments', 'off_days', 'app_config', 'daily_submit'
+    'daily_summary', 'due_payments', 'off_days', 'app_config', 'daily_submit',
+    'supplier_due', 'supplier_due_history'
   ];
 
   console.log("[Restore] Starting full database restoration from Firestore...");
@@ -2749,6 +2802,88 @@ export function getDailyExpenses() {
   } catch (err) {
     console.error(err);
     return { duduMiah: 0, akashChicken: 0, burgerBun: 0, bazar: 0, bazarNote: '', others: 0, othersNote: '', ijara: 0 };
+  }
+}
+
+// ==========================================
+// SUPPLIER DUE LEDGER
+// ==========================================
+
+export function getSupplierDueData() {
+  try {
+    const expenses = getDailyExpenses();
+    const payments = {
+      'dudu_store': expenses.duduMiah || 0,
+      'akash_murgi': expenses.akashChicken || 0
+    };
+
+    const rows = db.getAllSync("SELECT * FROM supplier_due");
+    return rows.map(r => {
+      const payment = payments[r.id] || 0;
+      const currentDue = (r.previous_due || 0) + (r.today_purchase || 0) - payment;
+      return {
+        ...r,
+        payment_amount: payment,
+        current_due: currentDue
+      };
+    });
+  } catch (err) {
+    console.error("Failed to get supplier due data:", err);
+    return [];
+  }
+}
+
+export function saveSupplierDue(supplierId, previousDue, todayPurchase, note, userDisplayName) {
+  try {
+    const todayStr = getBusinessDate();
+    const now = new Date().toISOString();
+    const expenses = getDailyExpenses();
+    const payment = supplierId === 'dudu_store' ? expenses.duduMiah : (supplierId === 'akash_murgi' ? expenses.akashChicken : 0);
+    const currentDue = previousDue + todayPurchase - payment;
+
+    db.runSync(
+      "UPDATE supplier_due SET previous_due = ?, today_purchase = ?, note = ?, updated_at = ?, is_synced = 0 WHERE id = ?",
+      [previousDue, todayPurchase, note, now, supplierId]
+    );
+    enqueueSync("supplier_due", supplierId, "UPDATE");
+
+    const historyId = `${supplierId}_${todayStr}`;
+    const supplierRow = db.getFirstSync("SELECT supplier_name FROM supplier_due WHERE id = ?", [supplierId]);
+    const supplierName = supplierRow ? supplierRow.supplier_name : supplierId;
+
+    db.runSync(`
+      INSERT OR REPLACE INTO supplier_due_history (
+        id, date, supplier_id, supplier_name, previous_due, purchase_amount, payment_amount, current_due, note, created_by, created_at, updated_at, is_synced
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+    `, [
+      historyId, todayStr, supplierId, supplierName, previousDue, todayPurchase, payment, currentDue, note, userDisplayName || 'System', now, now
+    ]);
+    enqueueSync("supplier_due_history", historyId, "INSERT");
+
+    return true;
+  } catch (err) {
+    console.error("Save supplier due error:", err);
+    return false;
+  }
+}
+
+export function getSupplierDueHistory(supplierId) {
+  try {
+    return db.getAllSync("SELECT * FROM supplier_due_history WHERE supplier_id = ? ORDER BY date DESC", [supplierId]);
+  } catch (err) {
+    console.error("Get supplier due history error:", err);
+    return [];
+  }
+}
+
+export function deleteSupplierDueHistory(historyId) {
+  try {
+    db.runSync("DELETE FROM supplier_due_history WHERE id = ?", [historyId]);
+    recordDeletion("supplier_due_history", historyId);
+    return true;
+  } catch (err) {
+    console.error("Delete supplier due history error:", err);
+    return false;
   }
 }
 
