@@ -118,11 +118,6 @@ export default function DailySubmitScreen({ dailyExpenses, completedOrders = [],
   const currentDateText = getFormattedDate();
 
   const handleFormSubmit = () => {
-    if (isDailySubmitted && userRole !== 'admin') {
-      Alert.alert("লক করা হিসাব", "আজকের ডেইলি শীট ইতিমধ্যে সফলভাবে সাবমিট করা হয়েছে!");
-      return;
-    }
-
     const maxAllowedDeposit = dailyExpenses.ijara + netCash;
     const enteredDeposit = parseFloat(depositAmount) || 0;
 
@@ -216,23 +211,11 @@ export default function DailySubmitScreen({ dailyExpenses, completedOrders = [],
 
       <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollBody} contentContainerStyle={styles.scrollContent}>
         {/* ... (rest of the view content remains same) */}
-        {/* Lock State Alert Banner */}
-        {isDailySubmitted && (
-          <View style={[styles.lockedBanner, userRole === 'admin' && { backgroundColor: 'rgba(255, 183, 3, 0.15)', borderColor: '#FFB703' }]}>
-            <Text style={[styles.lockedBannerText, userRole === 'admin' && { color: '#FFB703' }]}>
-              {userRole === 'admin' 
-                ? '⚡ আপনি এডমিন হিসেবে দেখছেন। যেকোনো লক করা হিসাব পরিবর্তন বা পুনরায় সাবমিট করতে পারবেন।' 
-                : '🔒 আজকের ডেইলি শীট মালিকের কাছে জমা দেওয়া হয়েছে। সব হিসাব লক করা আছে।'}
-            </Text>
-          </View>
-        )}
-
         {/* Sales Section */}
         <View style={styles.sectionCard}>
           <View style={styles.sectionHeaderRow}>
             <Text style={styles.sectionTitleGreen}>📈 বিক্রয় সমূহ</Text>
           </View>
-
           <View style={styles.row}>
             <Text style={styles.rowLabel}>মোট বিক্রয়</Text>
             <Text style={styles.rowValueHighlight}>৳ {totalSell.toLocaleString()}</Text>
@@ -267,7 +250,7 @@ export default function DailySubmitScreen({ dailyExpenses, completedOrders = [],
         <View style={styles.sectionCard}>
           <View style={styles.sectionHeaderRow}>
             <Text style={styles.sectionTitleRed}>
-              {isDailySubmitted ? '📉 খরচ সমূহ (সংরক্ষিত/লক)' : '📉 খরচ সমূহ'}
+              📉 খরচ সমূহ
             </Text>
           </View>
 

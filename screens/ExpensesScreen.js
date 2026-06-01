@@ -64,11 +64,6 @@ export default function ExpensesScreen({ dailyExpenses, onUpdateExpenses, isDail
   const currentLiveDateTimeText = getFormattedDateTime();
 
   const handleSaveExpenses = () => {
-    if (isDailySubmitted && userRole !== 'admin') {
-      Alert.alert("লক করা হিসাব", "ডেইলি সাবমিট করার পর আর পরিবর্তন করা যাবে না!");
-      return;
-    }
-
     if (onUpdateExpenses) {
       onUpdateExpenses({
         duduMiah: numDudu,
@@ -107,13 +102,6 @@ export default function ExpensesScreen({ dailyExpenses, onUpdateExpenses, isDail
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollBody} contentContainerStyle={styles.scrollContent}>
-        {/* Lock State Alert Banner */}
-        {isDailySubmitted && userRole !== 'admin' && (
-          <View style={styles.lockedBanner}>
-            <Text style={styles.lockedBannerText}>🔒 আজকের ডেইলি শীট সাবমিট করা হয়েছে। খরচ পরিবর্তন লক করা আছে।</Text>
-          </View>
-        )}
-
         {/* Total Cost Summary Card */}
         <View style={styles.totalCard}>
           <Text style={styles.totalLabel}>আজকের মোট খরচ (Auto)</Text>

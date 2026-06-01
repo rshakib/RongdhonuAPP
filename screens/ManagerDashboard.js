@@ -147,10 +147,6 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
   };
 
   const handleSaveIjara = () => {
-    if (isDailySubmitted) {
-      Alert.alert("লক করা হিসাব", "ডেইলি সাবমিট করার পর আর পরিবর্তন করা যাবে না!");
-      return;
-    }
     if (dailyExpenses.ijara > 0) {
       Alert.alert("ইতিমধ্যে যোগ করা হয়েছে", "ইজা শুধুমাত্র একবার যোগ করা যাবে এবং এটি আর পরিবর্তন বা এডিট করা সম্ভব নয়!");
       return;

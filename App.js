@@ -66,6 +66,7 @@ import {
   getBusinessDate,
   isTodaySubmitted,
   submitDailySheet,
+  checkAndApplyIjaraRollover,
   processSyncQueue,
   testFirestoreConnection,
   getLastSyncError,
@@ -293,12 +294,14 @@ export default function App() {
 
         // Check if there are any unsubmitted past days to Auto Submit right now
         const didAutoSubmit = performAutoSubmitChecks();
-        if (didAutoSubmit) refreshData();
+        const didRollover = checkAndApplyIjaraRollover();
+        if (didAutoSubmit || didRollover) refreshData();
 
-        // Set interval to check for 11:59 PM auto-submits every minute
+        // Set interval to check for 11:59 PM auto-submits and midnight rollovers every minute
         setInterval(() => {
           const submitted = performAutoSubmitChecks();
-          if (submitted) refreshData();
+          const rollover = checkAndApplyIjaraRollover();
+          if (submitted || rollover) refreshData();
         }, 60000);
 
         // Pull low frequency collections (excluding menu) in the background asynchronously on startup

@@ -1986,7 +1986,7 @@ export function calculateAndSaveDailySummary(dateStr) {
     const specialDayNote = BD_HOLIDAYS[mmDd] || (isFriday ? "Friday Weekend" : "");
 
     const ordersToday = db.getAllSync(
-      "SELECT * FROM orders WHERE date(created_at, 'localtime', '-1 hour') = ?",
+      "SELECT * FROM orders WHERE date(created_at, 'localtime') = ?",
       [todayStr]
     );
     const totalOrders = ordersToday.length;
@@ -2018,7 +2018,7 @@ export function calculateAndSaveDailySummary(dateStr) {
     }
 
     const expensesToday = db.getAllSync(
-      "SELECT * FROM expenses WHERE date(created_at, 'localtime', '-1 hour') = ?",
+      "SELECT * FROM expenses WHERE date(created_at, 'localtime') = ?",
       [todayStr]
     );
     const totalExpense = expensesToday.reduce((sum, e) => sum + (e.amount || 0), 0);
@@ -2030,7 +2030,7 @@ export function calculateAndSaveDailySummary(dateStr) {
     const totalDelivery = deliveriesToday.reduce((sum, d) => sum + (d.amount || 0), 0);
 
     const paymentsToday = db.getAllSync(
-      "SELECT * FROM payments WHERE date(created_at, 'localtime', '-1 hour') = ?",
+      "SELECT * FROM payments WHERE date(created_at, 'localtime') = ?",
       [todayStr]
     );
 
@@ -2082,7 +2082,7 @@ export function calculateAndSaveDailySummary(dateStr) {
     const ownerDeposit = submitRecord ? (submitRecord.net_deposit || 0) : 0;
 
     const orderItemsToday = db.getAllSync(
-      "SELECT itemName, SUM(quantity) as qty, SUM(revenue) as rev FROM order_items WHERE date(created_at, 'localtime', '-1 hour') = ? GROUP BY itemName",
+      "SELECT itemName, SUM(quantity) as qty, SUM(revenue) as rev FROM order_items WHERE date(created_at, 'localtime') = ? GROUP BY itemName",
       [todayStr]
     );
     const itemSummaryList = orderItemsToday.map(oi => ({
@@ -2774,7 +2774,7 @@ export function addCompletedOrder(orderRecord) {
 export function getDailyExpenses() {
   try {
     const todayStr = getBusinessDate();
-    const rows = db.getAllSync("SELECT * FROM expenses WHERE date(created_at, 'localtime', '-1 hour') = ?", [todayStr]);
+    const rows = db.getAllSync("SELECT * FROM expenses WHERE date(created_at, 'localtime') = ?", [todayStr]);
     
     const expenses = {
       duduMiah: 0,
@@ -2907,7 +2907,7 @@ export function updateDailyExpenses(expenses) {
 
     for (const cat of categories) {
       const stableId = `exp_${todayStr}_${cat.name.replace(/\s+/g, '_')}`;
-      const existing = db.getFirstSync("SELECT * FROM expenses WHERE id = ? OR (date(created_at, 'localtime', '-1 hour') = ? AND category = ?)", [stableId, todayStr, cat.name]);
+      const existing = db.getFirstSync("SELECT * FROM expenses WHERE id = ? OR (date(created_at, 'localtime') = ? AND category = ?)", [stableId, todayStr, cat.name]);
       if (existing) {
         db.runSync(
           "UPDATE expenses SET amount = ?, note = ?, updated_at = ?, is_synced = 0 WHERE id = ?",
@@ -3120,13 +3120,85 @@ export function submitDailySheet(summary, submittedBy, submissionType = 'MANUAL'
     ]);
     enqueueSync("daily_submit", todayStr, "INSERT");
 
-    db.runSync("UPDATE orders SET locked_at = ? WHERE date(created_at, 'localtime', '-1 hour') = ?", [now, todayStr]);
+    db.runSync("UPDATE orders SET locked_at = ? WHERE date(created_at, 'localtime') = ?", [now, todayStr]);
 
     calculateAndSaveDailySummary(todayStr);
+
+    // --- PENDING NEXT-DAY IJARA ---
+    const currentIjara = summary.breakdown?.ijara || 0;
+    const nextDayIjara = (summary.sell + currentIjara - summary.expense) - summary.deposit;
+
+    if (nextDayIjara > 0) {
+      // Calculate next business date string (Tomorrow)
+      const nextD = new Date(Date.now() + 86400000);
+      const nY = nextD.getFullYear();
+      const nM = String(nextD.getMonth() + 1).padStart(2, '0');
+      const nDay = String(nextD.getDate()).padStart(2, '0');
+      const nextBizDateStr = `${nY}-${nM}-${nDay}`;
+
+      db.runSync("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)", ['pending_ijara_amount', nextDayIjara.toString()]);
+      db.runSync("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)", ['pending_ijara_date', nextBizDateStr]);
+      
+      // We do not enqueue these because it's purely a local staging table waiting for midnight.
+      // Or we CAN enqueue them if we want other devices to know about the pending state, but 
+      // since rollover happens locally on whichever device is active, we just enqueue the final result.
+      // To ensure multi-device consistency, syncing the app_config state is safe.
+      enqueueSync("app_config", "pending_ijara_amount", "UPDATE");
+      enqueueSync("app_config", "pending_ijara_date", "UPDATE");
+      console.log(`[Auto Ijara] Calculated next_day_ijara = ৳${nextDayIjara} pending for ${nextBizDateStr}`);
+    }
 
     return true;
   } catch (err) {
     console.error("Submit daily sheet error:", err);
+    return false;
+  }
+}
+
+export function checkAndApplyIjaraRollover() {
+  try {
+    const amountRow = db.getFirstSync("SELECT value FROM app_config WHERE key = 'pending_ijara_amount'");
+    const dateRow = db.getFirstSync("SELECT value FROM app_config WHERE key = 'pending_ijara_date'");
+
+    if (amountRow && dateRow) {
+      const pendingAmount = parseFloat(amountRow.value);
+      const pendingDateStr = dateRow.value;
+      const todayStr = getBusinessDate();
+
+      // If today is the pending date (or we missed it and it's in the past), apply it.
+      if (todayStr >= pendingDateStr) {
+        console.log(`[Auto Ijara] Midnight Rollover: Applying ৳${pendingAmount} for ${todayStr}`);
+        const now = new Date().toISOString();
+
+        // 1. Set as Current Ijara in expenses
+        const stableExpId = `exp_${todayStr}_ijara`;
+        db.runSync(
+          "INSERT OR REPLACE INTO expenses (id, category, amount, note, is_due, given_amount, used_amount, returned_amount, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, ?, 0)",
+          [stableExpId, 'ijara', pendingAmount, 'Auto Carry Forward', now, now]
+        );
+        enqueueSync("expenses", stableExpId, "INSERT");
+
+        // 2. Set as Current Ijara in eja_history
+        const ejaId = `eja_${todayStr}`;
+        db.runSync(
+          "INSERT OR REPLACE INTO eja_history (id, date, eja_amount, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, 0)",
+          [ejaId, todayStr, pendingAmount, now, now]
+        );
+        enqueueSync("eja_history", ejaId, "INSERT");
+
+        // 3. Clear pending states so it only runs once
+        db.runSync("DELETE FROM app_config WHERE key = 'pending_ijara_amount'");
+        db.runSync("DELETE FROM app_config WHERE key = 'pending_ijara_date'");
+        
+        enqueueSync("app_config", "pending_ijara_amount", "DELETE");
+        enqueueSync("app_config", "pending_ijara_date", "DELETE");
+        
+        return true;
+      }
+    }
+    return false;
+  } catch (err) {
+    console.error("[Auto Ijara] Rollover check failed:", err);
     return false;
   }
 }
@@ -3177,7 +3249,7 @@ export function performAutoSubmitChecks() {
 
 function executeAutoSubmitForDate(dateStr) {
   try {
-    const orders = db.getAllSync("SELECT * FROM orders WHERE date(created_at, 'localtime', '-1 hour') = ?", [dateStr]);
+    const orders = db.getAllSync("SELECT * FROM orders WHERE date(created_at, 'localtime') = ?", [dateStr]);
     
     let cashSell = 0, bkashSell = 0, nagadSell = 0, rocketSell = 0;
     let completedChangeMoney = 0;
@@ -3193,7 +3265,7 @@ function executeAutoSubmitForDate(dateStr) {
     cashSell = Math.max(0, cashSell - completedChangeMoney);
     const totalSell = cashSell + bkashSell + nagadSell + rocketSell;
 
-    const expenses = db.getAllSync("SELECT * FROM expenses WHERE date(created_at, 'localtime', '-1 hour') = ?", [dateStr]);
+    const expenses = db.getAllSync("SELECT * FROM expenses WHERE date(created_at, 'localtime') = ?", [dateStr]);
     let numDudu = 0, numAkash = 0, numBurger = 0, numBazar = 0, numOthers = 0, ijara = 0;
     expenses.forEach(e => {
       const amt = e.amount || 0;
@@ -3246,7 +3318,7 @@ export function resetDailySubmitLock() {
     recordDeletion("daily_summary", todayStr);
     
     // 3. Unlock orders locally and enqueue Firestore update sync for all today's orders
-    const todayOrders = db.getAllSync("SELECT id FROM orders WHERE date(created_at, 'localtime', '-1 hour') = ?", [todayStr]);
+    const todayOrders = db.getAllSync("SELECT id FROM orders WHERE date(created_at, 'localtime') = ?", [todayStr]);
     todayOrders.forEach(o => {
       if (o.id) {
         db.runSync("UPDATE orders SET locked_at = NULL WHERE id = ?", [String(o.id)]);
@@ -3271,7 +3343,7 @@ export function resetIjaraExpense() {
     
     // Reset ijara expense to 0 locally in expenses and normalize to the stable sync id.
     const existingIjaraExpense = db.getFirstSync(
-      "SELECT * FROM expenses WHERE id = ? OR (date(created_at, 'localtime', '-1 hour') = ? AND category = 'ijara') ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END LIMIT 1",
+      "SELECT * FROM expenses WHERE id = ? OR (date(created_at, 'localtime') = ? AND category = 'ijara') ORDER BY CASE WHEN id = ? THEN 0 ELSE 1 END LIMIT 1",
       [ijaraExpenseId, todayStr, ijaraExpenseId]
     );
     if (existingIjaraExpense) {
@@ -3486,11 +3558,10 @@ export function inspectFailedSyncQueue(limit = 20) {
 
 /**
  * Returns the current business date string (YYYY-MM-DD).
- * Business Day starts at 1:00 AM Local Time.
+ * Business Day starts at 12:00 AM Local Time.
  */
 export function getBusinessDate() {
-  // Offset by -1 hour so 12:00 AM - 12:59 AM belongs to the previous day
-  const d = new Date(Date.now() - 3600000);
+  const d = new Date();
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
@@ -3499,16 +3570,14 @@ export function getBusinessDate() {
 
 /**
  * Extracts the business date string from an ISO string (usually UTC).
- * Uses Local Time and -1 hour rollover to match getBusinessDate().
+ * Uses Local Time and 12:00 AM rollover to match getBusinessDate().
  */
 export function getBusinessDateFromISO(isoStr) {
   if (!isoStr) return getBusinessDate();
   const d = new Date(isoStr);
-  // Apply 1 hour rollover to the local time
-  const bizDate = new Date(d.getTime() - 3600000);
-  const y = bizDate.getFullYear();
-  const m = String(bizDate.getMonth() + 1).padStart(2, '0');
-  const day = String(bizDate.getDate()).padStart(2, '0');
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
 
@@ -3740,16 +3809,16 @@ export function deleteDataByDate(targetDate) {
     const now = new Date().toISOString();
 
     // 1. Orders
-    db.runSync("DELETE FROM orders WHERE date(created_at, 'localtime', '-1 hour') = ?", [targetDate]);
+    db.runSync("DELETE FROM orders WHERE date(created_at, 'localtime') = ?", [targetDate]);
     
     // 2. Payments
-    db.runSync("DELETE FROM payments WHERE date(created_at, 'localtime', '-1 hour') = ?", [targetDate]);
+    db.runSync("DELETE FROM payments WHERE date(created_at, 'localtime') = ?", [targetDate]);
     
     // 3. Deliveries
-    db.runSync("DELETE FROM deliveries WHERE date(completed_at, 'localtime', '-1 hour') = ?", [targetDate]);
+    db.runSync("DELETE FROM deliveries WHERE date(completed_at, 'localtime') = ?", [targetDate]);
     
     // 4. Expenses
-    db.runSync("DELETE FROM expenses WHERE date(created_at, 'localtime', '-1 hour') = ?", [targetDate]);
+    db.runSync("DELETE FROM expenses WHERE date(created_at, 'localtime') = ?", [targetDate]);
     
     // 5. Daily Submit
     db.runSync("DELETE FROM daily_submit WHERE date = ?", [targetDate]);
