@@ -190,7 +190,7 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
 
   const handleSaveIjara = () => {
     if (isDailySubmitted) {
-      Alert.alert("লকড", "আজকের হিসাব সম্পন্ন হয়েছে।\nসিস্টেম সকাল ৬:০০ টায় পুনরায় চালু হবে।");
+      Alert.alert("লক করা হিসাব", "ডেইলি সাবমিট করার পর আর পরিবর্তন করা যাবে না!");
       return;
     }
     if (dailyExpenses.ijara > 0) {

@@ -2715,7 +2715,7 @@ export function addCompletedOrder(orderRecord) {
 export function getDailyExpenses() {
   try {
     const todayStr = getBusinessDate();
-    const rows = db.getAllSync("SELECT * FROM expenses WHERE date(created_at, 'localtime', '-6 hours') = ?", [todayStr]);
+    const rows = db.getAllSync("SELECT * FROM expenses WHERE date(created_at, 'localtime', '-1 hour') = ?", [todayStr]);
     
     const expenses = {
       duduMiah: 0,
@@ -2744,12 +2744,6 @@ export function getDailyExpenses() {
       }
       else if (cat === 'ijara') expenses.ijara = amt;
     });
-
-    // Fallback: If ijara is 0, explicitly check eja_history for an auto-carried value
-    if (expenses.ijara === 0) {
-       const ejaRow = db.getFirstSync("SELECT eja_amount FROM eja_history WHERE date = ?", [todayStr]);
-       if (ejaRow) expenses.ijara = ejaRow.eja_amount || 0;
-    }
 
     return expenses;
   } catch (err) {
@@ -2951,11 +2945,11 @@ export function submitDailySheet(summary, submittedBy, submissionType = 'MANUAL'
   try {
     const todayStr = summary.bizDate || getBusinessDate();
     const now = new Date().toISOString();
-
+    
     db.runSync(`
       INSERT OR REPLACE INTO daily_submit (
         id, date, total_sell, cash_payment, bkash_payment, nagad_payment, rocket_payment,
-        delivery_sell, delivery_charge, eja, dudu_store, akash_murgi, burger_bun, bazar,
+        delivery_sell, delivery_charge, eja, dudu_store, akash_murgi, burger_bun, bazar, 
         others, total_expense, net_cash, net_deposit, notes,
         submitted_by, submitted_at, is_locked, created_at, updated_at, is_synced, submission_type
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 0, ?)
@@ -2987,44 +2981,9 @@ export function submitDailySheet(summary, submittedBy, submissionType = 'MANUAL'
     ]);
     enqueueSync("daily_submit", todayStr, "INSERT");
 
-    db.runSync("UPDATE orders SET locked_at = ? WHERE date(created_at, 'localtime', '-6 hours') = ?", [now, todayStr]);
+    db.runSync("UPDATE orders SET locked_at = ? WHERE date(created_at, 'localtime', '-1 hour') = ?", [now, todayStr]);
 
     calculateAndSaveDailySummary(todayStr);
-
-    // --- AUTO IJARA CARRY FORWARD ---
-    const previousIjara = summary.breakdown?.ijara || 0;
-    const totalSell = summary.sell || 0;
-    const totalExpense = summary.expense || 0;
-    const ownerDeposit = summary.deposit || 0;
-
-    // Formula: NewIjara = (TotalSell + PreviousIjara - TotalExpense) - OwnerDeposit
-    const newIjara = (totalSell + previousIjara - totalExpense) - ownerDeposit;
-
-    if (newIjara > 0) {
-      // Calculate next business date string
-      const nextD = new Date(Date.now() - 21600000 + 86400000); // Add 24 hours to offset time
-      const nY = nextD.getFullYear();
-      const nM = String(nextD.getMonth() + 1).padStart(2, '0');
-      const nDay = String(nextD.getDate()).padStart(2, '0');
-      const nextBizDateStr = `${nY}-${nM}-${nDay}`;
-
-      // Insert or Update the ijara for the next business day in the `expenses` table
-      const stableExpId = `exp_${nextBizDateStr}_ijara`;
-      db.runSync(
-        "INSERT OR REPLACE INTO expenses (id, category, amount, note, is_due, given_amount, used_amount, returned_amount, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, ?, 0)",
-        [stableExpId, 'ijara', newIjara, 'Auto Carry Forward', now, now]
-      );
-      enqueueSync("expenses", stableExpId, "INSERT");
-
-      // Insert or Update `eja_history` for the next business day
-      const ejaId = `eja_${nextBizDateStr}`;
-      db.runSync(
-        "INSERT OR REPLACE INTO eja_history (id, date, eja_amount, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, 0)",
-        [ejaId, nextBizDateStr, newIjara, now, now]
-      );
-      enqueueSync("eja_history", ejaId, "INSERT");
-      console.log(`[Auto Ijara Carry] Forwarded ৳${newIjara} to ${nextBizDateStr}`);
-    }
 
     return true;
   } catch (err) {
@@ -3388,11 +3347,11 @@ export function inspectFailedSyncQueue(limit = 20) {
 
 /**
  * Returns the current business date string (YYYY-MM-DD).
- * Business Day starts at 6:00 AM Local Time.
+ * Business Day starts at 1:00 AM Local Time.
  */
 export function getBusinessDate() {
-  // Offset by -6 hours so 12:00 AM - 05:59 AM belongs to the previous day
-  const d = new Date(Date.now() - 21600000);
+  // Offset by -1 hour so 12:00 AM - 12:59 AM belongs to the previous day
+  const d = new Date(Date.now() - 3600000);
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
@@ -3401,13 +3360,13 @@ export function getBusinessDate() {
 
 /**
  * Extracts the business date string from an ISO string (usually UTC).
- * Uses Local Time and -6 hour rollover to match getBusinessDate().
+ * Uses Local Time and -1 hour rollover to match getBusinessDate().
  */
 export function getBusinessDateFromISO(isoStr) {
   if (!isoStr) return getBusinessDate();
   const d = new Date(isoStr);
-  // Apply 6 hour rollover to the local time
-  const bizDate = new Date(d.getTime() - 21600000);
+  // Apply 1 hour rollover to the local time
+  const bizDate = new Date(d.getTime() - 3600000);
   const y = bizDate.getFullYear();
   const m = String(bizDate.getMonth() + 1).padStart(2, '0');
   const day = String(bizDate.getDate()).padStart(2, '0');
