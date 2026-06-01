@@ -261,6 +261,9 @@ export default function App() {
 
     const checkAndInitialize = async () => {
       try {
+        console.log(`[App] Startup Initializing... Platform: ${Platform.OS}, Build: ${__DEV__ ? 'Development/ExpoGo' : 'Production/APK'}`);
+        console.log(`[App] Firebase Config Check - ID: ${process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID ? 'OK' : 'MISSING'}, Key: ${process.env.EXPO_PUBLIC_FIREBASE_API_KEY ? 'OK' : 'MISSING'}`);
+
         // 1. Just create schemas (no seeding yet)
         initDatabase(true);
 
@@ -399,9 +402,10 @@ export default function App() {
     registerSyncTimer('foreground-recovery-pull', 0, 'syncHighFrequencyCollections + syncLowFrequencyCollections + syncTablesOnly');
     let previousState = AppState.currentState;
     const subscription = AppState.addEventListener('change', async (nextState) => {
-      console.log(`[AppState Sync] ${previousState} -> ${nextState} at ${new Date().toISOString()}`);
+      console.log(`[AppState Sync] STATE CHANGED: ${previousState} -> ${nextState} at ${new Date().toISOString()}`);
       recordAutoSyncEvent('app-state', 'appstate', nextState);
       if (previousState !== 'active' && nextState === 'active') {
+        console.log("[AppState Sync] Device woke up in Foreground! Triggering immediate recovery pull...");
         await runAutoPull('foreground-tables-pull', syncTablesOnly, refreshData);
         await runAutoPull('foreground-high-frequency-pull', syncHighFrequencyCollections, refreshData);
         await runAutoPull('foreground-low-frequency-pull', syncLowFrequencyCollections, refreshData);

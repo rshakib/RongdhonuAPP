@@ -1364,8 +1364,14 @@ async function fetchChangedRecordsFromFirestore(collectionName, lastSyncTime) {
 async function syncCollections(collectionsList) {
   const projectId = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID);
   const apiKey = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_API_KEY);
-  if (!projectId || !apiKey) return false;
+  
+  if (!projectId || !apiKey) {
+    console.error("[Pull Sync] Critical: Firebase configuration is missing in environment variables.");
+    console.log(`[Pull Sync] Runtime Check - ProjectID: ${projectId ? 'Present' : 'MISSING'}, APIKey: ${apiKey ? 'Present' : 'MISSING'}`);
+    return false;
+  }
 
+  console.log(`[Pull Sync] Starting sync for: ${collectionsList.join(', ')}`);
   let hasChanges = false;
 
   try {
@@ -1378,32 +1384,34 @@ async function syncCollections(collectionsList) {
       } catch (e) {}
 
       let docs = [];
-      const newSyncTime = new Date().toISOString();
+      // Capture the moment we start fetching. We might use this if no records are found,
+      // but we'll subtract a small buffer to be safe against eventual consistency gaps.
+      const queryStartTime = new Date().toISOString();
 
       const queryCollection = table === 'deletions' ? 'app_config' : table;
       if (lastSyncTime) {
         // Fetch only changed records since lastSyncTime
-        console.log(`[Pull Sync] Fetching changed records for "${table}" (using "${queryCollection}" in Firestore) since ${lastSyncTime}...`);
+        console.log(`[Pull Sync] Fetching changed records for "${table}" since ${lastSyncTime}...`);
         docs = await fetchChangedRecordsFromFirestore(queryCollection, lastSyncTime);
       } else {
         // Fetch entire collection on first sync
-        console.log(`[Pull Sync] Fetching full collection for "${table}" (using "${queryCollection}" in Firestore, first sync)...`);
+        console.log(`[Pull Sync] Fetching full collection for "${table}" (first sync)...`);
         docs = await fetchCollection(queryCollection);
       }
 
-      if (!docs || docs.length === 0) {
-        // Update lastSyncTime even if no changes, so we don't query old windows repeatedly
-        try {
-          db.runSync("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)", [`last_sync_time_${table}`, newSyncTime]);
-        } catch (e) {}
-        continue;
-      }
+      if (!docs) docs = [];
       
-      console.log(`[Pull Sync] Received ${docs.length} records to sync for "${table}".`);
+      let maxUpdatedAt = lastSyncTime;
+      console.log(`[Pull Sync] ${table}: records_received=${docs.length} last_sync_time_before=${lastSyncTime || 'START'}`);
 
       for (const doc of docs) {
         const row = fromFirestoreDocument(doc);
         const docId = String(row.id);
+
+        // Track max updated_at for the next sync marker
+        if (row.updated_at && (!maxUpdatedAt || row.updated_at > maxUpdatedAt)) {
+          maxUpdatedAt = row.updated_at;
+        }
 
         // Safeguard to prevent restaurant table duplicates or random custom tables from being pulled
         if (table === 'restaurant_tables') {
@@ -1545,9 +1553,24 @@ async function syncCollections(collectionsList) {
         }
       }
 
-      // Update lastSyncTime to the timestamp when this sync started
+      // 3. Update lastSyncTime marker
+      // Priority: maxUpdatedAt from records > Safety Buffer (queryStartTime minus 15s) > existing lastSyncTime
+      let finalMarker = maxUpdatedAt;
+      
+      const safetyBufferDate = new Date(new Date(queryStartTime).getTime() - 15000);
+      const safetyBufferTime = safetyBufferDate.toISOString();
+
+      if (!docs || docs.length === 0) {
+        // If no records, advance safely to 15s before we started querying
+        if (!finalMarker || safetyBufferTime > finalMarker) {
+          finalMarker = safetyBufferTime;
+        }
+      }
+      
+      console.log(`[Pull Sync] ${table}: max_updated_at=${maxUpdatedAt || 'NONE'} last_sync_time_after=${finalMarker}`);
+
       try {
-        db.runSync("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)", [`last_sync_time_${table}`, newSyncTime]);
+        db.runSync("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)", [`last_sync_time_${table}`, finalMarker]);
       } catch (e) {}
     }
   } catch (err) {
