@@ -632,14 +632,26 @@ export default function App() {
     setCurrentScreen('DASHBOARD');
   };
 
+  // --- BUSINESS LOCK GUARDIAN ---
+  const isOperationLocked = () => {
+    if (isDailySubmitted && userRole !== 'admin') {
+      Alert.alert("লকড", "আজকের হিসাব সম্পন্ন হয়েছে।\nসিস্টেম সকাল ৬:০০ টায় পুনরায় চালু হবে।");
+      return true;
+    }
+    return false;
+  };
+
   // Navigates to a table detail billing screen
   const handleTableSelect = (tableId) => {
+    if (isOperationLocked()) return;
     setSelectedTableId(tableId);
     setCurrentScreen('TABLE_DETAIL');
   };
 
   // Dynamically updates a table's or delivery's list items
   const handleUpdateTableItems = async (tableId, updatedItems) => {
+    if (isOperationLocked()) return;
+    
     const isDoneOrder = completedOrders.some(o => o.id === tableId);
     if (isDoneOrder && userRole === 'admin') {
       const newTotal = updatedItems.reduce((sum, i) => sum + (i.price * i.qty), 0);
@@ -902,6 +914,7 @@ export default function App() {
 
   // Deletes a completed order from history
   const handleDeleteDoneOrder = (orderId) => {
+    if (isOperationLocked()) return;
     if (userRole === 'admin') {
       Alert.alert(
         "অর্ডার ডিলিট",
@@ -933,6 +946,7 @@ export default function App() {
 
   // General wrapper to update expenses in SQLite
   const handleUpdateExpenses = async (expenses) => {
+    if (isOperationLocked()) return;
     updateDailyExpenses(expenses);
     refreshData();
     // Sync all 5 expense categories
@@ -1088,12 +1102,14 @@ export default function App() {
               onCreateDelivery={handleCreateDelivery}
               onUpdateTableName={handleUpdateTableName}
               onNavigateToExpenses={() => setCurrentScreen('EXPENSES')}
-              onNavigateToSubmit={() => setCurrentScreen('DAILY_SUBMIT')}
+              onNavigateToSubmit={() => {
+                if (isOperationLocked()) return;
+                setCurrentScreen('DAILY_SUBMIT');
+              }}
               onNavigateToEditMenu={() => setCurrentScreen('EDIT_MENU')}
               submissionHistory={submissionHistory}
               onSavePastAccount={handleSavePastAccount}
               onDeletePastAccount={handleDeletePastAccount}
-
               dailyExpenses={dailyExpenses}
               onUpdateExpenses={handleUpdateExpenses}
               isDailySubmitted={isDailySubmitted}
@@ -1106,11 +1122,11 @@ export default function App() {
               onManualPush={handleManualPush}
               onManualPull={handleManualPull}
               onResetPushPullLimits={handleResetPushPullLimits}
-            />
-          );
-        } else if (userRole === 'owner') {
-          return (
-            <OwnerDashboard
+              />
+              );
+              } else if (userRole === 'owner') {
+              return (
+              <OwnerDashboard
               onLogout={handleLogout}
               tables={tables}
               deliveries={deliveries}
@@ -1118,13 +1134,18 @@ export default function App() {
               onTableSelect={handleTableSelect}
               onCreateDelivery={handleCreateDelivery}
               onUpdateTableName={handleUpdateTableName}
-              onNavigateToExpenses={() => setCurrentScreen('EXPENSES')}
-              onNavigateToSubmit={() => setCurrentScreen('DAILY_SUBMIT')}
+              onNavigateToExpenses={() => {
+                if (isOperationLocked()) return;
+                setCurrentScreen('EXPENSES');
+              }}
+              onNavigateToSubmit={() => {
+                if (isOperationLocked()) return;
+                setCurrentScreen('DAILY_SUBMIT');
+              }}
               onNavigateToEditMenu={() => setCurrentScreen('EDIT_MENU')}
               submissionHistory={submissionHistory}
               onSavePastAccount={handleSavePastAccount}
               onDeletePastAccount={handleDeletePastAccount}
-
               dailyExpenses={dailyExpenses}
               onUpdateExpenses={handleUpdateExpenses}
               isDailySubmitted={isDailySubmitted}
@@ -1134,23 +1155,29 @@ export default function App() {
               remainingPulls={remainingPulls}
               onManualPush={handleManualPush}
               onManualPull={handleManualPull}
-            />
-          );
-        } else {
-          return (
-            <ManagerDashboard
+              />
+              );
+              } else {
+              return (
+              <ManagerDashboard
               onLogout={handleLogout}
               tables={tables}
               deliveries={deliveries}
               completedOrders={completedOrders}
               onTableSelect={handleTableSelect}
               onCreateDelivery={handleCreateDelivery}
-              onNavigateToSubmit={() => setCurrentScreen('DAILY_SUBMIT')}
+              onNavigateToSubmit={() => {
+                if (isOperationLocked()) return;
+                setCurrentScreen('DAILY_SUBMIT');
+              }}
               submissionHistory={submissionHistory}
               onSavePastAccount={handleSavePastAccount}
               onDeletePastAccount={handleDeletePastAccount}
               onUpdateTableName={handleUpdateTableName}
-              onNavigateToExpenses={() => setCurrentScreen('EXPENSES')}
+              onNavigateToExpenses={() => {
+                if (isOperationLocked()) return;
+                setCurrentScreen('EXPENSES');
+              }}
               dailyExpenses={dailyExpenses}
               onUpdateExpenses={handleUpdateExpenses}
               isDailySubmitted={isDailySubmitted}

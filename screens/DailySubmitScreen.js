@@ -119,7 +119,7 @@ export default function DailySubmitScreen({ dailyExpenses, completedOrders = [],
 
   const handleFormSubmit = () => {
     if (isDailySubmitted && userRole !== 'admin') {
-      Alert.alert("লক করা হিসাব", "আজকের ডেইলি শীট ইতিমধ্যে সফলভাবে সাবমিট করা হয়েছে!");
+      Alert.alert("লকড", "আজকের হিসাব সম্পন্ন হয়েছে।\nসিস্টেম সকাল ৬:০০ টায় পুনরায় চালু হবে।");
       return;
     }
 
