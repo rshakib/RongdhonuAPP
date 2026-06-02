@@ -1401,7 +1401,7 @@ export function isDatabaseEmpty() {
 async function fetchChangedRecordsFromFirestore(collectionName, lastSyncTime) {
   const projectId = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID);
   const apiKey = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_API_KEY);
-  if (!projectId || !apiKey) return [];
+  if (!projectId || !apiKey) return { success: false, documents: [] };
 
   try {
     const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery?key=${apiKey}`;
@@ -1425,8 +1425,8 @@ async function fetchChangedRecordsFromFirestore(collectionName, lastSyncTime) {
     });
 
     if (!res.ok) {
-      console.error(`[Pull Sync] Failed to fetch changed records for ${collectionName}:`, res.status);
-      return [];
+      console.error(`[Pull Sync] ${collectionName} fetch FAILED with status ${res.status}`);
+      return { success: false, documents: [] };
     }
 
     const data = await res.json();
@@ -1438,18 +1438,17 @@ async function fetchChangedRecordsFromFirestore(collectionName, lastSyncTime) {
         }
       }
     }
-    
+
     // Track metrics
     firestoreReadsToday += documents.length;
     syncDownloadsToday++;
-    
-    return documents;
+
+    return { success: true, documents };
   } catch (err) {
-    console.error(`[Pull Sync] Error runQuery for ${collectionName}:`, err);
-    return [];
+    console.error(`[Pull Sync] ${collectionName} fetch EXCEPTION: ${err.message}`);
+    return { success: false, documents: [] };
   }
 }
-
 async function syncCollections(collectionsList) {
   const projectId = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID);
   const apiKey = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_API_KEY);
@@ -1478,18 +1477,32 @@ async function syncCollections(collectionsList) {
       const queryStartTime = new Date().toISOString();
 
       const queryCollection = table === 'deletions' ? 'app_config' : table;
+      
+      let fetchResult = { success: false, documents: [] };
       if (lastSyncTime) {
-        // Fetch only changed records since lastSyncTime
-        console.log(`[Pull Sync] Fetching changed records for "${table}" since ${lastSyncTime}...`);
-        docs = await fetchChangedRecordsFromFirestore(queryCollection, lastSyncTime);
+        // OVERLAP SAFETY: Subtract 60 seconds from lastSyncTime to ensure eventual consistency
+        // and time-drift gaps are covered. UPSERT (INSERT OR REPLACE) handles duplicates.
+        let queryMarker = lastSyncTime;
+        try {
+          const overlapDate = new Date(new Date(lastSyncTime).getTime() - 60000);
+          queryMarker = overlapDate.toISOString();
+        } catch (e) {}
+
+        console.log(`[Pull Sync] Fetching changed records for "${table}" since ${queryMarker} (Overlap 60s from ${lastSyncTime})...`);
+        fetchResult = await fetchChangedRecordsFromFirestore(queryCollection, queryMarker);
       } else {
         // Fetch entire collection on first sync
         console.log(`[Pull Sync] Fetching full collection for "${table}" (first sync)...`);
-        docs = await fetchCollection(queryCollection);
+        fetchResult = await fetchCollection(queryCollection);
       }
 
-      if (!docs) docs = [];
-      
+      const { success, documents: docs } = fetchResult;
+
+      if (!success) {
+        console.log(`[Pull Sync] ${table} fetch FAILED or OFFLINE. Skipping marker update to avoid data gaps.`);
+        continue;
+      }
+
       let maxUpdatedAt = lastSyncTime;
       console.log(`[Pull Sync] ${table}: records_received=${docs.length} last_sync_time_before=${lastSyncTime || 'START'}`);
 
@@ -1643,24 +1656,29 @@ async function syncCollections(collectionsList) {
       }
 
       // 3. Update lastSyncTime marker
-      // Priority: maxUpdatedAt from records > Safety Buffer (queryStartTime minus 15s) > existing lastSyncTime
+      // Ensure marker never moves backwards due to the 60s overlap window
       let finalMarker = maxUpdatedAt;
+      if (!finalMarker || (lastSyncTime && lastSyncTime > finalMarker)) {
+        finalMarker = lastSyncTime;
+      }
       
       const safetyBufferDate = new Date(new Date(queryStartTime).getTime() - 15000);
       const safetyBufferTime = safetyBufferDate.toISOString();
 
       if (!docs || docs.length === 0) {
-        // If no records, advance safely to 15s before we started querying
-        if (!finalMarker || safetyBufferTime > finalMarker) {
+        // If no records, advance safely to 15s before we started querying (if it's newer than current marker)
+        if (safetyBufferTime > finalMarker) {
           finalMarker = safetyBufferTime;
         }
       }
       
-      console.log(`[Pull Sync] ${table}: max_updated_at=${maxUpdatedAt || 'NONE'} last_sync_time_after=${finalMarker}`);
+      console.log(`[Pull Sync] ${table}: last_sync_time_after=${finalMarker}`);
 
       try {
         db.runSync("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)", [`last_sync_time_${table}`, finalMarker]);
-      } catch (e) {}
+      } catch (e) {
+        console.error(`[Pull Sync] Failed to persist marker for ${table}:`, e.message);
+      }
     }
   } catch (err) {
     console.error("[Pull Sync] syncCollections execution error:", err);
@@ -1760,7 +1778,7 @@ export function resetLastSyncTime(collectionName = null) {
 async function fetchCollection(collectionName) {
   const projectId = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID);
   const apiKey = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_API_KEY);
-  if (!projectId || !apiKey) return [];
+  if (!projectId || !apiKey) return { success: false, documents: [] };
 
   let allDocuments = [];
   let nextPageToken = "";
@@ -1770,9 +1788,9 @@ async function fetchCollection(collectionName) {
       const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${collectionName}?key=${apiKey}&pageSize=300${nextPageToken ? `&pageToken=${nextPageToken}` : ""}`;
       const res = await fetch(url);
       if (!res.ok) {
-        if (res.status === 404) return []; 
+        if (res.status === 404) return { success: true, documents: [] }; 
         console.error(`[Restore] Failed to fetch collection ${collectionName}:`, res.status);
-        return [];
+        return { success: false, documents: [] };
       }
       const data = await res.json();
       if (data.documents) {
@@ -1782,13 +1800,14 @@ async function fetchCollection(collectionName) {
     } while (nextPageToken);
   } catch (err) {
     console.error(`[Restore] Error fetching collection ${collectionName}:`, err);
+    return { success: false, documents: [] };
   }
 
   // Track metrics
   firestoreReadsToday += allDocuments.length;
   syncDownloadsToday++;
 
-  return allDocuments;
+  return { success: true, documents: allDocuments };
 }
 
 function fromFirestoreDocument(doc) {
@@ -1820,13 +1839,17 @@ export async function restoreDatabaseFromCloud() {
   for (const table of tables) {
     try {
       console.log(`[Restore] Restoring table: ${table}...`);
-      const docs = await fetchCollection(table);
-      
+      const { success, documents: docs } = await fetchCollection(table);
+
+      if (!success) {
+        console.error(`[Restore] Failed to fetch documents for ${table}. Skipping this table.`);
+        continue;
+      }
+
       if (docs.length === 0) {
         console.log(`[Restore] No documents found for ${table}.`);
         continue;
       }
-
       for (const doc of docs) {
         const row = fromFirestoreDocument(doc);
         
