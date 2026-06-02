@@ -887,6 +887,12 @@ export function initDatabase(skipSeeding = false) {
 
     // 6. Audit & Migration: Add unit_price to order_items if missing and fix Water sales
     try {
+      // PURGE FORBIDDEN QUEUE ITEMS (Fixes 403 errors)
+      const forbiddenTables = ['ml_export_queue', 'ml_export_history', 'weather_timeline_queue'];
+      const placeholders = forbiddenTables.map(() => '?').join(',');
+      db.runSync(`DELETE FROM sync_queue WHERE table_name IN (${placeholders})`, forbiddenTables);
+      console.log("[DB Audit] Purged forbidden local-only items from sync_queue.");
+
       // Add column if it doesn't exist (SQLite doesn't support IF NOT EXISTS for ADD COLUMN)
       const tableInfo = db.getAllSync("PRAGMA table_info(order_items)");
       const hasUnitPrice = tableInfo.some(col => col.name === 'unit_price');
@@ -1001,6 +1007,10 @@ export function cleanupDuplicateMenuItems() {
 
 export function enqueueSync(tableName, recordId, action) {
   try {
+    // IGNORE local-only tables to prevent Firestore 403 errors
+    const forbiddenTables = ['ml_export_queue', 'ml_export_history', 'weather_timeline_queue'];
+    if (forbiddenTables.includes(tableName)) return;
+
     // Delete any pending write for this specific record in the queue to avoid stale runs
     db.runSync(
       "DELETE FROM sync_queue WHERE record_id = ? AND table_name = ? AND status = 'PENDING'",
@@ -1258,6 +1268,16 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
       const { id: queueId, record_id: recordId, table_name: tableName, action } = item;
       
       if (!queueId) continue;
+
+      // SURGICAL CLEANUP: Remove local-only tables from sync queue (Prevents 403 blocks)
+      const forbiddenTables = ['ml_export_queue', 'ml_export_history', 'weather_timeline_queue'];
+      if (forbiddenTables.includes(tableName)) {
+        console.log(`[Queue Cleanup] Removing forbidden local-only item queueId=${queueId} collection=${tableName}`);
+        db.runSync("DELETE FROM sync_queue WHERE id = ?", [Number(queueId)]);
+        successfulWrites++;
+        continue;
+      }
+
       if (!tableName || !recordId) {
         // Delete invalid/empty sync queue records to clear them from SQLite
         console.log(`[Queue Audit] Removing invalid queue item queueId=${queueId} collection=${tableName || ''} recordId=${recordId || ''} action=${action || ''}`);
