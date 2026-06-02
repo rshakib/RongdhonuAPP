@@ -193,14 +193,17 @@ export default function DailyItemSalesReport({ onBack }) {
             {/* Summary Card */}
             <View style={styles.summaryCard}>
               <View style={styles.summaryHeader}>
-                <Text style={styles.summaryTitle}>সারসংক্ষেপ</Text>
-                <Text style={styles.summaryEmoji}>📊</Text>
+                <View>
+                  <Text style={styles.totalSalesLabel}>মোট বিক্রয় পরিমাণ</Text>
+                  <Text style={styles.totalSalesValue}>৳{totalSalesAmount}</Text>
+                </View>
+                <Text style={styles.summaryEmoji}>💰</Text>
               </View>
               
               <View style={styles.summaryGrid}>
                 <View style={styles.summaryItem}>
-                  <Text style={styles.summaryLabel}>মোট মেনু আইটেম</Text>
-                  <Text style={styles.summaryValue}>{totalMenuItems}</Text>
+                  <Text style={styles.summaryLabel}>মোট পিস বিক্রি</Text>
+                  <Text style={styles.summaryValue}>{totalPiecesSold} pcs</Text>
                 </View>
                 <View style={styles.summaryItem}>
                   <Text style={styles.summaryLabel}>বিক্রি হয়েছে</Text>
@@ -211,14 +214,9 @@ export default function DailyItemSalesReport({ onBack }) {
                   <Text style={[styles.summaryValue, { color: '#FB923C' }]}>{itemsNotSold}</Text>
                 </View>
                 <View style={styles.summaryItem}>
-                  <Text style={styles.summaryLabel}>মোট পিস বিক্রি</Text>
-                  <Text style={styles.summaryValue}>{totalPiecesSold} pcs</Text>
+                  <Text style={styles.summaryLabel}>মেনু আইটেম</Text>
+                  <Text style={styles.summaryValue}>{totalMenuItems}</Text>
                 </View>
-              </View>
-
-              <View style={styles.summaryFooter}>
-                <Text style={styles.totalSalesLabel}>মোট বিক্রয় পরিমাণ</Text>
-                <Text style={styles.totalSalesValue}>৳{totalSalesAmount}</Text>
               </View>
             </View>
 
@@ -234,8 +232,7 @@ export default function DailyItemSalesReport({ onBack }) {
               <View style={styles.reportList}>
                 <View style={styles.listHeader}>
                   <Text style={[styles.listHeaderText, { flex: 2, textAlign: 'left' }]}>আইটেম নাম</Text>
-                  <Text style={[styles.listHeaderText, { flex: 1 }]}>পরিমাণ</Text>
-                  <Text style={[styles.listHeaderText, { flex: 1.2, textAlign: 'right' }]}>মোট বিক্রয়</Text>
+                  <Text style={[styles.listHeaderText, { flex: 1, textAlign: 'right' }]}>পরিমাণ</Text>
                 </View>
 
                 {soldItems.length > 0 ? (
@@ -245,8 +242,7 @@ export default function DailyItemSalesReport({ onBack }) {
                         <Text style={styles.itemName}>{item.name}</Text>
                         <Text style={styles.itemCategory}>{item.category}</Text>
                       </View>
-                      <Text style={[styles.itemQty, { flex: 1 }]}>{item.quantitySold} pcs</Text>
-                      <Text style={[styles.itemTotal, { flex: 1.2 }]}>৳{item.totalSales}</Text>
+                      <Text style={[styles.itemQty, { flex: 1, textAlign: 'right' }]}>{item.quantitySold} pcs</Text>
                     </View>
                   ))
                 ) : (
