@@ -208,12 +208,14 @@ const TABLE_SCHEMAS = {
       order_id TEXT,
       itemName TEXT,
       quantity INTEGER,
+      unit_price REAL DEFAULT 0,
       revenue REAL,
       created_at TEXT,
       updated_at TEXT,
       is_synced INTEGER DEFAULT 0
     );
   `,
+
   payments: `
     CREATE TABLE IF NOT EXISTS payments (
       id TEXT PRIMARY KEY,
@@ -868,6 +870,28 @@ export function initDatabase(skipSeeding = false) {
     startSyncService();
     triggerWeatherFetch();
     triggerGoogleSheetExportCheck();
+
+    // 6. Audit & Migration: Add unit_price to order_items if missing and fix Water sales
+    try {
+      // Add column if it doesn't exist (SQLite doesn't support IF NOT EXISTS for ADD COLUMN)
+      const tableInfo = db.getAllSync("PRAGMA table_info(order_items)");
+      const hasUnitPrice = tableInfo.some(col => col.name === 'unit_price');
+      if (!hasUnitPrice) {
+        db.runSync("ALTER TABLE order_items ADD COLUMN unit_price REAL DEFAULT 0");
+      }
+
+      // Historical Data Fix: 
+      // 1. Populate unit_price from revenue/quantity where missing
+      db.runSync("UPDATE order_items SET unit_price = revenue / quantity WHERE quantity > 0 AND (unit_price IS NULL OR unit_price = 0)");
+      
+      // 2. Specifically fix "পানি" (Water) where revenue might have been 0
+      // We use 20 as the industry standard/fallback for this project
+      db.runSync("UPDATE order_items SET unit_price = 20, revenue = quantity * 20 WHERE itemName = 'পানি' AND (revenue = 0 OR unit_price = 0)");
+      
+      console.log("[DB Audit] order_items table audited and historical Water sales fixed.");
+    } catch (err) {
+      console.error("[DB Audit] Failed to audit order_items:", err);
+    }
 
     console.log("[DB] Auto Initialization Completed successfully.");
     return true;
@@ -1865,7 +1889,7 @@ export function getItemSalesReport(startDate, endDate) {
     // 2. Get aggregated sales from order_items for the date range
     // We use date(created_at, 'localtime') to match the business day YYYY-MM-DD
     const sales = db.getAllSync(`
-      SELECT itemName, SUM(quantity) as totalQty, SUM(revenue) as totalRevenue
+      SELECT itemName, SUM(quantity) as totalQty, SUM(quantity * unit_price) as totalRevenue
       FROM order_items
       WHERE date(created_at, 'localtime') BETWEEN ? AND ?
       GROUP BY itemName
@@ -2830,26 +2854,38 @@ export function addCompletedOrder(orderRecord) {
 
     const itemsArr = orderRecord.items.split(', ');
     itemsArr.forEach((itemStr, index) => {
-      const match = itemStr.match(/(.+) x(\d+)/);
+      // Regex updated to support "Item Name xQty @Price" format
+      const match = itemStr.match(/(.+) x(\d+)(?: @(\d+))?/);
       if (match) {
         const itemName = match[1];
         const qty = parseInt(match[2], 10);
-        const menuRec = db.getFirstSync("SELECT price FROM menu_items WHERE name = ?", [itemName]);
-        const price = menuRec ? menuRec.price : 0;
+        
+        // If price is provided in the string (from UI), use it. 
+        // Otherwise, fall back to menu lookup.
+        let price = match[3] ? parseFloat(match[3]) : 0;
+        
+        if (!price || price === 0) {
+          const menuRec = db.getFirstSync("SELECT price FROM menu_items WHERE name = ?", [itemName]);
+          price = menuRec ? menuRec.price : 0;
+          
+          // Special fallback for Water if menu lookup fails
+          if (price === 0 && itemName === 'পানি') price = 20;
+        }
+
         const revenue = price * qty;
         const itemId = `${idStr}_item_${index}`;
         
         const existingItem = db.getFirstSync("SELECT id FROM order_items WHERE id = ?", [itemId]);
         if (existingItem) {
           db.runSync(`
-            UPDATE order_items SET itemName = ?, quantity = ?, revenue = ?, updated_at = ?, is_synced = 0 WHERE id = ?
-          `, [itemName, qty, revenue, nowIso, itemId]);
+            UPDATE order_items SET itemName = ?, quantity = ?, unit_price = ?, revenue = ?, updated_at = ?, is_synced = 0 WHERE id = ?
+          `, [itemName, qty, price, revenue, nowIso, itemId]);
           enqueueSync("order_items", itemId, "UPDATE");
         } else {
           db.runSync(`
-            INSERT OR REPLACE INTO order_items (id, order_id, itemName, quantity, revenue, created_at, updated_at, is_synced)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 0)
-          `, [itemId, idStr, itemName, qty, revenue, nowIso, nowIso]);
+            INSERT OR REPLACE INTO order_items (id, order_id, itemName, quantity, unit_price, revenue, created_at, updated_at, is_synced)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+          `, [itemId, idStr, itemName, qty, price, revenue, nowIso, nowIso]);
           enqueueSync("order_items", itemId, "INSERT");
         }
       }
@@ -3571,9 +3607,9 @@ export function updateCompletedOrder(orderId, updatedItems, newTotal) {
     updatedItems.forEach((item, index) => {
       const itemId = `${orderId}_item_${index}_rev`;
       db.runSync(`
-        INSERT INTO order_items (id, order_id, itemName, quantity, revenue, created_at, updated_at, is_synced)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 0)
-      `, [itemId, String(orderId), item.name, item.qty, item.price * item.qty, now, now]);
+        INSERT INTO order_items (id, order_id, itemName, quantity, unit_price, revenue, created_at, updated_at, is_synced)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+      `, [itemId, String(orderId), item.name, item.qty, item.price, item.price * item.qty, now, now]);
       enqueueSync("order_items", itemId, "INSERT");
     });
 

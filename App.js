@@ -813,8 +813,9 @@ export default function App() {
       const orderRecord = {
         id: Date.now(),
         tableId: activeTable.name || activeTable.id,
-        items: activeTable.items.map(i => `${i.name} x${i.qty}`).join(', '),
+        items: activeTable.items.map(i => `${i.name} x${i.qty} @${i.price}`).join(', '),
         totalAmount: paymentAmount,
+
         deliveryCharge: deliveryCharge,
         changeMoneyGiven: changeMoneyGiven,
         // Split payment breakdown (Due removed)
