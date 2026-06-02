@@ -194,10 +194,10 @@ export default function DailyItemSalesReport({ onBack }) {
             <View style={styles.summaryCard}>
               <View style={styles.summaryHeader}>
                 <View>
-                  <Text style={styles.totalSalesLabel}>মোট বিক্রয় পরিমাণ</Text>
-                  <Text style={styles.totalSalesValue}>৳{totalSalesAmount}</Text>
+                  <Text style={styles.totalSalesLabel}>আইটেম পারফরম্যান্স</Text>
+                  <Text style={styles.totalSalesValue}>অ্যানালিটিক্স</Text>
                 </View>
-                <Text style={styles.summaryEmoji}>💰</Text>
+                <Text style={styles.summaryEmoji}>📊</Text>
               </View>
               
               <View style={styles.summaryGrid}>
