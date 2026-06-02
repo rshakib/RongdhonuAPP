@@ -1471,7 +1471,6 @@ async function syncCollections(collectionsList) {
         if (row) lastSyncTime = row.value;
       } catch (e) {}
 
-      let docs = [];
       // Capture the moment we start fetching. We might use this if no records are found,
       // but we'll subtract a small buffer to be safe against eventual consistency gaps.
       const queryStartTime = new Date().toISOString();
