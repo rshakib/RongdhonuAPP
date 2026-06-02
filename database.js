@@ -1759,7 +1759,7 @@ export async function syncLowFrequencyCollections() {
   let hasChanges = false;
   try {
     // Menu collections removed from periodic polling to optimize Firestore reads.
-    const lowFreq = ['users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 'app_config', 'expenses', 'eja_history', 'daily_submit', 'supplier_due', 'supplier_due_history', 'ml_export_history', 'ml_export_queue'];
+    const lowFreq = ['users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 'app_config', 'expenses', 'eja_history', 'daily_submit', 'supplier_due', 'supplier_due_history'];
     hasChanges = await traceSyncOperation('syncLowFrequencyCollections', () => syncCollections(lowFreq));
   } catch (err) {
     recordAutoSyncEvent('syncLowFrequencyCollections', 'failure', err.message);
@@ -2371,14 +2371,13 @@ async function captureHourlyWeather() {
       Month: now.getMonth() + 1
     };
 
-    // 3. Persistent Queue Entry
+    // 3. Persistent Queue Entry (Local Only)
     const isoNow = now.toISOString();
     db.runSync(`
       INSERT OR REPLACE INTO ml_export_queue (id, type, business_date, payload, status, created_at, updated_at, is_synced)
       VALUES (?, 'WEATHER', ?, ?, 'PENDING', ?, ?, 0)
     `, [queueId, todayStr, JSON.stringify(timelineRow), isoNow, isoNow]);
     
-    enqueueSync("ml_export_queue", queueId, "INSERT");
     console.log(`[ML Weather] Captured hourly weather for ${displayTime}`);
     
   } catch (err) {
@@ -2456,9 +2455,6 @@ export function enqueueDailyMLExports(dateStr) {
       VALUES (?, 'ITEM_SALES', ?, ?, 'PENDING', ?, ?, 0)
     `, [`ITEM_SALES_${dateStr}`, dateStr, JSON.stringify(itemRows), now, now]);
 
-    enqueueSync("ml_export_queue", `SUMMARY_${dateStr}`, "INSERT");
-    enqueueSync("ml_export_queue", `ITEM_SALES_${dateStr}`, "INSERT");
-
     console.log(`[ML Export] Enqueued exports for ${dateStr}`);
     
     // Process queue immediately to try and export
@@ -2507,8 +2503,6 @@ async function processMLExportQueue() {
           VALUES (?, ?, ?, ?, ?, ?, 0)
         `, [record.id, record.business_date, record.type, now, record.created_at, now]);
         
-        enqueueSync("ml_export_queue", record.id, "UPDATE");
-        enqueueSync("ml_export_history", record.id, "INSERT");
         console.log(`[ML Export] Successfully exported record: ${record.id}`);
       }
     } catch (err) {
