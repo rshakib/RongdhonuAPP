@@ -93,7 +93,7 @@ const CalendarPicker = ({ visible, onClose, onSelectDate, initialDate }) => {
   );
 };
 
-export default function ManagerDashboard({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onNavigateToSubmit, onUpdateTableName, onNavigateToExpenses, onNavigateToSupplierDue, onNavigateToItemSalesReport, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, remainingPushes = 2, remainingPulls = 2, onManualPush, onManualPull }) {
+export default function ManagerDashboard({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onNavigateToSubmit, onUpdateTableName, onNavigateToExpenses, onNavigateToSupplierDue, onNavigateToItemSalesReport, onCloudRestore, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder }) {
   const [renameModalVisible, setRenameModalVisible] = useState(false);
   const [selectedTableForRename, setSelectedTableForRename] = useState(null);
   const [newTableName, setNewTableName] = useState('');
@@ -629,29 +629,7 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onNavigateToItemSalesReport(); }}><Text style={styles.menuOptionText}>📊 আইটেম বিক্রয় রিপোর্ট</Text></TouchableOpacity>
 
             <View style={styles.menuDivider} />
-
-            {/* Manual Push (Unlocked for Manager, smaller font size) */}
-            <TouchableOpacity 
-              style={styles.menuOption} 
-              onPress={() => { 
-                setMenuModalVisible(false); 
-                onManualPush('manager'); 
-              }}
-            >
-              <Text style={[styles.menuOptionText, { fontSize: 10, color: '#FFB703' }]}>⬆️ Push All Data ({remainingPushes} left)</Text>
-            </TouchableOpacity>
-            <View style={styles.menuDivider} />
-
-            {/* Manual Pull (Unlocked for Manager, smaller font size) */}
-            <TouchableOpacity 
-              style={styles.menuOption} 
-              onPress={() => { 
-                setMenuModalVisible(false); 
-                onManualPull('manager'); 
-              }}
-            >
-              <Text style={[styles.menuOptionText, { fontSize: 10, color: '#34D399' }]}>⬇️ Pull Latest Data ({remainingPulls} left)</Text>
-            </TouchableOpacity>
+            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onCloudRestore(); }}><Text style={[styles.menuOptionText, { color: '#34D399' }]}>☁️ Cloud Restore</Text></TouchableOpacity>
             <View style={styles.menuDivider} />
 
             <TouchableOpacity 

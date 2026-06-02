@@ -1003,76 +1003,32 @@ export default function App() {
     );
   };
 
-  const handleManualPush = async (role) => {
-    const { getRemainingPushes, executeManualPush, incrementPushCount } = require('./database');
-    const remaining = getRemainingPushes(role);
-    const maxLimit = role === 'manager' ? 1 : 2;
-    if (remaining <= 0) {
-      Alert.alert("সীমাবদ্ধতা", `আজকের সর্বোচ্চ পুশ সীমা (${maxLimit} বার) শেষ হয়ে গেছে।`);
-      return;
-    }
-
+  const handleCloudRestore = async () => {
     Alert.alert(
-      "ডাটা পুশ নিশ্চিতকরণ",
-      `আপনি কি সমস্ত লোকাল পেন্ডিং ডাটা Cloud-এ পুশ করতে চান? (আজকের অবশিষ্ট পুশ: ${remaining} বার)`,
+      "Cloud Restore",
+      "Cloud থেকে সর্বশেষ তথ্য পুনরায় ডাউনলোড করা হবে।\n\nচালিয়ে যেতে চান?",
       [
-        { text: "বাতিল করুন", style: "cancel" },
+        { text: "বাতিল", style: "cancel" },
         {
-          text: "হ্যাঁ, পুশ করুন",
+          text: "Restore",
           onPress: async () => {
-            showToast("🔄 ডাটা পুশ করা হচ্ছে...", "sync");
-            const success = await executeManualPush();
-            if (success) {
-              incrementPushCount();
-              refreshData();
-              Alert.alert("সফল", "পেন্ডিং লোকাল ডাটা Cloud-এ সফলভাবে পুশ করা হয়েছে।");
-            } else {
-              Alert.alert("ব্যর্থ", "ডাটা পুশ করতে সমস্যা হয়েছে। দয়া করে নেটওয়ার্ক কানেকশন চেক করুন।");
+            showToast("🔄 রিস্টোর করা হচ্ছে...", "sync");
+            try {
+              const success = await restoreDatabaseFromCloud();
+              if (success) {
+                refreshData();
+                Alert.alert("সফল", "Cloud থেকে ডাটা সফলভাবে রিস্টোর করা হয়েছে।");
+              } else {
+                Alert.alert("ব্যর্থ", "ডাটা রিস্টোর করতে সমস্যা হয়েছে। দয়া করে নেটওয়ার্ক কানেকশন চেক করুন।");
+              }
+            } catch (err) {
+              console.error("[Cloud Restore] Error:", err);
+              Alert.alert("ব্যর্থ", "একটি অপ্রত্যাশিত ত্রুটি ঘটেছে।");
             }
           }
         }
       ]
     );
-  };
-
-  const handleManualPull = async (role) => {
-    const { getRemainingPulls, executeManualPull, incrementPullCount } = require('./database');
-    const remaining = getRemainingPulls(role);
-    const maxLimit = role === 'manager' ? 1 : 2;
-    if (remaining <= 0) {
-      Alert.alert("সীমাবদ্ধতা", `আজকের সর্বোচ্চ পুল সীমা (${maxLimit} বার) শেষ হয়ে গেছে।`);
-      return;
-    }
-
-    Alert.alert(
-      "ডাটা পুল নিশ্চিতকরণ",
-      `আপনি কি Cloud থেকে নতুন ডাটা লোকাল ডাটাবেজে পুল করতে চান? (আজকের অবশিষ্ট পুল: ${remaining} বার)`,
-      [
-        { text: "বাতিল করুন", style: "cancel" },
-        {
-          text: "হ্যাঁ, পুল করুন",
-          onPress: async () => {
-            showToast("🔄 ডাটা পুল করা হচ্ছে...", "sync");
-            const result = await executeManualPull();
-            if (result.success) {
-              console.log("[Manual Pull] Runtime diagnostics after pull:", JSON.stringify(getSyncRuntimeDiagnostics()));
-              incrementPullCount();
-              refreshData();
-              Alert.alert("সফল", result.didChange ? "Cloud থেকে নতুন ডাটা লোকাল ডাটাবেজে সফলভাবে ডাউনলোড এবং আপডেট করা হয়েছে।" : "লোকাল ডাটাবেজ ইতিমধ্যে সম্পূর্ণ আপ-টু-ডেট আছে।");
-            } else {
-              Alert.alert("ব্যর্থ", "ডাটা পুল করতে সমস্যা হয়েছে। দয়া করে নেটওয়ার্ক কানেকশন চেক করুন।");
-            }
-          }
-        }
-      ]
-    );
-  };
-
-  const handleResetPushPullLimits = () => {
-    const { resetPushPullCounts } = require('./database');
-    resetPushPullCounts();
-    refreshData();
-    Alert.alert("সফল", "আজকের পুশ এবং পুল সীমা রিসেট করা হয়েছে।");
   };
 
   // Renders screen content based on custom router state
@@ -1098,6 +1054,7 @@ export default function App() {
               onNavigateToEditMenu={() => setCurrentScreen('EDIT_MENU')}
               onNavigateToSupplierDue={() => setCurrentScreen('SUPPLIER_DUE')}
               onNavigateToItemSalesReport={() => setCurrentScreen('ITEM_SALES_REPORT')}
+              onCloudRestore={handleCloudRestore}
 
               submissionHistory={submissionHistory}
               onSavePastAccount={handleSavePastAccount}
@@ -1110,11 +1067,6 @@ export default function App() {
               onDeleteDoneOrder={handleDeleteDoneOrder}
               onResetDailySubmit={handleResetDailySubmit}
               onResetIjara={handleResetIjara}
-              remainingPushes={remainingPushes}
-              remainingPulls={remainingPulls}
-              onManualPush={handleManualPush}
-              onManualPull={handleManualPull}
-              onResetPushPullLimits={handleResetPushPullLimits}
             />
           );
         } else if (userRole === 'owner') {
@@ -1132,6 +1084,7 @@ export default function App() {
               onNavigateToEditMenu={() => setCurrentScreen('EDIT_MENU')}
               onNavigateToSupplierDue={() => setCurrentScreen('SUPPLIER_DUE')}
               onNavigateToItemSalesReport={() => setCurrentScreen('ITEM_SALES_REPORT')}
+              onCloudRestore={handleCloudRestore}
 
               submissionHistory={submissionHistory}
               onSavePastAccount={handleSavePastAccount}
@@ -1142,10 +1095,6 @@ export default function App() {
               isDailySubmitted={isDailySubmitted}
               onDeleteActiveOrder={handleDeleteActiveOrder}
               onDeleteDoneOrder={handleDeleteDoneOrder}
-              remainingPushes={remainingPushes}
-              remainingPulls={remainingPulls}
-              onManualPush={handleManualPush}
-              onManualPull={handleManualPull}
             />
           );
         } else {
@@ -1165,16 +1114,13 @@ export default function App() {
               onNavigateToExpenses={() => setCurrentScreen('EXPENSES')}
               onNavigateToSupplierDue={() => setCurrentScreen('SUPPLIER_DUE')}
               onNavigateToItemSalesReport={() => setCurrentScreen('ITEM_SALES_REPORT')}
+              onCloudRestore={handleCloudRestore}
 
               dailyExpenses={dailyExpenses}
               onUpdateExpenses={handleUpdateExpenses}
               isDailySubmitted={isDailySubmitted}
               onDeleteActiveOrder={handleDeleteActiveOrder}
               onDeleteDoneOrder={handleDeleteDoneOrder}
-              remainingPushes={remainingPushes}
-              remainingPulls={remainingPulls}
-              onManualPush={handleManualPush}
-              onManualPull={handleManualPull}
             />
           );
         }

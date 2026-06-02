@@ -94,7 +94,7 @@ const CalendarPicker = ({ visible, onClose, onSelectDate }) => {
   );
 };
 
-export default function AdminDB({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onUpdateTableName, onNavigateToExpenses, onNavigateToSubmit, onNavigateToEditMenu, onNavigateToSupplierDue, onNavigateToItemSalesReport, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, onResetDailySubmit, onResetIjara, remainingPushes = 2, remainingPulls = 2, onManualPush, onManualPull, onResetPushPullLimits }) {
+export default function AdminDB({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onUpdateTableName, onNavigateToExpenses, onNavigateToSubmit, onNavigateToEditMenu, onNavigateToSupplierDue, onNavigateToItemSalesReport, onCloudRestore, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, onResetDailySubmit, onResetIjara }) {
   const [renameModalVisible, setRenameModalVisible] = useState(false);
   const [selectedTableForRename, setSelectedTableForRename] = useState(null);
   const [newTableName, setNewTableName] = useState('');
@@ -749,11 +749,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
             <View style={styles.menuDivider} />
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); handleOpenFirebaseUsage(); }}><Text style={[styles.menuOptionText, { color: '#34D399' }]}>🔥 Firebase Usage</Text></TouchableOpacity>
             <View style={styles.menuDivider} />
-            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onManualPush('admin'); }}><Text style={[styles.menuOptionText, { fontSize: 10, color: '#FFB703' }]}>⬆️ Push All Data ({remainingPushes} left)</Text></TouchableOpacity>
-            <View style={styles.menuDivider} />
-            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onManualPull('admin'); }}><Text style={[styles.menuOptionText, { fontSize: 10, color: '#34D399' }]}>⬇️ Pull Latest Data ({remainingPulls} left)</Text></TouchableOpacity>
-            <View style={styles.menuDivider} />
-            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onResetPushPullLimits(); }}><Text style={[styles.menuOptionText, { fontSize: 10, color: '#34D399' }]}>🔄 Reset Push/Pull Limits</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onCloudRestore(); }}><Text style={[styles.menuOptionText, { color: '#34D399' }]}>☁️ Cloud Restore</Text></TouchableOpacity>
             <View style={styles.menuDivider} />
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); setCleanupModalVisible(true); }}><Text style={[styles.menuOptionText, { color: '#EF4444' }]}>🗑️ Data Cleanup Tool</Text></TouchableOpacity>
             <View style={styles.menuDivider} />

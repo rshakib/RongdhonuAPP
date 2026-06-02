@@ -94,7 +94,7 @@ const CalendarPicker = ({ visible, onClose, onSelectDate, initialDate }) => {
   );
 };
 
-export default function OwnerDashboard({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onUpdateTableName, onNavigateToExpenses, onNavigateToSubmit, onNavigateToEditMenu, onNavigateToSupplierDue, onNavigateToItemSalesReport, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, remainingPushes = 2, remainingPulls = 2, onManualPush, onManualPull }) {
+export default function OwnerDashboard({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onUpdateTableName, onNavigateToExpenses, onNavigateToSubmit, onNavigateToEditMenu, onNavigateToSupplierDue, onNavigateToItemSalesReport, onCloudRestore, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder }) {
   const [renameModalVisible, setRenameModalVisible] = useState(false);
   const [selectedTableForRename, setSelectedTableForRename] = useState(null);
   const [newTableName, setNewTableName] = useState('');
@@ -681,29 +681,7 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
             <View style={styles.menuDivider} />
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); setDepositReportVisible(true); }}><Text style={styles.menuOptionText}>📊 Deposit Report</Text></TouchableOpacity>
             <View style={styles.menuDivider} />
-
-            {/* Manual Push (Moved down, smaller font size) */}
-            <TouchableOpacity 
-              style={styles.menuOption} 
-              onPress={() => { 
-                setMenuModalVisible(false); 
-                onManualPush('owner'); 
-              }}
-            >
-              <Text style={[styles.menuOptionText, { fontSize: 10, color: '#FFB703' }]}>⬆️ Push All Data ({remainingPushes} left)</Text>
-            </TouchableOpacity>
-            <View style={styles.menuDivider} />
-
-            {/* Manual Pull (Moved down, smaller font size) */}
-            <TouchableOpacity 
-              style={styles.menuOption} 
-              onPress={() => { 
-                setMenuModalVisible(false); 
-                onManualPull('owner'); 
-              }}
-            >
-              <Text style={[styles.menuOptionText, { fontSize: 10, color: '#34D399' }]}>⬇️ Pull Latest Data ({remainingPulls} left)</Text>
-            </TouchableOpacity>
+            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onCloudRestore(); }}><Text style={[styles.menuOptionText, { color: '#34D399' }]}>☁️ Cloud Restore</Text></TouchableOpacity>
             <View style={styles.menuDivider} />
 
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onLogout(); }}><Text style={[styles.menuOptionText, { color: '#FF4D4D' }]}>Logout</Text></TouchableOpacity>
