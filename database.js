@@ -441,20 +441,21 @@ const TABLE_SCHEMAS = {
   `,
   ml_export_history: `
     CREATE TABLE IF NOT EXISTS ml_export_history (
-      id TEXT PRIMARY KEY, -- YYYY-MM-DD
-      date TEXT UNIQUE,
+      id TEXT PRIMARY KEY, -- Type_Date_Hour_Item
+      date TEXT,
+      type TEXT, -- SUMMARY, ITEM_SALES, WEATHER
       exported_at TEXT,
       created_at TEXT,
       updated_at TEXT,
       is_synced INTEGER DEFAULT 0
     );
   `,
-  weather_timeline_queue: `
-    CREATE TABLE IF NOT EXISTS weather_timeline_queue (
-      id TEXT PRIMARY KEY, -- YYYY-MM-DD_HH
+  ml_export_queue: `
+    CREATE TABLE IF NOT EXISTS ml_export_queue (
+      id TEXT PRIMARY KEY, -- Type_Date_Timestamp
+      type TEXT, -- SUMMARY, ITEM_SALES, WEATHER
       business_date TEXT,
-      hour INTEGER,
-      payload TEXT, -- JSON string
+      payload TEXT, -- JSON payload for the export
       status TEXT DEFAULT 'PENDING',
       created_at TEXT,
       updated_at TEXT,
@@ -1758,7 +1759,7 @@ export async function syncLowFrequencyCollections() {
   let hasChanges = false;
   try {
     // Menu collections removed from periodic polling to optimize Firestore reads.
-    const lowFreq = ['users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 'app_config', 'expenses', 'eja_history', 'daily_submit', 'supplier_due', 'supplier_due_history'];
+    const lowFreq = ['users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 'app_config', 'expenses', 'eja_history', 'daily_submit', 'supplier_due', 'supplier_due_history', 'ml_export_history', 'ml_export_queue'];
     hasChanges = await traceSyncOperation('syncLowFrequencyCollections', () => syncCollections(lowFreq));
   } catch (err) {
     recordAutoSyncEvent('syncLowFrequencyCollections', 'failure', err.message);
@@ -2298,7 +2299,7 @@ export function calculateAndSaveDailySummary(dateStr) {
 }
 
 // ==========================================
-// 6. GOOGLE SHEET BACKUP & ML EXPORTER
+// 6. GOOGLE SHEET BACKUP & ML EXPORTER (UNIFIED)
 // ==========================================
 
 export async function triggerWeatherTimelineService() {
@@ -2307,12 +2308,12 @@ export async function triggerWeatherTimelineService() {
     await captureHourlyWeather();
     
     // 2. Process Queue
-    await processWeatherTimelineQueue();
+    await processMLExportQueue();
     
     // 3. Register a timer to run this every 30 minutes (to catch up on hours)
-    registerSyncTimer('ml-weather-timeline', 1800000, 'triggerWeatherTimelineService');
+    registerSyncTimer('ml-export-service', 1800000, 'triggerWeatherTimelineService');
   } catch (err) {
-    console.error("[ML Weather] Service tick failed:", err);
+    console.error("[ML Export] Service tick failed:", err);
   }
 }
 
@@ -2321,14 +2322,13 @@ async function captureHourlyWeather() {
   const hour = now.getHours();
   
   // Business Hours: 09:00 AM to 12:00 AM (00:00)
-  // 00 is included as 12:00 AM
   if (hour < 9 && hour !== 0) return;
   
   const todayStr = getBusinessDate();
-  const queueId = `${todayStr}_${String(hour).padStart(2, '0')}`;
+  const queueId = `WEATHER_${todayStr}_${String(hour).padStart(2, '0')}`;
   
   // 1. Duplicate Prevention: Check if already in queue or exported
-  const existing = db.getFirstSync("SELECT id FROM weather_timeline_queue WHERE id = ?", [queueId]);
+  const existing = db.getFirstSync("SELECT id FROM ml_export_queue WHERE id = ?", [queueId]);
   if (existing) return;
 
   try {
@@ -2354,7 +2354,7 @@ async function captureHourlyWeather() {
     // Format Display Time (e.g., 03:00 PM)
     let displayHour = hour % 12;
     if (displayHour === 0) displayHour = 12;
-    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const ampm = (hour >= 12 && hour < 24) ? 'PM' : 'AM';
     const displayTime = `${String(displayHour).padStart(2, '0')}:00 ${ampm}`;
 
     const timelineRow = {
@@ -2374,11 +2374,11 @@ async function captureHourlyWeather() {
     // 3. Persistent Queue Entry
     const isoNow = now.toISOString();
     db.runSync(`
-      INSERT INTO weather_timeline_queue (id, business_date, hour, payload, status, created_at, updated_at, is_synced)
-      VALUES (?, ?, ?, ?, 'PENDING', ?, ?, 0)
-    `, [queueId, todayStr, hour, JSON.stringify(timelineRow), isoNow, isoNow]);
+      INSERT OR REPLACE INTO ml_export_queue (id, type, business_date, payload, status, created_at, updated_at, is_synced)
+      VALUES (?, 'WEATHER', ?, ?, 'PENDING', ?, ?, 0)
+    `, [queueId, todayStr, JSON.stringify(timelineRow), isoNow, isoNow]);
     
-    enqueueSync("weather_timeline_queue", queueId, "INSERT");
+    enqueueSync("ml_export_queue", queueId, "INSERT");
     console.log(`[ML Weather] Captured hourly weather for ${displayTime}`);
     
   } catch (err) {
@@ -2386,55 +2386,18 @@ async function captureHourlyWeather() {
   }
 }
 
-async function processWeatherTimelineQueue() {
-  const webappUrl = cleanEnvVar(process.env.EXPO_PUBLIC_GOOGLE_SHEETS_WEBAPP_URL);
-  if (!webappUrl) return;
-
-  const pending = db.getAllSync("SELECT * FROM weather_timeline_queue WHERE status = 'PENDING' LIMIT 5");
-  if (pending.length === 0) return;
-
-  for (const record of pending) {
-    try {
-      const timelineRow = JSON.parse(record.payload);
-      
-      const res = await fetch(webappUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          spreadsheetName: "Rongdhonu_ML_Dataset",
-          sheet3: "WeatherTimeline",
-          timelineRow
-        })
-      });
-
-      if (res.ok) {
-        const now = new Date().toISOString();
-        db.runSync("UPDATE weather_timeline_queue SET status = 'SUCCESS', updated_at = ?, is_synced = 0 WHERE id = ?", [now, record.id]);
-        enqueueSync("weather_timeline_queue", record.id, "UPDATE");
-        console.log(`[ML Weather] Successfully exported timeline record: ${record.id}`);
-      }
-    } catch (err) {
-      console.error(`[ML Weather] Export failed for ${record.id}:`, err.message);
-    }
-  }
-}
-
-export async function triggerGoogleSheetExportCheck() {
+export function enqueueDailyMLExports(dateStr) {
   try {
-    const webappUrl = cleanEnvVar(process.env.EXPO_PUBLIC_GOOGLE_SHEETS_WEBAPP_URL);
-    if (!webappUrl) return;
+    const summary = db.getFirstSync("SELECT * FROM daily_summary WHERE date = ?", [dateStr]);
+    if (!summary) {
+      console.warn(`[ML Export] No summary found for ${dateStr}. Skipping export.`);
+      return;
+    }
 
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yestDateStr = yesterday.toISOString().split('T')[0];
+    const now = new Date().toISOString();
 
-    const alreadyExported = db.getFirstSync("SELECT * FROM ml_export_history WHERE date = ?", [yestDateStr]);
-    if (alreadyExported) return;
-
-    const summary = db.getFirstSync("SELECT * FROM daily_summary WHERE date = ?", [yestDateStr]);
-    if (!summary) return;
-
-    const dailyRow = {
+    // 1. Enqueue DailySummary
+    const summaryPayload = {
       Date: summary.date,
       DayOfWeek: summary.dayOfWeek,
       WeekOfMonth: summary.weekOfMonth,
@@ -2464,37 +2427,100 @@ export async function triggerGoogleSheetExportCheck() {
       OwnerDeposit: summary.ownerDeposit
     };
 
-    const items = JSON.parse(summary.itemSummary || "[]");
-    const itemRows = items.map(item => ({
-      Date: summary.date,
-      ItemName: item.itemName,
-      Quantity: item.quantity,
-      Revenue: item.revenue
+    db.runSync(`
+      INSERT OR REPLACE INTO ml_export_queue (id, type, business_date, payload, status, created_at, updated_at, is_synced)
+      VALUES (?, 'SUMMARY', ?, ?, 'PENDING', ?, ?, 0)
+    `, [`SUMMARY_${dateStr}`, dateStr, JSON.stringify(summaryPayload), now, now]);
+
+    // 2. Enqueue Item Sales (All menu items, aggregated)
+    const menuItems = db.getAllSync("SELECT name, category FROM menu_items");
+    const sales = db.getAllSync(`
+      SELECT itemName, SUM(quantity) as totalQty
+      FROM order_items
+      WHERE date(created_at, 'localtime') = ?
+      GROUP BY itemName
+    `, [dateStr]);
+
+    const salesMap = {};
+    sales.forEach(s => { salesMap[s.itemName] = s.totalQty; });
+
+    const itemRows = menuItems.map(item => ({
+      BusinessDate: dateStr,
+      ItemName: item.name,
+      Category: item.category,
+      QuantitySold: salesMap[item.name] || 0
     }));
 
-    const res = await fetch(webappUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        spreadsheetName: "Rongdhonu_ML_Dataset",
-        sheet1: "DailySummary",
-        sheet2: "ItemSales",
-        dailyRow,
-        itemRows
-      })
-    });
+    db.runSync(`
+      INSERT OR REPLACE INTO ml_export_queue (id, type, business_date, payload, status, created_at, updated_at, is_synced)
+      VALUES (?, 'ITEM_SALES', ?, ?, 'PENDING', ?, ?, 0)
+    `, [`ITEM_SALES_${dateStr}`, dateStr, JSON.stringify(itemRows), now, now]);
 
-    if (res.ok) {
-      const now = new Date().toISOString();
-      db.runSync(
-        "INSERT INTO ml_export_history (id, date, exported_at, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, 0)",
-        [yestDateStr, yestDateStr, now, now, now]
-      );
-      enqueueSync("ml_export_history", yestDateStr, "INSERT");
-    }
+    enqueueSync("ml_export_queue", `SUMMARY_${dateStr}`, "INSERT");
+    enqueueSync("ml_export_queue", `ITEM_SALES_${dateStr}`, "INSERT");
+
+    console.log(`[ML Export] Enqueued exports for ${dateStr}`);
+    
+    // Process queue immediately to try and export
+    processMLExportQueue();
   } catch (err) {
-    console.error("[ML Backup] ML Backup service failed:", err);
+    console.error("[ML Export] Failed to enqueue daily exports:", err);
   }
+}
+
+async function processMLExportQueue() {
+  const webappUrl = cleanEnvVar(process.env.EXPO_PUBLIC_GOOGLE_SHEETS_WEBAPP_URL);
+  if (!webappUrl) return;
+
+  const pending = db.getAllSync("SELECT * FROM ml_export_queue WHERE status = 'PENDING' LIMIT 5");
+  if (pending.length === 0) return;
+
+  for (const record of pending) {
+    try {
+      const payload = JSON.parse(record.payload);
+      const body = { spreadsheetName: "Rongdhonu_ML_Dataset" };
+
+      if (record.type === 'SUMMARY') {
+        body.sheet1 = "DailySummary";
+        body.dailyRow = payload;
+      } else if (record.type === 'ITEM_SALES') {
+        body.sheet2 = "ItemSales";
+        body.itemRows = payload;
+      } else if (record.type === 'WEATHER') {
+        body.sheet3 = "WeatherTimeline";
+        body.timelineRow = payload;
+      }
+
+      const res = await fetch(webappUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      if (res.ok) {
+        const now = new Date().toISOString();
+        db.runSync("UPDATE ml_export_queue SET status = 'SUCCESS', updated_at = ?, is_synced = 0 WHERE id = ?", [now, record.id]);
+        
+        // Mark in history for duplicate prevention audit
+        db.runSync(`
+          INSERT OR REPLACE INTO ml_export_history (id, date, type, exported_at, created_at, updated_at, is_synced)
+          VALUES (?, ?, ?, ?, ?, ?, 0)
+        `, [record.id, record.business_date, record.type, now, record.created_at, now]);
+        
+        enqueueSync("ml_export_queue", record.id, "UPDATE");
+        enqueueSync("ml_export_history", record.id, "INSERT");
+        console.log(`[ML Export] Successfully exported record: ${record.id}`);
+      }
+    } catch (err) {
+      console.error(`[ML Export] POST failed for ${record.id}:`, err.message);
+    }
+  }
+}
+
+export async function triggerGoogleSheetExportCheck() {
+  // Logic migrated to triggerWeatherTimelineService and enqueueDailyMLExports
+  // We perform one final check for any PENDING items on start
+  processMLExportQueue();
 }
 
 // ==========================================
@@ -3419,6 +3445,10 @@ export function submitDailySheet(summary, submittedBy, submissionType = 'MANUAL'
     db.runSync("UPDATE orders SET locked_at = ? WHERE date(created_at, 'localtime') = ?", [now, todayStr]);
 
     calculateAndSaveDailySummary(todayStr);
+
+    // --- ML EXPORT TRIGGER ---
+    // Enqueue summary and item sales exports after locking the day
+    enqueueDailyMLExports(todayStr);
 
     // --- PENDING NEXT-DAY IJARA ---
     const currentIjara = summary.breakdown?.ijara || 0;
