@@ -709,6 +709,13 @@ export function migrateSupplierDue() {
         ['akash_murgi', '🐔 আকাশ মুরগি', 5000, '', now, now]
       );
     }
+    const burger = db.getFirstSync("SELECT id FROM supplier_due WHERE id = 'burger_bun'");
+    if (!burger) {
+      db.runSync(
+        "INSERT INTO supplier_due (id, supplier_name, current_due, note, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, ?, 0)",
+        ['burger_bun', '🍔 বার্গার বান', 0, '', now, now]
+      );
+    }
   } catch (err) {
     console.error("[DB Migration] Supplier Due migration failed:", err);
   }
@@ -1845,8 +1852,95 @@ export function getLastSyncError() {
   return lastSyncError;
 }
 
+
 // ==========================================
-// 3. DICTIONARY CONNECTION TESTING
+// 6. ITEM SALES REPORT ENGINE
+// ==========================================
+
+export function getItemSalesReport(startDate, endDate) {
+  try {
+    // 1. Get all current menu items to ensure SECTION 2 (Not Sold) is accurate
+    const menuItems = db.getAllSync("SELECT name, category, price FROM menu_items ORDER BY category ASC, name ASC");
+    
+    // 2. Get aggregated sales from order_items for the date range
+    // We use date(created_at, 'localtime') to match the business day YYYY-MM-DD
+    const sales = db.getAllSync(`
+      SELECT itemName, SUM(quantity) as totalQty, SUM(revenue) as totalRevenue
+      FROM order_items
+      WHERE date(created_at, 'localtime') BETWEEN ? AND ?
+      GROUP BY itemName
+    `, [startDate, endDate]);
+    
+    const salesMap = {};
+    sales.forEach(s => {
+      salesMap[s.itemName] = {
+        qty: s.totalQty,
+        rev: s.totalRevenue
+      };
+    });
+    
+    // 3. Combine menu items with sales data
+    const reportData = menuItems.map(item => {
+      const sale = salesMap[item.name] || { qty: 0, rev: 0 };
+      const data = {
+        ...item,
+        quantitySold: sale.qty,
+        totalSales: sale.rev
+      };
+      // Remove from map to track items sold that are NOT in current menu
+      delete salesMap[item.name];
+      return data;
+    });
+    
+    // 4. Add items that were sold but are no longer in menu_items (if any)
+    Object.keys(salesMap).forEach(itemName => {
+      const sale = salesMap[itemName];
+      reportData.push({
+        name: itemName,
+        category: 'Other',
+        price: sale.qty > 0 ? (sale.rev / sale.qty) : 0,
+        quantitySold: sale.qty,
+        totalSales: sale.rev
+      });
+    });
+    
+    return reportData;
+  } catch (err) {
+    console.error("[DB] Failed to generate Item Sales Report:", err);
+    return [];
+  }
+}
+
+// Helper to get start and end dates for quick filters
+export function getQuickFilterDates(filterType) {
+  const today = getBusinessDate();
+  const now = new Date();
+  
+  if (filterType === 'Today') {
+    return { start: today, end: today };
+  }
+  
+  if (filterType === 'Yesterday') {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    const yesterday = d.toISOString().substring(0, 10);
+    return { start: yesterday, end: yesterday };
+  }
+  
+  if (filterType === 'This Week') {
+    // Start of week (Sunday)
+    const d = new Date();
+    const day = d.getDay();
+    const diff = d.getDate() - day;
+    const start = new Date(d.setDate(diff)).toISOString().substring(0, 10);
+    return { start, end: today };
+  }
+  
+  return { start: today, end: today };
+}
+
+// ==========================================
+// 7. DICTIONARY CONNECTION TESTING
 // ==========================================
 
 export async function testFirestoreConnection() {
@@ -2827,10 +2921,11 @@ export function getSupplierDueData() {
     const expenses = getDailyExpenses();
     const payments = {
       'dudu_store': expenses.duduMiah || 0,
-      'akash_murgi': expenses.akashChicken || 0
+      'akash_murgi': expenses.akashChicken || 0,
+      'burger_bun': expenses.burgerBun || 0
     };
 
-    const rows = db.getAllSync("SELECT * FROM supplier_due");
+    const rows = db.getAllSync("SELECT * FROM supplier_due WHERE id IN ('dudu_store', 'akash_murgi', 'burger_bun')");
     return rows.map(r => {
       const payment = payments[r.id] || 0;
       return {
@@ -2849,7 +2944,12 @@ export function saveSupplierDue(supplierId, currentDueBeforeSave, todayPurchase,
     const todayStr = getBusinessDate();
     const now = new Date().toISOString();
     const expenses = getDailyExpenses();
-    const payment = supplierId === 'dudu_store' ? expenses.duduMiah : (supplierId === 'akash_murgi' ? expenses.akashChicken : 0);
+    
+    let payment = 0;
+    if (supplierId === 'dudu_store') payment = expenses.duduMiah || 0;
+    else if (supplierId === 'akash_murgi') payment = expenses.akashChicken || 0;
+    else if (supplierId === 'burger_bun') payment = expenses.burgerBun || 0;
+
     const newCurrentDue = currentDueBeforeSave + todayPurchase - payment;
 
     db.runSync(
