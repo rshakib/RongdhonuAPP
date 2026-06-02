@@ -442,21 +442,35 @@ export default function App() {
       }
 
       if (wasOffline && isOnline) {
-        wasOffline = false; // Reset to prevent duplicate loops
-        console.log("[Network Recovery] online detected");
+        wasOffline = false; // Reset to prevent duplicate recovery loops
+        console.log("[Network Recovery] Internet RECONNECTED. Starting instant recovery cycle...");
         
-        console.log("[Network Recovery] push started");
-        await processSyncQueue();
-        console.log("[Network Recovery] push finished");
-        
-        console.log("[Network Recovery] pull started");
-        await syncHighFrequencyCollections();
-        await syncLowFrequencyCollections();
-        await syncTablesOnly();
-        await syncDeletionsOnly();
-        console.log("[Network Recovery] pull finished");
-        
-        refreshData();
+        try {
+          // 1. Process Upload Queue First (Clear local changes to Firestore)
+          console.log("[Network Recovery] 1/4: Processing pending upload queue...");
+          const uploadResult = await processSyncQueue();
+          console.log(`[Network Recovery] Upload finished. Writes: ${uploadResult.successfulWrites}, Failed: ${uploadResult.failedWrites}`);
+
+          // 2. High Frequency Pull (Orders, Order Items, Payments, Deliveries)
+          console.log("[Network Recovery] 2/4: Running High Frequency pull sync...");
+          await syncHighFrequencyCollections();
+
+          // 3. Low Frequency Pull (Expenses, Ijara, Users, Summaries)
+          console.log("[Network Recovery] 3/4: Running Low Frequency pull sync...");
+          await syncLowFrequencyCollections();
+
+          // 4. Tables & Deletions
+          console.log("[Network Recovery] 4/4: Running Tables and Deletions sync...");
+          await syncTablesOnly();
+          await syncDeletionsOnly();
+
+          console.log("[Network Recovery] Instant recovery cycle COMPLETED successfully.");
+          
+          // 5. Final UI Refresh to reflect all changes
+          refreshData();
+        } catch (err) {
+          console.error("[Network Recovery] Critical error during instant recovery:", err.message);
+        }
       }
     });
 
