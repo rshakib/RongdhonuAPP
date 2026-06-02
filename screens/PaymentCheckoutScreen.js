@@ -46,11 +46,12 @@ export default function PaymentCheckoutScreen({
 
   const handleComplete = () => {
     if (isSplitMode) {
-      if (Math.abs(remainingAmount) > 0.01) {
-        Alert.alert("ত্রুটি", "পেমেন্টের যোগফল গ্র্যান্ড টোটালের সমান হতে হবে!");
+      if (remainingAmount > 0.01) {
+        Alert.alert("ত্রুটি", "পেমেন্টের যোগফল গ্র্যান্ড টোটালের চেয়ে কম হতে পারবে না!");
         return;
       }
-      onCompletePayment(grandTotal, 'Split', breakdown);
+      // If totalEntered > grandTotal, the excess is part of the sale
+      onCompletePayment(totalEntered, 'Split', breakdown);
       return;
     }
 
@@ -58,6 +59,11 @@ export default function PaymentCheckoutScreen({
     
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
       Alert.alert("ত্রুটি", "সঠিক মূল্য টাইপ করুন!");
+      return;
+    }
+
+    if (parsedAmount < grandTotal - 0.01) {
+      Alert.alert("ত্রুটি", "পেমেন্টের পরিমাণ গ্র্যান্ড টোটালের চেয়ে কম হতে পারবে না!");
       return;
     }
     
@@ -186,9 +192,9 @@ export default function PaymentCheckoutScreen({
                  <Text style={styles.splitStatusValue}>৳ {totalEntered.toLocaleString()}</Text>
                </View>
                <View style={[styles.splitStatusItem, { borderLeftWidth: 1, borderColor: '#222' }]}>
-                 <Text style={styles.splitStatusLabel}>অবশিষ্ট</Text>
-                 <Text style={[styles.splitStatusValue, { color: Math.abs(remainingAmount) < 0.01 ? '#10B981' : '#EF4444' }]}>
-                   {remainingAmount === 0 ? '✓ সম্পন্ন' : `৳ ${remainingAmount.toFixed(0)}`}
+                 <Text style={styles.splitStatusLabel}>{remainingAmount <= 0 ? 'অতিরিক্ত' : 'অবশিষ্ট'}</Text>
+                 <Text style={[styles.splitStatusValue, { color: remainingAmount <= 0.01 ? '#10B981' : '#EF4444' }]}>
+                   {remainingAmount <= 0.01 && remainingAmount >= -0.01 ? '✓ সম্পন্ন' : `৳ ${Math.abs(remainingAmount).toFixed(0)}`}
                  </Text>
                </View>
             </View>
@@ -252,11 +258,11 @@ export default function PaymentCheckoutScreen({
           <TouchableOpacity 
             style={[
               styles.completeBtn, 
-              isSplitMode && Math.abs(remainingAmount) > 0.01 && { opacity: 0.5 }
+              isSplitMode && remainingAmount > 0.01 && { opacity: 0.5 }
             ]} 
             onPress={handleComplete} 
             activeOpacity={0.85}
-            disabled={isSplitMode && Math.abs(remainingAmount) > 0.01}
+            disabled={isSplitMode && remainingAmount > 0.01}
           >
             <View style={styles.btnCheckCircle}>
               <Text style={styles.btnCheckText}>✓</Text>
