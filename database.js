@@ -449,6 +449,18 @@ const TABLE_SCHEMAS = {
       is_synced INTEGER DEFAULT 0
     );
   `,
+  weather_timeline_queue: `
+    CREATE TABLE IF NOT EXISTS weather_timeline_queue (
+      id TEXT PRIMARY KEY, -- YYYY-MM-DD_HH
+      business_date TEXT,
+      hour INTEGER,
+      payload TEXT, -- JSON string
+      status TEXT DEFAULT 'PENDING',
+      created_at TEXT,
+      updated_at TEXT,
+      is_synced INTEGER DEFAULT 0
+    );
+  `,
   supplier_due: `
     CREATE TABLE IF NOT EXISTS supplier_due (
       id TEXT PRIMARY KEY,
@@ -870,6 +882,7 @@ export function initDatabase(skipSeeding = false) {
     startSyncService();
     triggerWeatherFetch();
     triggerGoogleSheetExportCheck();
+    triggerWeatherTimelineService();
 
     // 6. Audit & Migration: Add unit_price to order_items if missing and fix Water sales
     try {
@@ -2287,6 +2300,124 @@ export function calculateAndSaveDailySummary(dateStr) {
 // ==========================================
 // 6. GOOGLE SHEET BACKUP & ML EXPORTER
 // ==========================================
+
+export async function triggerWeatherTimelineService() {
+  try {
+    // 1. Capture Current Weather if needed
+    await captureHourlyWeather();
+    
+    // 2. Process Queue
+    await processWeatherTimelineQueue();
+    
+    // 3. Register a timer to run this every 30 minutes (to catch up on hours)
+    registerSyncTimer('ml-weather-timeline', 1800000, 'triggerWeatherTimelineService');
+  } catch (err) {
+    console.error("[ML Weather] Service tick failed:", err);
+  }
+}
+
+async function captureHourlyWeather() {
+  const now = new Date();
+  const hour = now.getHours();
+  
+  // Business Hours: 09:00 AM to 12:00 AM (00:00)
+  // 00 is included as 12:00 AM
+  if (hour < 9 && hour !== 0) return;
+  
+  const todayStr = getBusinessDate();
+  const queueId = `${todayStr}_${String(hour).padStart(2, '0')}`;
+  
+  // 1. Duplicate Prevention: Check if already in queue or exported
+  const existing = db.getFirstSync("SELECT id FROM weather_timeline_queue WHERE id = ?", [queueId]);
+  if (existing) return;
+
+  try {
+    // 2. Fetch current weather from API
+    const url = "https://api.open-meteo.com/v1/forecast?latitude=24.8759&longitude=90.6627&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m";
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Weather API unreachable");
+    
+    const data = await res.json();
+    const curr = data.current;
+    const wCode = curr.weather_code || 0;
+    
+    let condition = "Clear";
+    let isRainy = "FALSE";
+    if (wCode >= 51 && wCode <= 67) { condition = "Rainy"; isRainy = "TRUE"; }
+    else if (wCode >= 80 && wCode <= 82) { condition = "Showers"; isRainy = "TRUE"; }
+    else if (wCode >= 95 && wCode <= 99) { condition = "Thunderstorm"; isRainy = "TRUE"; }
+    else if (wCode >= 1 && wCode <= 3) { condition = "Partly Cloudy"; }
+    
+    const isWeekend = (now.getDay() === 5 || now.getDay() === 6) ? "TRUE" : "FALSE";
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    
+    // Format Display Time (e.g., 03:00 PM)
+    let displayHour = hour % 12;
+    if (displayHour === 0) displayHour = 12;
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const displayTime = `${String(displayHour).padStart(2, '0')}:00 ${ampm}`;
+
+    const timelineRow = {
+      BusinessDate: todayStr,
+      Timestamp: displayTime,
+      Temperature: curr.temperature_2m || 30,
+      Humidity: curr.relative_humidity_2m || 70,
+      WindSpeed: curr.wind_speed_10m || 10,
+      WeatherCondition: condition,
+      IsRainy: isRainy,
+      DayOfWeek: dayNames[now.getDay()],
+      HourOfDay: hour,
+      IsWeekend: isWeekend,
+      Month: now.getMonth() + 1
+    };
+
+    // 3. Persistent Queue Entry
+    const isoNow = now.toISOString();
+    db.runSync(`
+      INSERT INTO weather_timeline_queue (id, business_date, hour, payload, status, created_at, updated_at, is_synced)
+      VALUES (?, ?, ?, ?, 'PENDING', ?, ?, 0)
+    `, [queueId, todayStr, hour, JSON.stringify(timelineRow), isoNow, isoNow]);
+    
+    enqueueSync("weather_timeline_queue", queueId, "INSERT");
+    console.log(`[ML Weather] Captured hourly weather for ${displayTime}`);
+    
+  } catch (err) {
+    console.error("[ML Weather] Capture failed:", err.message);
+  }
+}
+
+async function processWeatherTimelineQueue() {
+  const webappUrl = cleanEnvVar(process.env.EXPO_PUBLIC_GOOGLE_SHEETS_WEBAPP_URL);
+  if (!webappUrl) return;
+
+  const pending = db.getAllSync("SELECT * FROM weather_timeline_queue WHERE status = 'PENDING' LIMIT 5");
+  if (pending.length === 0) return;
+
+  for (const record of pending) {
+    try {
+      const timelineRow = JSON.parse(record.payload);
+      
+      const res = await fetch(webappUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          spreadsheetName: "Rongdhonu_ML_Dataset",
+          sheet3: "WeatherTimeline",
+          timelineRow
+        })
+      });
+
+      if (res.ok) {
+        const now = new Date().toISOString();
+        db.runSync("UPDATE weather_timeline_queue SET status = 'SUCCESS', updated_at = ?, is_synced = 0 WHERE id = ?", [now, record.id]);
+        enqueueSync("weather_timeline_queue", record.id, "UPDATE");
+        console.log(`[ML Weather] Successfully exported timeline record: ${record.id}`);
+      }
+    } catch (err) {
+      console.error(`[ML Weather] Export failed for ${record.id}:`, err.message);
+    }
+  }
+}
 
 export async function triggerGoogleSheetExportCheck() {
   try {
