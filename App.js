@@ -433,6 +433,9 @@ export default function App() {
       // isInternetReachable can be null initially, we treat explicitly false as offline
       const isOnline = state.isConnected && state.isInternetReachable !== false;
       
+      const { setSystemOnline } = require('./database');
+      setSystemOnline(isOnline);
+
       if (!isOnline) {
         wasOffline = true;
         return;

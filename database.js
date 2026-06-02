@@ -1050,6 +1050,12 @@ function toFirestoreDocument(obj) {
 
 // Global Sync Service Processor (Offline-first Background Worker)
 let syncIntervalId = null;
+let isSystemOnline = true; // Tracked via App.js / NetInfo
+
+export function setSystemOnline(online) {
+  isSystemOnline = !!online;
+}
+
 const MAX_FAILED_RETRY_DELAY_MS = 10 * 60 * 1000;
 
 function getFailedQueueRetryDelayMs(retryCount = 0) {
@@ -1200,6 +1206,11 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
   let afterCount = 0;
   let successfulWrites = 0;
   let failedWrites = 0;
+
+  if (!isSystemOnline && !singleRecordId) {
+    console.log("[Sync Processor] Skipping queue processing because system is OFFLINE.");
+    return { beforeCount: 0, afterCount: 0, successfulWrites: 0, failedWrites: 0 };
+  }
 
   try {
     // Check if database instance is active before querying
