@@ -3517,115 +3517,14 @@ export function checkAndApplyIjaraRollover() {
       }
     }
     return false;
-  } catch (err) {
+    } catch (err) {
     console.error("[Auto Ijara] Rollover check failed:", err);
     return false;
-  }
-}
+    }
+    }
 
-export function performAutoSubmitChecks() {
-  try {
-    const now = new Date();
-    const currentBizDate = getBusinessDate();
-    const isLateNight = now.getHours() === 23 && now.getMinutes() >= 59;
-    const isAfterMidnightBeforeRollover = now.getHours() === 0; // 12:00 AM - 12:59 AM
-    
-    const shouldSubmitCurrentBizDate = isLateNight || isAfterMidnightBeforeRollover;
+    export function resetDailySubmitLock() {
 
-    const datesRows = db.getAllSync(`
-      SELECT DISTINCT date(created_at, 'localtime', '-1 hour') as biz_date FROM orders
-      UNION
-      SELECT DISTINCT date(created_at, 'localtime', '-1 hour') as biz_date FROM expenses
-    `);
-
-    let submittedAny = false;
-
-    datesRows.forEach(row => {
-      const dDate = row.biz_date;
-      if (!dDate) return;
-
-      let needsSubmit = false;
-      if (dDate < currentBizDate) {
-        needsSubmit = true;
-      } else if (dDate === currentBizDate && shouldSubmitCurrentBizDate) {
-        needsSubmit = true;
-      }
-
-      if (needsSubmit) {
-        const existing = db.getFirstSync("SELECT id FROM daily_submit WHERE date = ?", [dDate]);
-        if (!existing) {
-          executeAutoSubmitForDate(dDate);
-          submittedAny = true;
-        }
-      }
-    });
-
-    return submittedAny;
-  } catch(err) {
-    console.error("[Auto Submit] Check failed:", err);
-    return false;
-  }
-}
-
-function executeAutoSubmitForDate(dateStr) {
-  try {
-    const orders = db.getAllSync("SELECT * FROM orders WHERE date(created_at, 'localtime') = ?", [dateStr]);
-    
-    let cashSell = 0, bkashSell = 0, nagadSell = 0, rocketSell = 0;
-    let completedChangeMoney = 0;
-    orders.forEach(o => {
-      cashSell += (o.cash_amount || (o.payment_method === 'ক্যাশ' ? o.grand_total : 0) || 0);
-      bkashSell += (o.bkash_amount || (o.payment_method === 'বিকাশ' ? o.grand_total : 0) || 0);
-      nagadSell += (o.nagad_amount || (o.payment_method === 'নগদ' ? o.grand_total : 0) || 0);
-      rocketSell += (o.rocket_amount || (o.payment_method === 'রকেট' ? o.grand_total : 0) || 0);
-      completedChangeMoney += (o.change_money_given || 0);
-    });
-    
-    // Deduct returned change money from cash sales
-    cashSell = Math.max(0, cashSell - completedChangeMoney);
-    const totalSell = cashSell + bkashSell + nagadSell + rocketSell;
-
-    const expenses = db.getAllSync("SELECT * FROM expenses WHERE date(created_at, 'localtime') = ?", [dateStr]);
-    let numDudu = 0, numAkash = 0, numBurger = 0, numBazar = 0, numOthers = 0, ijara = 0;
-    expenses.forEach(e => {
-      const amt = e.amount || 0;
-      if (e.category === 'দুদু স্টোর') numDudu += amt;
-      else if (e.category === 'আকাশ মুরগী') numAkash += amt;
-      else if (e.category === 'বার্গার বান') numBurger += amt;
-      else if (e.category === 'বাজার') numBazar += amt;
-      else if (e.category === 'অন্যান্য') numOthers += amt;
-      else if (e.category === 'ijara') ijara += amt;
-    });
-
-    const totalExpenses = numDudu + numAkash + numBurger + numBazar + numOthers;
-
-    const summary = {
-      bizDate: dateStr,
-      sell: totalSell,
-      expense: totalExpenses,
-      deposit: 3000, // AUTO SUBMIT FORCED DEPOSIT
-      breakdown: {
-        cash: cashSell,
-        bkash: bkashSell,
-        nagad: nagadSell,
-        rocket: rocketSell,
-        ijara: ijara,
-        dudu: numDudu,
-        akash: numAkash,
-        burger: numBurger,
-        bazar: numBazar,
-        others: numOthers
-      }
-    };
-
-    submitDailySheet(summary, 'Auto System', 'AUTO');
-    console.log(`[Auto Submit] Successfully auto-submitted for date: ${dateStr}`);
-  } catch (err) {
-    console.error(`[Auto Submit] Failed for date ${dateStr}:`, err);
-  }
-}
-
-export function resetDailySubmitLock() {
   try {
     const todayStr = getBusinessDate();
     

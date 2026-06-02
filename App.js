@@ -83,7 +83,6 @@ import {
   syncHighFrequencyCollections,
   syncLowFrequencyCollections,
   startSyncService,
-  performAutoSubmitChecks,
   registerSyncTimer,
   markSyncTimerInactive,
   recordAutoSyncEvent,
@@ -293,16 +292,14 @@ export default function App() {
         // Start background sync service daemon automatically
         startSyncService();
 
-        // Check if there are any unsubmitted past days to Auto Submit right now
-        const didAutoSubmit = performAutoSubmitChecks();
+        // Check if there are any pending midnight rollovers to apply
         const didRollover = checkAndApplyIjaraRollover();
-        if (didAutoSubmit || didRollover) refreshData();
+        if (didRollover) refreshData();
 
-        // Set interval to check for 11:59 PM auto-submits and midnight rollovers every minute
+        // Set interval to check for midnight rollovers every minute
         setInterval(() => {
-          const submitted = performAutoSubmitChecks();
           const rollover = checkAndApplyIjaraRollover();
-          if (submitted || rollover) refreshData();
+          if (rollover) refreshData();
         }, 60000);
 
         // Pull low frequency collections (excluding menu) in the background asynchronously on startup
