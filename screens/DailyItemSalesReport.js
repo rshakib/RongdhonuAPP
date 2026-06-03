@@ -12,7 +12,17 @@ import {
   StatusBar as RNStatusBar
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getItemSalesReport, getBusinessDate, formatDisplayDate, getQuickFilterDates } from '../database';
+import { 
+  getItemSalesReport, 
+  getBusinessDate, 
+  formatDisplayDate, 
+  getQuickFilterDates, 
+  checkHistoryDownloadStatus, 
+  getDailyDownloadCount, 
+  logHistoryDownload, 
+  fetchHistoricalDateData 
+} from '../database';
+import { Alert } from 'react-native';
 
 const { width } = Dimensions.get('window');
 
@@ -81,6 +91,46 @@ const CalendarPicker = ({ visible, onClose, onSelectDate }) => {
   );
 };
 
+// --- WARNING POPUP COMPONENT ---
+const CloudDownloadWarning = ({ visible, onClose, onConfirm, type, period, currentCount, maxCount }) => {
+  return (
+    <Modal visible={visible} transparent={true} animationType="fade">
+      <TouchableOpacity style={styles.calendarOverlay} activeOpacity={1} onPress={onClose}>
+        <View style={styles.calendarContent}>
+          <Text style={[styles.calTitle, { color: '#EF4444', textAlign: 'center', marginBottom: 15 }]}>⚠️ WARNING</Text>
+          <Text style={{ color: '#DDD', fontSize: 13, textAlign: 'center', lineHeight: 20, marginBottom: 20 }}>
+            This report is not available locally.{"\n\n"}
+            Downloading this data will increase Firebase cloud reads.{"\n\n"}
+            Excessive downloads may consume daily cloud quota. If quota is exhausted, synchronization and report downloads may stop until quota resets.
+          </Text>
+          
+          <View style={{ backgroundColor: '#1A1A1A', padding: 15, borderRadius: 12, marginBottom: 20 }}>
+            <Text style={{ color: '#888', fontSize: 12, marginBottom: 4 }}>Requested Period: <Text style={{ color: '#FFF' }}>{period ? formatDisplayDate(period) : ''}</Text></Text>
+            <Text style={{ color: '#888', fontSize: 12, marginBottom: 4 }}>Already Downloaded: <Text style={{ color: '#EF4444' }}>NO</Text></Text>
+            <Text style={{ color: '#888', fontSize: 12, marginBottom: 4 }}>Source: <Text style={{ color: '#FFB703' }}>Cloud</Text></Text>
+            <Text style={{ color: '#888', fontSize: 12 }}>Daily Limit: <Text style={{ color: '#FFF' }}>{currentCount} / {maxCount}</Text></Text>
+          </View>
+
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <TouchableOpacity 
+              style={[styles.calCloseBtn, { flex: 1, marginRight: 10, backgroundColor: '#333', marginTop: 0 }]} 
+              onPress={onClose}
+            >
+              <Text style={styles.calCloseBtnText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.calCloseBtn, { flex: 1, backgroundColor: '#FFB703', borderColor: '#FFB703', marginTop: 0 }]} 
+              onPress={onConfirm}
+            >
+              <Text style={[styles.calCloseBtnText, { color: '#000' }]}>Download</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+};
+
 export default function DailyItemSalesReport({ onBack }) {
   const today = getBusinessDate();
   const [startDate, setStartDate] = useState(today);
@@ -89,6 +139,11 @@ export default function DailyItemSalesReport({ onBack }) {
   const [reportData, setReportData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [calendarVisible, setCalendarVisible] = useState(false);
+  
+  // Smart History Download States
+  const [warningVisible, setWarningVisible] = useState(false);
+  const [pendingDate, setPendingDate] = useState(null);
+  const [downloadingCloud, setDownloadingCloud] = useState(false);
 
   useEffect(() => {
     loadReport();
@@ -112,16 +167,70 @@ export default function DailyItemSalesReport({ onBack }) {
   };
 
   const handleFilterChange = (filter) => {
-    setActiveFilter(filter);
     const dates = getQuickFilterDates(filter);
+    
+    // For Yesterday, check if we need a cloud download
+    if (filter === 'Yesterday') {
+      const isDownloaded = checkHistoryDownloadStatus('ITEM_SALES', dates.start);
+      if (!isDownloaded) {
+        setPendingDate(dates.start);
+        setWarningVisible(true);
+        return;
+      }
+    }
+
+    setActiveFilter(filter);
     setStartDate(dates.start);
     setEndDate(dates.end);
   };
 
   const handleDateSelect = (dateStr) => {
-    setActiveFilter('Custom');
-    setStartDate(dateStr);
-    setEndDate(dateStr);
+    // If today, it's always "local" conceptually
+    const businessToday = getBusinessDate();
+    if (dateStr === businessToday) {
+      setActiveFilter('Custom');
+      setStartDate(dateStr);
+      setEndDate(dateStr);
+      return;
+    }
+
+    // Check if already downloaded
+    const isDownloaded = checkHistoryDownloadStatus('ITEM_SALES', dateStr);
+    if (isDownloaded) {
+      setActiveFilter('Custom');
+      setStartDate(dateStr);
+      setEndDate(dateStr);
+    } else {
+      setPendingDate(dateStr);
+      setWarningVisible(true);
+    }
+  };
+
+  const confirmCloudDownload = async () => {
+    setWarningVisible(false);
+    
+    const currentCount = getDailyDownloadCount('ITEM_SALES');
+    if (currentCount >= 7) {
+      Alert.alert("Limit Reached", "Daily historical download limit reached. Contact Admin if additional downloads are required.");
+      return;
+    }
+
+    setDownloadingCloud(true);
+    try {
+      await fetchHistoricalDateData(pendingDate);
+      logHistoryDownload('ITEM_SALES', pendingDate, 'System');
+      
+      // Now update UI
+      setActiveFilter('Custom');
+      setStartDate(pendingDate);
+      setEndDate(pendingDate);
+      loadReport();
+    } catch (err) {
+      Alert.alert("Download Failed", "Could not fetch historical data from cloud.");
+    } finally {
+      setDownloadingCloud(false);
+      setPendingDate(null);
+    }
   };
 
   // Sections
@@ -186,7 +295,12 @@ export default function DailyItemSalesReport({ onBack }) {
           </View>
         </View>
 
-        {loading ? (
+        {downloadingCloud ? (
+          <View style={{ marginTop: 50, alignItems: 'center' }}>
+            <ActivityIndicator size="large" color="#FFB703" />
+            <Text style={{ color: '#888', marginTop: 15, fontSize: 14 }}>Cloud থেকে ডাটা ডাউনলোড হচ্ছে...</Text>
+          </View>
+        ) : loading ? (
           <ActivityIndicator size="large" color="#FFB703" style={{ marginTop: 50 }} />
         ) : (
           <>
@@ -289,6 +403,16 @@ export default function DailyItemSalesReport({ onBack }) {
         visible={calendarVisible} 
         onClose={() => setCalendarVisible(false)} 
         onSelectDate={handleDateSelect}
+      />
+
+      <CloudDownloadWarning 
+        visible={warningVisible}
+        onClose={() => setWarningVisible(false)}
+        onConfirm={confirmCloudDownload}
+        type="ITEM_SALES"
+        period={pendingDate}
+        currentCount={getDailyDownloadCount('ITEM_SALES')}
+        maxCount={7}
       />
     </SafeAreaView>
   );

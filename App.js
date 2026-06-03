@@ -1020,7 +1020,7 @@ export default function App() {
   const handleCloudRestore = async () => {
     Alert.alert(
       "Cloud Restore",
-      "Cloud থেকে সর্বশেষ তথ্য পুনরায় ডাউনলোড করা হবে।\n\nচালিয়ে যেতে চান?",
+      "Cloud থেকে আজকের এবং গতকালের তথ্য পুনরায় ডাউনলোড করা হবে।\n\nচালিয়ে যেতে চান?",
       [
         { text: "বাতিল", style: "cancel" },
         {
@@ -1038,6 +1038,75 @@ export default function App() {
             } catch (err) {
               console.error("[Cloud Restore] Error:", err);
               Alert.alert("ব্যর্থ", "একটি অপ্রত্যাশিত ত্রুটি ঘটেছে।");
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleMenuRecovery = async () => {
+    Alert.alert(
+      "Recover Menu Items",
+      "This will download the latest menu data from cloud. Cloud read usage may increase. Continue?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Recover Menu",
+          onPress: async () => {
+            showToast("🔄 মেনু রিকভার করা হচ্ছে...", "sync");
+            const { recoverMenuFromCloud } = require('./database');
+            const success = await recoverMenuFromCloud();
+            if (success) {
+              refreshData();
+              Alert.alert("সফল", "Cloud থেকে মেনু সফলভাবে ডাউনলোড করা হয়েছে।");
+            } else {
+              Alert.alert("ব্যর্থ", "মেনু ডাউনলোড করতে সমস্যা হয়েছে।");
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleResetHistoryLimits = () => {
+    const { resetHistoryDownloadLimits } = require('./database');
+    const success = resetHistoryDownloadLimits();
+    if (success) {
+      Alert.alert("Success", "Daily historical download limits have been reset.");
+    } else {
+      Alert.alert("Error", "Failed to reset limits.");
+    }
+  };
+
+  const handleHistoricalMonthDownload = async (monthStr, monthName) => {
+    const { getDailyDownloadCount, checkHistoryDownloadStatus, fetchHistoricalMonthData, logHistoryDownload } = require('./database');
+    
+    // Check if already downloaded
+    if (checkHistoryDownloadStatus('DEPOSIT_REPORT', monthStr)) return;
+
+    // Check limit
+    if (getDailyDownloadCount('DEPOSIT_REPORT') >= 2) {
+      Alert.alert("Limit Reached", "Daily historical month download limit reached. Contact Admin.");
+      return;
+    }
+
+    Alert.alert(
+      "WARNING",
+      `This report is not available locally.\n\nDownloading this data for ${monthName} will increase Firebase cloud reads.\n\nExcessive downloads may consume daily cloud quota. Do you want to continue?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Download",
+          onPress: async () => {
+            showToast(`🔄 ${monthName} ডাটা ডাউনলোড হচ্ছে...`, "sync");
+            try {
+              await fetchHistoricalMonthData(monthStr);
+              logHistoryDownload('DEPOSIT_REPORT', monthStr, 'System');
+              refreshData();
+              Alert.alert("Success", `${monthName} data downloaded and stored locally.`);
+            } catch (err) {
+              Alert.alert("Error", "Failed to download historical month data.");
             }
           }
         }
@@ -1069,6 +1138,9 @@ export default function App() {
               onNavigateToSupplierDue={() => setCurrentScreen('SUPPLIER_DUE')}
               onNavigateToItemSalesReport={() => setCurrentScreen('ITEM_SALES_REPORT')}
               onCloudRestore={handleCloudRestore}
+              onMenuRecovery={handleMenuRecovery}
+              onResetHistoryLimits={handleResetHistoryLimits}
+              onHistoricalMonthDownload={handleHistoricalMonthDownload}
 
               submissionHistory={submissionHistory}
               onSavePastAccount={handleSavePastAccount}
@@ -1099,6 +1171,8 @@ export default function App() {
               onNavigateToSupplierDue={() => setCurrentScreen('SUPPLIER_DUE')}
               onNavigateToItemSalesReport={() => setCurrentScreen('ITEM_SALES_REPORT')}
               onCloudRestore={handleCloudRestore}
+              onMenuRecovery={handleMenuRecovery}
+              onHistoricalMonthDownload={handleHistoricalMonthDownload}
 
               submissionHistory={submissionHistory}
               onSavePastAccount={handleSavePastAccount}
@@ -1129,6 +1203,7 @@ export default function App() {
               onNavigateToSupplierDue={() => setCurrentScreen('SUPPLIER_DUE')}
               onNavigateToItemSalesReport={() => setCurrentScreen('ITEM_SALES_REPORT')}
               onCloudRestore={handleCloudRestore}
+              onMenuRecovery={handleMenuRecovery}
 
               dailyExpenses={dailyExpenses}
               onUpdateExpenses={handleUpdateExpenses}

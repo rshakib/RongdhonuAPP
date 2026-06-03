@@ -94,7 +94,7 @@ const CalendarPicker = ({ visible, onClose, onSelectDate }) => {
   );
 };
 
-export default function AdminDB({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onUpdateTableName, onNavigateToExpenses, onNavigateToSubmit, onNavigateToEditMenu, onNavigateToSupplierDue, onNavigateToItemSalesReport, onCloudRestore, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, onResetDailySubmit, onResetIjara }) {
+export default function AdminDB({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onUpdateTableName, onNavigateToExpenses, onNavigateToSubmit, onNavigateToEditMenu, onNavigateToSupplierDue, onNavigateToItemSalesReport, onCloudRestore, onMenuRecovery, onResetHistoryLimits, onHistoricalMonthDownload, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, onResetDailySubmit, onResetIjara }) {
   const [renameModalVisible, setRenameModalVisible] = useState(false);
   const [selectedTableForRename, setSelectedTableForRename] = useState(null);
   const [newTableName, setNewTableName] = useState('');
@@ -747,7 +747,11 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
             <View style={styles.menuDivider} />
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onResetIjara(); }}><Text style={[styles.menuOptionText, { color: '#FFB703' }]}>🔓 রিসেট ইজা খরচ</Text></TouchableOpacity>
             <View style={styles.menuDivider} />
-            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onCloudRestore(); }}><Text style={[styles.menuOptionText, { color: '#34D399' }]}>☁️ Cloud Restore</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onResetHistoryLimits(); }}><Text style={[styles.menuOptionText, { color: '#FFB703' }]}>🔓 Reset History Limits</Text></TouchableOpacity>
+            <View style={styles.menuDivider} />
+            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onCloudRestore(); }}><Text style={[styles.menuOptionText, { color: '#34D399' }]}>☁️ Cloud Restore (Recent)</Text></TouchableOpacity>
+            <View style={styles.menuDivider} />
+            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onMenuRecovery(); }}><Text style={[styles.menuOptionText, { color: '#34D399' }]}>🍴 Recover Menu Items</Text></TouchableOpacity>
             <View style={styles.menuDivider} />
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onLogout(); }}><Text style={[styles.menuOptionText, { color: '#FF4D4D' }]}>Logout</Text></TouchableOpacity>
           </View>
@@ -859,8 +863,22 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                     <Text style={[styles.sheetHeaderText, { width: 80 }]}>জমা</Text>
                   </View>
                   <ScrollView style={styles.sheetBody}>
-                    {fullHistory.length === 0 ? <Text style={[styles.emptySheetText, { width: 1100 }]}>কোনো জমা ইতিহাস পাওয়া যায়নি।</Text> : 
-                      <>{filteredHistory.map((item, index) => (
+                    {fullHistory.length === 0 ? (
+                      <View style={{ width: 1100, alignItems: 'center', padding: 40 }}>
+                        <Text style={styles.emptySheetText}>কোনো জমা ইতিহাস পাওয়া যায়নি।</Text>
+                        <TouchableOpacity 
+                          style={{ marginTop: 20, backgroundColor: '#34D399', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 }}
+                          onPress={() => {
+                            const monthStr = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
+                            onHistoricalMonthDownload(monthStr, activeFilter);
+                          }}
+                        >
+                          <Text style={{ color: '#000', fontWeight: 'bold' }}>☁️ Check Cloud for {activeFilter}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <>
+                        {filteredHistory.map((item, index) => (
                           <View key={index} style={[styles.sheetRow, index % 2 === 1 && styles.sheetRowAlt]}>
                             <View style={{ width: 100, flexDirection: 'row', alignItems: 'center' }}><Text style={[styles.sheetCell, { textAlign: 'left' }]}>{formatDisplayDate(item.date)}</Text>{item.isManualEntry && <View style={styles.manualBadge}><Text style={styles.manualBadgeText}>M</Text></View>}<TouchableOpacity onPress={() => handleEditPastAccount(item)} style={{ marginLeft: 6, padding: 4 }}><Text style={{ fontSize: 10 }}>✏️</Text></TouchableOpacity></View>
                             <Text style={[styles.sheetCell, { width: 80, fontWeight: 'bold' }]}>৳{item.sell.toLocaleString()}</Text>
@@ -882,7 +900,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                           <TouchableOpacity style={{ padding: 12, alignItems: 'center', backgroundColor: 'rgba(255, 183, 3, 0.05)' }} onPress={() => setShowFullHistory(true)}><Text style={{ color: '#FFB703', fontSize: 11, fontWeight: 'bold' }}>🔽 আরও {fullHistory.length - 3}টি রেকর্ড দেখুন</Text></TouchableOpacity>
                         )}
                       </>
-                    }
+                    )}
                     {fullHistory.length > 0 && (
                       <View style={styles.sheetFooter}>
                         <Text style={[styles.sheetFooterText, { width: 100, textAlign: 'left' }]}>মোট (Total)</Text>

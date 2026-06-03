@@ -499,6 +499,15 @@ const TABLE_SCHEMAS = {
       updated_at TEXT,
       is_synced INTEGER DEFAULT 0
     );
+  `,
+  history_download_log: `
+    CREATE TABLE IF NOT EXISTS history_download_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      report_type TEXT, -- ITEM_SALES, DEPOSIT_REPORT, MENU_RECOVERY
+      requested_period TEXT, -- YYYY-MM-DD or YYYY-MM
+      downloaded_at TEXT,
+      downloaded_by TEXT
+    );
   `
 };
 
@@ -1879,71 +1888,94 @@ function fromFirestoreDocument(doc) {
 }
 
 export async function restoreDatabaseFromCloud() {
-  const tables = [
-    'users', 'restaurant_tables', 'menu_categories', 'menu_items', 
-    'orders', 'order_items', 'payments', 'expenses', 'deliveries', 'eja_history',
-    'daily_summary', 'due_payments', 'off_days', 'app_config', 'daily_submit',
-    'supplier_due', 'supplier_due_history'
+  const today = getBusinessDate();
+  const yesterdayDate = new Date();
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+  const yesterday = yesterdayDate.toISOString().substring(0, 10);
+
+  // 1. Collections that must always be fully restored
+  const alwaysFull = ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due'];
+  
+  // 2. Collections that should only be restored for Today + Yesterday on fresh install
+  const recentOnly = [
+    'orders', 'order_items', 'payments', 'expenses', 'deliveries', 
+    'daily_submit', 'daily_summary', 'due_payments', 'eja_history', 
+    'off_days', 'weather_data', 'supplier_due_history'
   ];
 
-  console.log("[Restore] Starting full database restoration from Firestore...");
+  console.log("[Restore] Starting Smart History Restoration from Firestore...");
+  console.log(`[Restore] Targeting: Full=[${alwaysFull.join(',')}] Recent=[${recentOnly.join(',')}]`);
 
-  for (const table of tables) {
+  const processDocs = async (table, docs) => {
+    if (docs.length === 0) return;
+    
+    let validColumns = [];
     try {
-      console.log(`[Restore] Restoring table: ${table}...`);
+      validColumns = db.getAllSync(`PRAGMA table_info(${table})`).map(c => c.name);
+    } catch (err) {
+      console.error(`[Restore] Failed to get schema for ${table}:`, err.message);
+      return;
+    }
+
+    for (const doc of docs) {
+      const row = fromFirestoreDocument(doc);
+      const filteredRow = {};
+      for (const key of Object.keys(row)) {
+        if (validColumns.includes(key) && key !== 'is_synced') {
+          filteredRow[key] = row[key];
+        }
+      }
+      const keys = Object.keys(filteredRow);
+      if (keys.length === 0) continue;
+      const placeholders = keys.map(() => "?").join(", ");
+      const sql = `INSERT OR REPLACE INTO ${table} (${keys.join(", ")}, is_synced) VALUES (${placeholders}, 1)`;
+      const values = keys.map(k => filteredRow[k]);
+      try {
+        db.runSync(sql, values);
+      } catch (e) {
+        console.error(`[Restore] Failed to insert row into ${table}:`, e.message);
+      }
+    }
+  };
+
+  // 1. Process Always Full
+  for (const table of alwaysFull) {
+    try {
+      console.log(`[Restore] Restoring full table: ${table}...`);
       const { success, documents: docs } = await fetchCollection(table);
-
-      if (!success) {
-        console.error(`[Restore] Failed to fetch documents for ${table}. Skipping this table.`);
-        continue;
-      }
-
-      if (docs.length === 0) {
-        console.log(`[Restore] No documents found for ${table}.`);
-        continue;
-      }
-      for (const doc of docs) {
-        const row = fromFirestoreDocument(doc);
-        
-        // --- SCHEMA GUARDIAN ---
-        let validColumns = [];
-        try {
-          validColumns = db.getAllSync(`PRAGMA table_info(${table})`).map(c => c.name);
-        } catch (err) {
-          console.error(`[Restore] Failed to get schema for ${table}:`, err.message);
-          continue;
-        }
-
-        const filteredRow = {};
-        for (const key of Object.keys(row)) {
-          if (validColumns.includes(key) && key !== 'is_synced') {
-            filteredRow[key] = row[key];
-          }
-        }
-
-        const keys = Object.keys(filteredRow);
-        if (keys.length === 0) continue;
-
-        const placeholders = keys.map(() => '?').join(', ');
-        
-        // Add is_synced = 1 since it's coming from cloud
-        const sql = `INSERT OR REPLACE INTO ${table} (${keys.join(', ')}, is_synced) VALUES (${placeholders}, 1)`;
-        const values = keys.map(k => filteredRow[k]);
-        
-        try {
-          db.runSync(sql, values);
-        } catch (e) {
-          console.error(`[Restore] Failed to insert row into ${table}:`, e.message);
-          console.log(`[Restore] Faulty SQL: ${sql}`);
-        }
-      }
-      console.log(`[Restore] Successfully restored ${docs.length} records into ${table}.`);
+      if (success) await processDocs(table, docs);
     } catch (err) {
       console.error(`[Restore] Critical error restoring ${table}:`, err);
     }
   }
+
+  // 2. Process Recent Only (Today + Yesterday)
+  for (const table of recentOnly) {
+    try {
+      console.log(`[Restore] Restoring recent records for: ${table}...`);
+      
+      // Fetch Today
+      const todayResult = await fetchChangedRecordsFromFirestore(table, today + "T00:00:00Z");
+      if (todayResult.success) await processDocs(table, todayResult.documents);
+      
+      // Fetch Yesterday
+      const yesterdayResult = await fetchChangedRecordsFromFirestore(table, yesterday + "T00:00:00Z");
+      // Filter yesterday result to only include records from that specific day to avoid overlaps if needed
+      if (yesterdayResult.success) {
+        const filteredYesterday = yesterdayResult.documents.filter(doc => {
+          const row = fromFirestoreDocument(doc);
+          const dateStr = row.date || (row.created_at ? row.created_at.substring(0, 10) : "");
+          return dateStr === yesterday;
+        });
+        await processDocs(table, filteredYesterday);
+      }
+    } catch (err) {
+      console.error(`[Restore] Critical error restoring recent ${table}:`, err);
+    }
+  }
   
-  console.log("[Restore] Database restoration completed.");
+  console.log("[Restore] Smart History Restoration completed.");
+  return true;
 }
 
 // Getter for sync error
@@ -1951,6 +1983,133 @@ export function getLastSyncError() {
   return lastSyncError;
 }
 
+
+// --- HISTORICAL DOWNLOAD TRACKING & LIMITS ---
+
+export function checkHistoryDownloadStatus(type, period) {
+  try {
+    const row = db.getFirstSync(
+      "SELECT * FROM history_download_log WHERE report_type = ? AND requested_period = ?",
+      [type, period]
+    );
+    return !!row;
+  } catch (e) {
+    return false;
+  }
+}
+
+export function getDailyDownloadCount(type) {
+  try {
+    const today = new Date().toISOString().substring(0, 10);
+    const row = db.getFirstSync(
+      "SELECT COUNT(*) as count FROM history_download_log WHERE report_type = ? AND date(downloaded_at) = ?",
+      [type, today]
+    );
+    return row ? row.count : 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+export function logHistoryDownload(type, period, user) {
+  try {
+    const now = new Date().toISOString();
+    db.runSync(
+      "INSERT INTO history_download_log (report_type, requested_period, downloaded_at, downloaded_by) VALUES (?, ?, ?, ?)",
+      [type, period, now, user]
+    );
+    return true;
+  } catch (e) {
+    console.error("[DB] Failed to log history download:", e);
+    return false;
+  }
+}
+
+export function resetHistoryDownloadLimits() {
+  try {
+    const today = new Date().toISOString().substring(0, 10);
+    db.runSync("DELETE FROM history_download_log WHERE date(downloaded_at) = ?", [today]);
+    return true;
+  } catch (e) {
+    console.error("[DB] Failed to reset history download limits:", e);
+    return false;
+  }
+}
+
+async function processRemoteDocsToLocal(table, docs) {
+  if (!docs || docs.length === 0) return;
+  let validColumns = [];
+  try {
+    validColumns = db.getAllSync(`PRAGMA table_info(${table})`).map(c => c.name);
+  } catch (err) {
+    return;
+  }
+  for (const doc of docs) {
+    const row = fromFirestoreDocument(doc);
+    const filteredRow = {};
+    for (const key of Object.keys(row)) {
+      if (validColumns.includes(key) && key !== 'is_synced') {
+        filteredRow[key] = row[key];
+      }
+    }
+    const keys = Object.keys(filteredRow);
+    if (keys.length === 0) continue;
+    const placeholders = keys.map(() => "?").join(", ");
+    const sql = `INSERT OR REPLACE INTO ${table} (${keys.join(", ")}, is_synced) VALUES (${placeholders}, 1)`;
+    const values = keys.map(k => filteredRow[k]);
+    try {
+      db.runSync(sql, values);
+    } catch (e) {}
+  }
+}
+
+export async function fetchHistoricalDateData(dateStr) {
+  const collections = ['orders', 'order_items', 'payments', 'expenses', 'deliveries'];
+  console.log(`[Historical Download] Fetching data for date: ${dateStr}`);
+  for (const table of collections) {
+    const result = await fetchChangedRecordsFromFirestore(table, dateStr + "T00:00:00Z");
+    if (result.success) {
+      const dayDocs = result.documents.filter(doc => {
+        const row = fromFirestoreDocument(doc);
+        const d = row.date || (row.created_at ? row.created_at.substring(0, 10) : "");
+        return d === dateStr;
+      });
+      await processRemoteDocsToLocal(table, dayDocs);
+    }
+  }
+}
+
+export async function fetchHistoricalMonthData(monthStr) {
+  // monthStr is YYYY-MM
+  const collections = ['orders', 'order_items', 'payments', 'expenses', 'daily_submit', 'daily_summary'];
+  console.log(`[Historical Download] Fetching data for month: ${monthStr}`);
+  
+  // Use the first day of the month as the filter marker to avoid downloading entire history
+  const startOfMonth = monthStr + "-01T00:00:00Z";
+  
+  for (const table of collections) {
+     const result = await fetchChangedRecordsFromFirestore(table, startOfMonth);
+     if (result.success) {
+       const monthDocs = result.documents.filter(doc => {
+         const row = fromFirestoreDocument(doc);
+         const d = row.date || (row.created_at ? row.created_at.substring(0, 10) : "");
+         return d.startsWith(monthStr);
+       });
+       await processRemoteDocsToLocal(table, monthDocs);
+     }
+  }
+}
+
+export async function recoverMenuFromCloud() {
+  const collections = ['menu_items', 'menu_categories'];
+  for (const table of collections) {
+    const result = await fetchCollection(table);
+    if (result.success) {
+      await processRemoteDocsToLocal(table, result.documents);
+    }
+  }
+  return true;
+}
 
 // ==========================================
 // 6. ITEM SALES REPORT ENGINE

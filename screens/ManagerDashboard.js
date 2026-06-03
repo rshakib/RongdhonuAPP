@@ -93,7 +93,7 @@ const CalendarPicker = ({ visible, onClose, onSelectDate, initialDate }) => {
   );
 };
 
-export default function ManagerDashboard({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onNavigateToSubmit, onUpdateTableName, onNavigateToExpenses, onNavigateToSupplierDue, onNavigateToItemSalesReport, onCloudRestore, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder }) {
+export default function ManagerDashboard({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onNavigateToSubmit, onUpdateTableName, onNavigateToExpenses, onNavigateToSupplierDue, onNavigateToItemSalesReport, onCloudRestore, onMenuRecovery, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder }) {
   const [renameModalVisible, setRenameModalVisible] = useState(false);
   const [selectedTableForRename, setSelectedTableForRename] = useState(null);
   const [newTableName, setNewTableName] = useState('');
@@ -629,18 +629,11 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onNavigateToItemSalesReport(); }}><Text style={styles.menuOptionText}>📊 আইটেম বিক্রয় রিপোর্ট</Text></TouchableOpacity>
 
             <View style={styles.menuDivider} />
-            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onCloudRestore(); }}><Text style={[styles.menuOptionText, { color: '#34D399' }]}>☁️ Cloud Restore</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onCloudRestore(); }}><Text style={[styles.menuOptionText, { color: '#34D399' }]}>☁️ Cloud Restore (Recent)</Text></TouchableOpacity>
             <View style={styles.menuDivider} />
-
-            <TouchableOpacity 
-              style={styles.menuOption} 
-              onPress={() => {
-                setMenuModalVisible(false);
-                onLogout();
-              }}
-            >
-              <Text style={[styles.menuOptionText, { color: '#FF4D4D' }]}>Logout</Text>
-            </TouchableOpacity>
+            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onMenuRecovery(); }}><Text style={[styles.menuOptionText, { color: '#34D399' }]}>🍴 Recover Menu Items</Text></TouchableOpacity>
+            <View style={styles.menuDivider} />
+            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onLogout(); }}><Text style={[styles.menuOptionText, { color: '#FF4D4D' }]}>Logout</Text></TouchableOpacity>
           </View>
         </TouchableOpacity>
       </Modal>

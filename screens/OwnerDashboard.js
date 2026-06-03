@@ -94,7 +94,7 @@ const CalendarPicker = ({ visible, onClose, onSelectDate, initialDate }) => {
   );
 };
 
-export default function OwnerDashboard({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onUpdateTableName, onNavigateToExpenses, onNavigateToSubmit, onNavigateToEditMenu, onNavigateToSupplierDue, onNavigateToItemSalesReport, onCloudRestore, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder }) {
+export default function OwnerDashboard({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onUpdateTableName, onNavigateToExpenses, onNavigateToSubmit, onNavigateToEditMenu, onNavigateToSupplierDue, onNavigateToItemSalesReport, onCloudRestore, onMenuRecovery, onHistoricalMonthDownload, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder }) {
   const [renameModalVisible, setRenameModalVisible] = useState(false);
   const [selectedTableForRename, setSelectedTableForRename] = useState(null);
   const [newTableName, setNewTableName] = useState('');
@@ -681,9 +681,10 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
             <View style={styles.menuDivider} />
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); setDepositReportVisible(true); }}><Text style={styles.menuOptionText}>📊 Deposit Report</Text></TouchableOpacity>
             <View style={styles.menuDivider} />
-            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onCloudRestore(); }}><Text style={[styles.menuOptionText, { color: '#34D399' }]}>☁️ Cloud Restore</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onCloudRestore(); }}><Text style={[styles.menuOptionText, { color: '#34D399' }]}>☁️ Cloud Restore (Recent)</Text></TouchableOpacity>
             <View style={styles.menuDivider} />
-
+            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onMenuRecovery(); }}><Text style={[styles.menuOptionText, { color: '#34D399' }]}>🍴 Recover Menu Items</Text></TouchableOpacity>
+            <View style={styles.menuDivider} />
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onLogout(); }}><Text style={[styles.menuOptionText, { color: '#FF4D4D' }]}>Logout</Text></TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -813,7 +814,20 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
                   </View>
                   <ScrollView style={styles.sheetBody}>
                     {filteredHistory.length === 0 ? (
-                      <Text style={[styles.emptySheetText, { width: 690 }]}>কোনো জমা ইতিহাস পাওয়া যায়নি।</Text>
+                      <View style={{ width: 690, alignItems: 'center', padding: 40 }}>
+                        <Text style={styles.emptySheetText}>কোনো জমা ইতিহাস পাওয়া যায়নি।</Text>
+                        <TouchableOpacity 
+                          style={{ marginTop: 20, backgroundColor: '#34D399', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 }}
+                          onPress={() => {
+                            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+                            const activeFilter = `${monthNames[selectedMonth]} ${selectedYear}`;
+                            const monthStr = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
+                            onHistoricalMonthDownload(monthStr, activeFilter);
+                          }}
+                        >
+                          <Text style={{ color: '#000', fontWeight: 'bold' }}>☁️ Check Cloud for {monthNames[selectedMonth]} {selectedYear}</Text>
+                        </TouchableOpacity>
+                      </View>
                     ) : (
                       filteredHistory.map((item, index) => (
                         <View key={index} style={[styles.sheetRow, index % 2 === 1 && styles.sheetRowAlt]}>
