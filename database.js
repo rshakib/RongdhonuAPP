@@ -1733,13 +1733,21 @@ async function syncCollections(collectionsList) {
 
 let isPullingSyncHigh = false;
 let isPullingSyncLow = false;
+let isPullingSyncDeletions = false;
 
 export async function syncDeletionsOnly() {
+  if (isPullingSyncDeletions) {
+    recordAutoSyncEvent('syncDeletionsOnly', 'skipped', 'already-running');
+    return false;
+  }
+  isPullingSyncDeletions = true;
   try {
     return await traceSyncOperation('syncDeletionsOnly', () => syncCollections(['deletions']));
   } catch (err) {
     recordAutoSyncEvent('syncDeletionsOnly', 'failure', err.message);
     return false;
+  } finally {
+    isPullingSyncDeletions = false;
   }
 }
 

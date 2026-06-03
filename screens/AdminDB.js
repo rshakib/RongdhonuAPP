@@ -100,13 +100,13 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
   const [newTableName, setNewTableName] = useState('');
 
   // Visual Sync Timer Countdowns
-  const [delCountdown, setDelCountdown] = useState(10);
+  const [delCountdown, setDelCountdown] = useState(90);
   const [tabCountdown, setTabCountdown] = useState(15);
   const [fullCountdown, setFullCountdown] = useState(30);
 
   useEffect(() => {
     const t = setInterval(() => {
-      setDelCountdown(prev => (prev <= 1 ? 10 : prev - 1));
+      setDelCountdown(prev => (prev <= 1 ? 90 : prev - 1));
       setTabCountdown(prev => (prev <= 1 ? 15 : prev - 1));
       setFullCountdown(prev => (prev <= 1 ? 30 : prev - 1));
     }, 1000);

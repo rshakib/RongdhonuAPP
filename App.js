@@ -351,14 +351,14 @@ export default function App() {
     };
   }, [isLoggedIn]);
 
-  // --- HYBRID SYNC: FAST DELETIONS CHANNEL (10s) ---
+  // --- HYBRID SYNC: FAST DELETIONS CHANNEL (90s) ---
   useEffect(() => {
     if (!isLoggedIn) return;
 
-    registerSyncTimer('auto-deletions-pull', 10000, 'syncDeletionsOnly');
+    registerSyncTimer('auto-deletions-pull', 90000, 'syncDeletionsOnly');
     const deletionsChannel = setInterval(async () => {
        await runAutoPull('auto-deletions-pull', syncDeletionsOnly, refreshData);
-    }, 10000); // Check every 10 seconds
+    }, 90000); // Check every 90 seconds
 
     return () => {
       clearInterval(deletionsChannel);
