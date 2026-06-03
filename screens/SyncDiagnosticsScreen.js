@@ -152,6 +152,53 @@ export default function SyncDiagnosticsScreen({ onBack }) {
           </>
         ))}
 
+        {renderSection("Recent Sync Cycles", "⏱️", (
+          <>
+            {diagnostics.cycleStats && diagnostics.cycleStats.slice(0, 5).map((cycle, idx) => (
+              <View key={cycle.id || idx} style={{ marginBottom: 16, borderBottomWidth: 1, borderColor: '#1A1A1A', paddingBottom: 12 }}>
+                <Text style={{ color: '#FFB703', fontWeight: 'bold', fontSize: 13, marginBottom: 6 }}>
+                  {cycle.name} <Text style={{ color: '#888', fontSize: 10 }}>({formatTime(cycle.timestamp)})</Text>
+                </Text>
+                
+                {cycle.collections && cycle.collections.length > 0 ? (
+                  <View style={{ backgroundColor: '#111', borderRadius: 8, padding: 8 }}>
+                    <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderColor: '#222', paddingBottom: 4, marginBottom: 4 }}>
+                      <Text style={{ flex: 2, color: '#888', fontSize: 10 }}>Collection</Text>
+                      <Text style={{ flex: 1, color: '#888', fontSize: 10, textAlign: 'center' }}>Docs</Text>
+                      <Text style={{ flex: 1, color: '#888', fontSize: 10, textAlign: 'right' }}>Reads</Text>
+                    </View>
+                    
+                    {cycle.collections.map((col, cIdx) => (
+                      <View key={`${cycle.id}-${col.name}-${cIdx}`} style={{ flexDirection: 'row', paddingVertical: 4 }}>
+                        <Text style={{ flex: 2, color: '#CCC', fontSize: 11 }}>
+                          {col.name} {col.isFullSync ? <Text style={{ color: '#F87171', fontSize: 9 }}>(Full)</Text> : ''}
+                        </Text>
+                        <Text style={{ flex: 1, color: '#34D399', fontSize: 11, textAlign: 'center', fontWeight: 'bold' }}>{col.docsReturned}</Text>
+                        <Text style={{ flex: 1, color: '#FFB703', fontSize: 11, textAlign: 'right' }}>{col.estimatedReads}</Text>
+                      </View>
+                    ))}
+                    
+                    <View style={{ flexDirection: 'row', borderTopWidth: 1, borderColor: '#222', paddingTop: 6, marginTop: 4 }}>
+                      <Text style={{ flex: 2, color: '#FFF', fontSize: 11, fontWeight: 'bold' }}>Total</Text>
+                      <Text style={{ flex: 1, color: '#FFF', fontSize: 11, textAlign: 'center', fontWeight: 'bold' }}>
+                        {cycle.collections.reduce((sum, c) => sum + c.docsReturned, 0)}
+                      </Text>
+                      <Text style={{ flex: 1, color: '#FFB703', fontSize: 11, textAlign: 'right', fontWeight: 'bold' }}>
+                        {cycle.totalReads}
+                      </Text>
+                    </View>
+                  </View>
+                ) : (
+                  <Text style={{ color: '#555', fontSize: 11, fontStyle: 'italic' }}>No collections processed.</Text>
+                )}
+              </View>
+            ))}
+            {(!diagnostics.cycleStats || diagnostics.cycleStats.length === 0) && (
+              <Text style={{ color: '#555', fontSize: 12, textAlign: 'center', padding: 10 }}>No cycles recorded yet.</Text>
+            )}
+          </>
+        ))}
+
         <TouchableOpacity 
           style={styles.exportBtn}
           onPress={() => {

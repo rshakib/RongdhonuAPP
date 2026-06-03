@@ -745,6 +745,27 @@ export function migrateSupplierDue() {
   }
 }
 
+export function migrateMLExportTables() {
+  try {
+    const queueCols = db.getAllSync("PRAGMA table_info(ml_export_queue)");
+    if (queueCols && queueCols.length > 0) {
+      if (!queueCols.some(c => c.name === 'is_synced')) {
+        console.log("[DB Migration] Adding is_synced to ml_export_queue...");
+        db.execSync("ALTER TABLE ml_export_queue ADD COLUMN is_synced INTEGER DEFAULT 0");
+      }
+    }
+    const historyCols = db.getAllSync("PRAGMA table_info(ml_export_history)");
+    if (historyCols && historyCols.length > 0) {
+      if (!historyCols.some(c => c.name === 'is_synced')) {
+        console.log("[DB Migration] Adding is_synced to ml_export_history...");
+        db.execSync("ALTER TABLE ml_export_history ADD COLUMN is_synced INTEGER DEFAULT 0");
+      }
+    }
+  } catch (err) {
+    console.error("[DB Migration] ML Export tables migration failed:", err);
+  }
+}
+
 // ==========================================
 // 1. AUTO INITIALIZATION ENGINE
 // ==========================================
@@ -758,6 +779,7 @@ export function initDatabase(skipSeeding = false) {
     migrateSplitPayments();
     migrateDailySubmitUnified();
     migrateSupplierDue();
+    migrateMLExportTables();
 
     // 1. Create tables
     for (const [tableName, sql] of Object.entries(TABLE_SCHEMAS)) {
@@ -1107,7 +1129,8 @@ const syncRuntimeDiagnostics = {
     total: 0,
     netInfoCount: 0,
     foregroundCount: 0
-  }
+  },
+  cycleStats: []
 };
 
 export function incrementNetInfoRecoveryCount() {
@@ -1540,7 +1563,7 @@ async function fetchChangedRecordsFromFirestore(collectionName, lastSyncTime) {
     return { success: false, documents: [] };
   }
 }
-async function syncCollections(collectionsList) {
+async function syncCollections(collectionsList, cycleName = 'Unnamed Cycle') {
   const projectId = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID);
   const apiKey = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_API_KEY);
   
@@ -1552,6 +1575,14 @@ async function syncCollections(collectionsList) {
 
   console.log(`[Pull Sync] Starting sync for: ${collectionsList.join(', ')}`);
   let hasChanges = false;
+  
+  const cycleStat = {
+    id: Date.now().toString(),
+    name: cycleName,
+    collections: [],
+    totalReads: 0,
+    timestamp: new Date().toISOString()
+  };
 
   try {
     for (const table of collectionsList) {
@@ -1569,6 +1600,9 @@ async function syncCollections(collectionsList) {
       const queryCollection = table === 'deletions' ? 'app_config' : table;
       
       let fetchResult = { success: false, documents: [] };
+      let estReads = 0;
+      let isFullSync = false;
+
       if (lastSyncTime) {
         // OVERLAP SAFETY: Subtract 60 seconds from lastSyncTime to ensure eventual consistency
         // and time-drift gaps are covered. UPSERT (INSERT OR REPLACE) handles duplicates.
@@ -1580,11 +1614,23 @@ async function syncCollections(collectionsList) {
 
         console.log(`[Pull Sync] Fetching changed records for "${table}" since ${queryMarker} (Overlap 60s from ${lastSyncTime})...`);
         fetchResult = await fetchChangedRecordsFromFirestore(queryCollection, queryMarker);
+        estReads = 1 + (fetchResult?.documents?.length || 0); // 1 for query run, +1 per doc returned
       } else {
         // Fetch entire collection on first sync
         console.log(`[Pull Sync] Fetching full collection for "${table}" (first sync)...`);
         fetchResult = await fetchCollection(queryCollection);
+        isFullSync = true;
+        estReads = 1 + (fetchResult?.documents?.length || 0); // 1 for collection root, +1 per doc returned
       }
+
+      cycleStat.collections.push({
+        name: table,
+        queryCount: 1, // Currently 1 query per table per cycle
+        docsReturned: fetchResult?.documents?.length || 0,
+        estimatedReads: estReads,
+        isFullSync
+      });
+      cycleStat.totalReads += estReads;
 
       const { success, documents: docs } = fetchResult;
 
@@ -1774,6 +1820,14 @@ async function syncCollections(collectionsList) {
     console.error("[Pull Sync] syncCollections execution error:", err);
   }
 
+  // Finalize and log cycle stats
+  syncRuntimeDiagnostics.cycleStats.unshift(cycleStat);
+  if (syncRuntimeDiagnostics.cycleStats.length > 50) {
+    syncRuntimeDiagnostics.cycleStats.pop();
+  }
+  
+  console.log(`[Cycle Stat] ${cycleStat.name} | Total Reads: ${cycleStat.totalReads} | Collections: ${cycleStat.collections.map(c => `${c.name}(${c.estimatedReads})`).join(', ')}`);
+
   return hasChanges;
 }
 
@@ -1789,7 +1843,7 @@ export async function syncDeletionsOnly() {
   isPullingSyncDeletions = true;
   try {
     incrementReadCounter('deletions', 1);
-    return await traceSyncOperation('syncDeletionsOnly', () => syncCollections(['deletions']));
+    return await traceSyncOperation('syncDeletionsOnly', () => syncCollections(['deletions'], 'Deletions Sync'));
   } catch (err) {
     recordAutoSyncEvent('syncDeletionsOnly', 'failure', err.message);
     return false;
@@ -1801,7 +1855,7 @@ export async function syncDeletionsOnly() {
 export async function syncMenuOnly() {
   try {
     incrementReadCounter('menu', 2);
-    return await traceSyncOperation('syncMenuOnly', () => syncCollections(['menu_items', 'menu_categories']));
+    return await traceSyncOperation('syncMenuOnly', () => syncCollections(['menu_items', 'menu_categories'], 'Menu Sync'));
   } catch (err) {
     recordAutoSyncEvent('syncMenuOnly', 'failure', err.message);
     return false;
@@ -1818,7 +1872,7 @@ export async function syncTablesOnly() {
   isPullingSyncTables = true;
   try {
     incrementReadCounter('tables', 1);
-    return await traceSyncOperation('syncTablesOnly', () => syncCollections(['restaurant_tables']));
+    return await traceSyncOperation('syncTablesOnly', () => syncCollections(['restaurant_tables'], 'Table Sync'));
   } catch (err) {
     recordAutoSyncEvent('syncTablesOnly', 'failure', err.message);
     return false;
@@ -1835,10 +1889,9 @@ export async function syncHighFrequencyCollections() {
   isPullingSyncHigh = true;
   let hasChanges = false;
   try {
-    // restaurant_tables removed from 60s pool; moved to 15s dedicated pool
     const highFreq = ['orders', 'order_items', 'payments', 'deliveries', 'deletions'];
     incrementReadCounter('highFrequency', highFreq.length);
-    hasChanges = await traceSyncOperation('syncHighFrequencyCollections', () => syncCollections(highFreq));
+    hasChanges = await traceSyncOperation('syncHighFrequencyCollections', () => syncCollections(highFreq, 'High Frequency Sync'));
   } catch (err) {
     recordAutoSyncEvent('syncHighFrequencyCollections', 'failure', err.message);
     return false;
@@ -1856,10 +1909,9 @@ export async function syncLowFrequencyCollections() {
   isPullingSyncLow = true;
   let hasChanges = false;
   try {
-    // Menu collections removed from periodic polling to optimize Firestore reads.
     const lowFreq = ['users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 'app_config', 'expenses', 'eja_history', 'daily_submit', 'supplier_due', 'supplier_due_history'];
     incrementReadCounter('lowFrequency', lowFreq.length);
-    hasChanges = await traceSyncOperation('syncLowFrequencyCollections', () => syncCollections(lowFreq));
+    hasChanges = await traceSyncOperation('syncLowFrequencyCollections', () => syncCollections(lowFreq, 'Low Frequency Sync'));
   } catch (err) {
     recordAutoSyncEvent('syncLowFrequencyCollections', 'failure', err.message);
     return false;
@@ -2764,15 +2816,29 @@ async function processMLExportQueue() {
 
       if (res.ok) {
         const now = new Date().toISOString();
-        db.runSync("UPDATE ml_export_queue SET status = 'SUCCESS', updated_at = ?, is_synced = 0 WHERE id = ?", [now, record.id]);
         
-        // Mark in history for duplicate prevention audit
-        db.runSync(`
-          INSERT OR REPLACE INTO ml_export_history (id, date, type, exported_at, created_at, updated_at, is_synced)
-          VALUES (?, ?, ?, ?, ?, ?, 0)
-        `, [record.id, record.business_date, record.type, now, record.created_at, now]);
+        try {
+          db.runSync("UPDATE ml_export_queue SET status = 'SUCCESS', updated_at = ?, is_synced = 0 WHERE id = ?", [now, record.id]);
+        } catch (e) {
+          console.error(`[ML Export DB Error] Failed to update queue for ${record.id}:`, e.message);
+          throw e;
+        }
+        
+        try {
+          // Mark in history for duplicate prevention audit
+          db.runSync(`
+            INSERT OR REPLACE INTO ml_export_history (id, date, type, exported_at, created_at, updated_at, is_synced)
+            VALUES (?, ?, ?, ?, ?, ?, 0)
+          `, [record.id, record.business_date || '', record.type || '', now, record.created_at || now, now]);
+        } catch (e) {
+          console.error(`[ML Export DB Error] Failed to insert history for ${record.id}:`, e.message);
+          throw e;
+        }
         
         console.log(`[ML Export] Successfully exported record: ${record.id}`);
+      } else {
+        const errText = await res.text();
+        console.error(`[ML Export] HTTP Error for ${record.id}: ${res.status} ${errText}`);
       }
     } catch (err) {
       console.error(`[ML Export] POST failed for ${record.id}:`, err.message);
