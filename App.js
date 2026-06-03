@@ -1329,18 +1329,17 @@ export default function App() {
         );
 
       case 'PAYMENT_SUCCESS':
-        const allSuccessOrders = [...tables, ...deliveries];
-        const successTable = allSuccessOrders.find(t => t.id === selectedTableId);
-        return (
-          <PaymentSuccess
-            tableId={successTable ? (successTable.name || successTable.id) : selectedTableId}
-            totalAmount={paymentAmount}
-            paidAmount={paidAmount}
-            paymentMethod={paymentMethod}
-            onReturnHome={handleReturnHome}
-          />
-        );
-      
+       const allSuccessOrders = [...tables, ...deliveries];
+       const successTable = allSuccessOrders.find(t => t.id === selectedTableId);
+       return (
+         <PaymentSuccess
+           tableId={successTable ? (successTable.name || successTable.id) : selectedTableId}
+           totalAmount={paymentAmount + deliveryCharge + changeMoneyGiven}
+           paidAmount={paidAmount}
+           paymentMethod={paymentMethod}
+           onReturnHome={handleReturnHome}
+         />
+       );
       case 'DAILY_SUBMIT':
         return (
           <DailySubmitScreen

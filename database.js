@@ -3266,11 +3266,15 @@ export function addCompletedOrder(orderRecord) {
     const nagadAmt = orderRecord.nagadAmount || 0;
     const rocketAmt = orderRecord.rocketAmount || 0;
 
+    const expectedGrandTotal = (orderRecord.totalAmount || 0) + deliveryCharge + changeMoneyGiven;
+    const discount = Math.max(0, expectedGrandTotal - orderRecord.paidAmount);
+    const finalGrandTotal = Math.min(orderRecord.paidAmount, expectedGrandTotal);
+
     // Check if order already exists in SQLite to prevent duplicate creation
     const existingOrder = db.getFirstSync("SELECT id FROM orders WHERE id = ?", [idStr]);
     if (existingOrder) {
       db.runSync(`
-        UPDATE orders SET table_id = ?, items = ?, subtotal = ?, discount = ?, delivery_charge = ?, change_money_given = ?, 
+        UPDATE orders SET table_id = ?, items = ?, subtotal = ?, discount = ?, delivery_charge = ?, change_money_given = ?,
         cash_amount = ?, bkash_amount = ?, nagad_amount = ?, rocket_amount = ?,
         grand_total = ?, payment_status = 'Paid', payment_method = ?, time = ?, updated_at = ?, is_synced = 0
         WHERE id = ?
@@ -3278,14 +3282,14 @@ export function addCompletedOrder(orderRecord) {
         orderRecord.tableId,
         orderRecord.items,
         orderRecord.totalAmount,
-        0.0,
+        discount,
         deliveryCharge,
         changeMoneyGiven,
         cashAmt,
         bkashAmt,
         nagadAmt,
         rocketAmt,
-        orderRecord.paidAmount,
+        finalGrandTotal,
         orderRecord.method,
         orderRecord.time,
         nowIso,
@@ -3305,14 +3309,14 @@ export function addCompletedOrder(orderRecord) {
         orderRecord.tableId,
         orderRecord.items,
         orderRecord.totalAmount,
-        0.0,
+        discount,
         deliveryCharge,
         changeMoneyGiven,
         cashAmt,
         bkashAmt,
         nagadAmt,
         rocketAmt,
-        orderRecord.paidAmount,
+        finalGrandTotal,
         orderRecord.method,
         orderRecord.time,
         nowIso,
@@ -3321,16 +3325,15 @@ export function addCompletedOrder(orderRecord) {
       ]);
       enqueueSync("orders", idStr, "INSERT");
     }
-
     const payId = `pay_${idStr}`;
     const existingPay = db.getFirstSync("SELECT id FROM payments WHERE id = ?", [payId]);
     if (existingPay) {
       db.runSync(`
-        UPDATE payments SET total_amount = ?, customer_paid = ?, discount_amount = 0.0, delivery_charge = ?, change_money_given = ?, 
+        UPDATE payments SET total_amount = ?, customer_paid = ?, discount_amount = ?, delivery_charge = ?, change_money_given = ?, 
         cash_amount = ?, bkash_amount = ?, nagad_amount = ?, rocket_amount = ?,
         payment_method = ?, payment_status = 'Paid', paid_at = ?, updated_at = ?, is_synced = 0
         WHERE id = ?
-      `, [orderRecord.paidAmount, orderRecord.paidAmount, deliveryCharge, changeMoneyGiven, cashAmt, bkashAmt, nagadAmt, rocketAmt, orderRecord.method, nowIso, nowIso, payId]);
+      `, [expectedGrandTotal, orderRecord.paidAmount, discount, deliveryCharge, changeMoneyGiven, cashAmt, bkashAmt, nagadAmt, rocketAmt, orderRecord.method, nowIso, nowIso, payId]);
       enqueueSync("payments", payId, "UPDATE");
     } else {
       db.runSync(`
@@ -3343,9 +3346,9 @@ export function addCompletedOrder(orderRecord) {
       `, [
         payId,
         idStr,
+        expectedGrandTotal,
         orderRecord.paidAmount,
-        orderRecord.paidAmount,
-        0.0,
+        discount,
         deliveryCharge,
         changeMoneyGiven,
         cashAmt,

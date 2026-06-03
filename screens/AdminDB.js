@@ -576,6 +576,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
           <View style={[styles.statsCard, styles.cardBlue]}>
             <View style={styles.statsCardHeader}><Text style={styles.statsCardTitle}>মোট ক্যাশ</Text><Text style={styles.statsEmoji}>💹</Text></View>
             <Text style={styles.statsCardAmount}>৳ {totalCash.toLocaleString()}</Text>
+            <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: 'bold', marginBottom: 2 }}>Cashbox: ৳ {(totalCash - (bkashSale + nagadSale + rocketSale)).toLocaleString()}</Text>
             <Text style={styles.statsCardSubBlue}>বিক্রয় + ইজা - খরচ</Text>
           </View>
           <View style={[styles.statsCard, styles.cardOrange]}>

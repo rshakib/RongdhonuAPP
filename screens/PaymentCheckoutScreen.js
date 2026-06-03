@@ -46,10 +46,6 @@ export default function PaymentCheckoutScreen({
 
   const handleComplete = () => {
     if (isSplitMode) {
-      if (remainingAmount > 0.01) {
-        Alert.alert("ত্রুটি", "পেমেন্টের যোগফল গ্র্যান্ড টোটালের চেয়ে কম হতে পারবে না!");
-        return;
-      }
       // If totalEntered > grandTotal, the excess is part of the sale
       onCompletePayment(totalEntered, 'Split', breakdown);
       return;
@@ -59,11 +55,6 @@ export default function PaymentCheckoutScreen({
     
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
       Alert.alert("ত্রুটি", "সঠিক মূল্য টাইপ করুন!");
-      return;
-    }
-
-    if (parsedAmount < grandTotal - 0.01) {
-      Alert.alert("ত্রুটি", "পেমেন্টের পরিমাণ গ্র্যান্ড টোটালের চেয়ে কম হতে পারবে না!");
       return;
     }
     
@@ -256,13 +247,9 @@ export default function PaymentCheckoutScreen({
         {/* Action Buttons */}
         <View style={styles.actionBtnRow}>
           <TouchableOpacity 
-            style={[
-              styles.completeBtn, 
-              isSplitMode && remainingAmount > 0.01 && { opacity: 0.5 }
-            ]} 
+            style={styles.completeBtn} 
             onPress={handleComplete} 
             activeOpacity={0.85}
-            disabled={isSplitMode && remainingAmount > 0.01}
           >
             <View style={styles.btnCheckCircle}>
               <Text style={styles.btnCheckText}>✓</Text>

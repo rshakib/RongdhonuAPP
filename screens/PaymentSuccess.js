@@ -13,7 +13,8 @@ import { formatDisplayDate } from '../database';
 
 export default function PaymentSuccess({ tableId, totalAmount, paidAmount, paymentMethod, onReturnHome }) {
   const orderId = `#ORD-000${Math.floor(100000 + Math.random() * 900000)}`;
-  const dueAmount = Math.max(0, totalAmount - paidAmount);
+  const discountAmount = Math.max(0, totalAmount - paidAmount);
+  const changeAmount = Math.max(0, paidAmount - totalAmount);
 
   // Dynamic payment icon
   const getMethodIcon = () => {
@@ -87,8 +88,10 @@ export default function PaymentSuccess({ tableId, totalAmount, paidAmount, payme
 
           <View style={styles.receiptGrid}>
             <View style={styles.receiptCol}>
-              <Text style={styles.receiptLabel}>{paymentMethod === 'বাকি' ? 'বাকি:' : 'ডিসকাউন্ট:'}</Text>
-              <Text style={[styles.receiptAmount, dueAmount > 0 ? (paymentMethod === 'বাকি' ? styles.textRed : styles.textGreen) : styles.textGreen]}>৳ {dueAmount}</Text>
+              <Text style={styles.receiptLabel}>{changeAmount > 0 ? 'ভাঙতি ফেরত:' : 'ডিসকাউন্ট:'}</Text>
+              <Text style={[styles.receiptAmount, (discountAmount > 0 || changeAmount > 0) ? styles.textGreen : styles.textGreen]}>
+                ৳ {changeAmount > 0 ? changeAmount : discountAmount}
+              </Text>
             </View>
             <View style={styles.receiptCol}>
               <Text style={styles.receiptLabel}>লেনদেন সময়</Text>
