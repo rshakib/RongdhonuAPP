@@ -1091,8 +1091,45 @@ const syncRuntimeDiagnostics = {
   eventLoopLag: {},
   appStates: [],
   uncaughtErrors: [],
-  appState: AppState?.currentState || 'unknown'
+  appState: AppState?.currentState || 'unknown',
+  readCounters: {
+    highFrequency: 0,
+    lowFrequency: 0,
+    tables: 0,
+    deletions: 0,
+    recovery: 0,
+    restore: 0,
+    historical: 0,
+    menu: 0,
+    background: 0,
+    foreground: 0,
+    netInfo: 0,
+    total: 0,
+    netInfoCount: 0,
+    foregroundCount: 0
+  }
 };
+
+export function incrementNetInfoRecoveryCount() {
+  syncRuntimeDiagnostics.readCounters.netInfoCount += 1;
+}
+
+export function incrementForegroundRecoveryCount() {
+  syncRuntimeDiagnostics.readCounters.foregroundCount += 1;
+}
+
+function incrementReadCounter(type, count = 1) {
+  if (syncRuntimeDiagnostics.readCounters[type] !== undefined) {
+    syncRuntimeDiagnostics.readCounters[type] += count;
+  }
+  syncRuntimeDiagnostics.readCounters.total += count;
+  
+  if (AppState && AppState.currentState === 'active') {
+    syncRuntimeDiagnostics.readCounters.foreground += count;
+  } else {
+    syncRuntimeDiagnostics.readCounters.background += count;
+  }
+}
 
 export function registerSyncTimer(name, intervalMs, functionName) {
   syncRuntimeDiagnostics.timers[name] = {
@@ -1751,6 +1788,7 @@ export async function syncDeletionsOnly() {
   }
   isPullingSyncDeletions = true;
   try {
+    incrementReadCounter('deletions', 1);
     return await traceSyncOperation('syncDeletionsOnly', () => syncCollections(['deletions']));
   } catch (err) {
     recordAutoSyncEvent('syncDeletionsOnly', 'failure', err.message);
@@ -1762,6 +1800,7 @@ export async function syncDeletionsOnly() {
 
 export async function syncMenuOnly() {
   try {
+    incrementReadCounter('menu', 2);
     return await traceSyncOperation('syncMenuOnly', () => syncCollections(['menu_items', 'menu_categories']));
   } catch (err) {
     recordAutoSyncEvent('syncMenuOnly', 'failure', err.message);
@@ -1769,12 +1808,22 @@ export async function syncMenuOnly() {
   }
 }
 
+let isPullingSyncTables = false;
+
 export async function syncTablesOnly() {
+  if (isPullingSyncTables) {
+    recordAutoSyncEvent('syncTablesOnly', 'skipped', 'already-running');
+    return false;
+  }
+  isPullingSyncTables = true;
   try {
+    incrementReadCounter('tables', 1);
     return await traceSyncOperation('syncTablesOnly', () => syncCollections(['restaurant_tables']));
   } catch (err) {
     recordAutoSyncEvent('syncTablesOnly', 'failure', err.message);
     return false;
+  } finally {
+    isPullingSyncTables = false;
   }
 }
 
@@ -1788,6 +1837,7 @@ export async function syncHighFrequencyCollections() {
   try {
     // restaurant_tables removed from 60s pool; moved to 15s dedicated pool
     const highFreq = ['orders', 'order_items', 'payments', 'deliveries', 'deletions'];
+    incrementReadCounter('highFrequency', highFreq.length);
     hasChanges = await traceSyncOperation('syncHighFrequencyCollections', () => syncCollections(highFreq));
   } catch (err) {
     recordAutoSyncEvent('syncHighFrequencyCollections', 'failure', err.message);
@@ -1808,6 +1858,7 @@ export async function syncLowFrequencyCollections() {
   try {
     // Menu collections removed from periodic polling to optimize Firestore reads.
     const lowFreq = ['users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 'app_config', 'expenses', 'eja_history', 'daily_submit', 'supplier_due', 'supplier_due_history'];
+    incrementReadCounter('lowFrequency', lowFreq.length);
     hasChanges = await traceSyncOperation('syncLowFrequencyCollections', () => syncCollections(lowFreq));
   } catch (err) {
     recordAutoSyncEvent('syncLowFrequencyCollections', 'failure', err.message);
@@ -1816,6 +1867,20 @@ export async function syncLowFrequencyCollections() {
     isPullingSyncLow = false;
   }
   return hasChanges;
+}
+
+export function clearDeadQueueItems() {
+  try {
+    const deadCollections = ['firebase_usage'];
+    for (const coll of deadCollections) {
+      db.runSync("DELETE FROM sync_queue WHERE table_name = ?", [coll]);
+    }
+    console.log("[DB] Cleared dead sync queue items for collections:", deadCollections);
+    return true;
+  } catch (err) {
+    console.error("[DB] Failed to clear dead queue items:", err);
+    return false;
+  }
 }
 
 export function resetLastSyncTime(collectionName = null) {
@@ -1942,6 +2007,7 @@ export async function restoreDatabaseFromCloud() {
   for (const table of alwaysFull) {
     try {
       console.log(`[Restore] Restoring full table: ${table}...`);
+      incrementReadCounter('restore', 1);
       const { success, documents: docs } = await fetchCollection(table);
       if (success) await processDocs(table, docs);
     } catch (err) {
@@ -1955,10 +2021,12 @@ export async function restoreDatabaseFromCloud() {
       console.log(`[Restore] Restoring recent records for: ${table}...`);
       
       // Fetch Today
+      incrementReadCounter('restore', 1);
       const todayResult = await fetchChangedRecordsFromFirestore(table, today + "T00:00:00Z");
       if (todayResult.success) await processDocs(table, todayResult.documents);
       
       // Fetch Yesterday
+      incrementReadCounter('restore', 1);
       const yesterdayResult = await fetchChangedRecordsFromFirestore(table, yesterday + "T00:00:00Z");
       // Filter yesterday result to only include records from that specific day to avoid overlaps if needed
       if (yesterdayResult.success) {
@@ -2067,6 +2135,7 @@ export async function fetchHistoricalDateData(dateStr) {
   const collections = ['orders', 'order_items', 'payments', 'expenses', 'deliveries'];
   console.log(`[Historical Download] Fetching data for date: ${dateStr}`);
   for (const table of collections) {
+    incrementReadCounter('historical', 1);
     const result = await fetchChangedRecordsFromFirestore(table, dateStr + "T00:00:00Z");
     if (result.success) {
       const dayDocs = result.documents.filter(doc => {
@@ -2088,6 +2157,7 @@ export async function fetchHistoricalMonthData(monthStr) {
   const startOfMonth = monthStr + "-01T00:00:00Z";
   
   for (const table of collections) {
+     incrementReadCounter('historical', 1);
      const result = await fetchChangedRecordsFromFirestore(table, startOfMonth);
      if (result.success) {
        const monthDocs = result.documents.filter(doc => {
@@ -2103,6 +2173,7 @@ export async function fetchHistoricalMonthData(monthStr) {
 export async function recoverMenuFromCloud() {
   const collections = ['menu_items', 'menu_categories'];
   for (const table of collections) {
+    incrementReadCounter('menu', 1);
     const result = await fetchCollection(table);
     if (result.success) {
       await processRemoteDocsToLocal(table, result.documents);

@@ -596,43 +596,27 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
         </View>
       </Modal>
 
+      {/* 3-DOT MENU */}
       <Modal animationType="fade" transparent={true} visible={menuModalVisible} onRequestClose={() => setMenuModalVisible(false)}>
         <TouchableOpacity style={styles.menuModalOverlay} activeOpacity={1} onPress={() => setMenuModalVisible(false)}>
           <View style={styles.menuModalContent}>
+            <View style={styles.menuSectionHeader}><Text style={styles.menuSectionText}>CORE OPERATIONS</Text></View>
+
             {dailyExpenses.ijara > 0 ? (
-              <TouchableOpacity 
-                style={styles.menuOption} 
-                onPress={() => { 
-                  setMenuModalVisible(false); 
-                  Alert.alert("ইতিমধ্যে যোগ করা হয়েছে", "ইজা শুধুমাত্র একবার যোগ করা যাবে এবং এটি আর পরিবর্তন বা এডিট করা সম্ভব নয়!");
-                }}
-              >
-                <Text style={[styles.menuOptionText, { color: '#888' }]}>🔒 ইজা যুক্ত করা হয়েছে</Text>
-              </TouchableOpacity>
+              <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); Alert.alert("ইতিমধ্যে যোগ করা হয়েছে", "ইজা শুধুমাত্র একবার যোগ করা যাবে এবং এটি আর পরিবর্তন বা এডিট করা সম্ভব নয়!"); }}><Text style={[styles.menuOptionText, { color: '#888' }]}>🔒 ইজা যুক্ত করা হয়েছে</Text></TouchableOpacity>
             ) : (
-              <TouchableOpacity 
-                style={styles.menuOption} 
-                onPress={() => { 
-                  setMenuModalVisible(false); 
-                  setTempIjara(''); // blank/clear input
-                  setIjaraModalVisible(true); 
-                }}
-              >
-                <Text style={styles.menuOptionText}>➕ Add Ijara</Text>
-              </TouchableOpacity>
+              <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); setTempIjara(''); setIjaraModalVisible(true); }}><Text style={styles.menuOptionText}>➕ Add Ijara</Text></TouchableOpacity>
             )}
-            <View style={styles.menuDivider} />
+
             <TouchableOpacity style={styles.menuOption} onPress={handleOpenPastAccount}><Text style={styles.menuOptionText}>📅 অতীতের হিসাব</Text></TouchableOpacity>
-            <View style={styles.menuDivider} />
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onNavigateToSupplierDue(); }}><Text style={styles.menuOptionText}>📒 বাকির হিসাব</Text></TouchableOpacity>
-            <View style={styles.menuDivider} />
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onNavigateToItemSalesReport(); }}><Text style={styles.menuOptionText}>📊 আইটেম বিক্রয় রিপোর্ট</Text></TouchableOpacity>
 
-            <View style={styles.menuDivider} />
-            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onCloudRestore(); }}><Text style={[styles.menuOptionText, { color: '#34D399' }]}>☁️ Cloud Restore (Recent)</Text></TouchableOpacity>
-            <View style={styles.menuDivider} />
+            <View style={styles.menuSectionHeader}><Text style={styles.menuSectionText}>SYSTEM TOOLS</Text></View>
+            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onCloudRestore(); }}><Text style={[styles.menuOptionText, { color: '#34D399' }]}>☁️ Cloud Restore</Text></TouchableOpacity>
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onMenuRecovery(); }}><Text style={[styles.menuOptionText, { color: '#34D399' }]}>🍴 Recover Menu Items</Text></TouchableOpacity>
-            <View style={styles.menuDivider} />
+
+            <View style={{ height: 1, backgroundColor: '#262626' }} />
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onLogout(); }}><Text style={[styles.menuOptionText, { color: '#FF4D4D' }]}>Logout</Text></TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -1243,26 +1227,28 @@ const styles = StyleSheet.create({
   menuModalContent: {
     backgroundColor: '#161616',
     borderRadius: 12,
-    marginTop: 70,
+    marginTop: 55,
     marginLeft: 16,
     width: 170,
     borderWidth: 1,
     borderColor: '#333333',
   },
   menuOption: {
-    paddingVertical: 14,
+    paddingVertical: 10,
     paddingHorizontal: 16,
   },
   menuOptionText: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
   },
   menuDivider: {
     height: 1,
-    backgroundColor: '#333333',
+    backgroundColor: '#262626',
     width: '100%',
   },
+  menuSectionHeader: { backgroundColor: '#111', paddingVertical: 4, paddingHorizontal: 14, borderBottomWidth: 1, borderColor: '#262626' },
+  menuSectionText: { color: '#555', fontSize: 9, fontWeight: 'bold', letterSpacing: 1 },
   modalIconCircle: {
     width: 50,
     height: 50,

@@ -10,6 +10,10 @@ const AUTO_PULL_HANG_MS = 25000;
 const runAutoPull = async (name, syncFn, refreshData) => {
   const startedAtMs = Date.now();
   const timestamp = new Date(startedAtMs).toISOString();
+  
+  // Require dynamically because runAutoPull is defined before imports
+  const { recordAutoSyncEvent } = require('./database');
+
   if (AppState.currentState !== 'active') {
     recordAutoSyncEvent(name, 'skipped', `timestamp=${timestamp} appState=${AppState.currentState}`);
     return false;
@@ -102,6 +106,7 @@ import PaymentCheckoutScreen from './screens/PaymentCheckoutScreen';
 import ExpensesScreen from './screens/ExpensesScreen';
 import SupplierDueScreen from './screens/SupplierDueScreen';
 import DailyItemSalesReport from './screens/DailyItemSalesReport';
+import SyncDiagnosticsScreen from './screens/SyncDiagnosticsScreen';
 
 
 // Default Restaurant Menu (56 items)
@@ -270,6 +275,10 @@ export default function App() {
         // 1. Just create schemas (no seeding yet)
         initDatabase(true);
 
+        // --- DB MAINTENANCE ---
+        const { clearDeadQueueItems } = require('./database');
+        clearDeadQueueItems();
+
         // 2. Check if the database is actually empty (fresh install)
         const isEmpty = isDatabaseEmpty();
         if (isEmpty) {
@@ -409,6 +418,8 @@ export default function App() {
       recordAutoSyncEvent('app-state', 'appstate', nextState);
       if (previousState !== 'active' && nextState === 'active') {
         console.log("[AppState Sync] Device woke up in Foreground! Triggering immediate recovery pull...");
+        const { incrementForegroundRecoveryCount } = require('./database');
+        incrementForegroundRecoveryCount();
         await runAutoPull('foreground-tables-pull', syncTablesOnly, refreshData);
         await runAutoPull('foreground-high-frequency-pull', syncHighFrequencyCollections, refreshData);
         await runAutoPull('foreground-low-frequency-pull', syncLowFrequencyCollections, refreshData);
@@ -444,6 +455,8 @@ export default function App() {
       if (wasOffline && isOnline) {
         wasOffline = false; // Reset to prevent duplicate recovery loops
         console.log("[Network Recovery] Internet RECONNECTED. Starting instant recovery cycle...");
+        const { incrementNetInfoRecoveryCount } = require('./database');
+        incrementNetInfoRecoveryCount();
         
         try {
           // 1. Process Upload Queue First (Clear local changes to Firestore)
@@ -1047,12 +1060,12 @@ export default function App() {
 
   const handleMenuRecovery = async () => {
     Alert.alert(
-      "Recover Menu Items",
-      "This will download the latest menu data from cloud. Cloud read usage may increase. Continue?",
+      "মেনু রিকভার করুন",
+      "এটি ক্লাউড থেকে সর্বশেষ মেনু ডেটা ডাউনলোড করবে। এতে ক্লাউড রিড (Cloud Read) খরচ বাড়তে পারে। আপনি কি চালিয়ে যেতে চান?",
       [
-        { text: "Cancel", style: "cancel" },
+        { text: "বাতিল", style: "cancel" },
         {
-          text: "Recover Menu",
+          text: "মেনু রিকভার",
           onPress: async () => {
             showToast("🔄 মেনু রিকভার করা হচ্ছে...", "sync");
             const { recoverMenuFromCloud } = require('./database');
@@ -1137,6 +1150,7 @@ export default function App() {
               onNavigateToEditMenu={() => setCurrentScreen('EDIT_MENU')}
               onNavigateToSupplierDue={() => setCurrentScreen('SUPPLIER_DUE')}
               onNavigateToItemSalesReport={() => setCurrentScreen('ITEM_SALES_REPORT')}
+              onNavigateToSyncDiagnostics={() => setCurrentScreen('SYNC_DIAGNOSTICS')}
               onCloudRestore={handleCloudRestore}
               onMenuRecovery={handleMenuRecovery}
               onResetHistoryLimits={handleResetHistoryLimits}
@@ -1379,6 +1393,13 @@ export default function App() {
       case 'ITEM_SALES_REPORT':
         return (
           <DailyItemSalesReport
+            onBack={() => setCurrentScreen('DASHBOARD')}
+          />
+        );
+
+      case 'SYNC_DIAGNOSTICS':
+        return (
+          <SyncDiagnosticsScreen
             onBack={() => setCurrentScreen('DASHBOARD')}
           />
         );
