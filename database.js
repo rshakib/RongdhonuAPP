@@ -508,6 +508,39 @@ const TABLE_SCHEMAS = {
       downloaded_at TEXT,
       downloaded_by TEXT
     );
+  `,
+  private_employees: `
+    CREATE TABLE IF NOT EXISTS private_employees (
+      id TEXT PRIMARY KEY,
+      name TEXT,
+      salary REAL DEFAULT 0,
+      note TEXT,
+      last_payment_date TEXT,
+      created_at TEXT,
+      updated_at TEXT,
+      is_synced INTEGER DEFAULT 0
+    );
+  `,
+  private_categories: `
+    CREATE TABLE IF NOT EXISTS private_categories (
+      id TEXT PRIMARY KEY,
+      name TEXT UNIQUE,
+      created_at TEXT,
+      updated_at TEXT,
+      is_synced INTEGER DEFAULT 0
+    );
+  `,
+  private_expenses: `
+    CREATE TABLE IF NOT EXISTS private_expenses (
+      id TEXT PRIMARY KEY,
+      category TEXT,
+      amount REAL DEFAULT 0,
+      date TEXT,
+      note TEXT,
+      created_at TEXT,
+      updated_at TEXT,
+      is_synced INTEGER DEFAULT 0
+    );
   `
 };
 
@@ -909,6 +942,46 @@ export function initDatabase(skipSeeding = false) {
 
     // Clean up duplicate menu items locally and push deletes to Firebase
     cleanupDuplicateMenuItems();
+
+    // Seed default private employees if empty
+    try {
+      const empCount = db.getFirstSync("SELECT COUNT(*) as count FROM private_employees");
+      if (empCount.count === 0) {
+        console.log("[DB] Seeding Default Private Employees...");
+        const defaultEmployees = ['পিয়াস', 'রবিন', 'নাঈম'];
+        const now = new Date().toISOString();
+        for (const [idx, name] of defaultEmployees.entries()) {
+          const id = `emp_${Date.now()}_${idx}`;
+          db.runSync(
+            "INSERT INTO private_employees (id, name, salary, note, last_payment_date, created_at, updated_at, is_synced) VALUES (?, ?, 0, '', '', ?, ?, 0)",
+            [id, name, now, now]
+          );
+          enqueueSync("private_employees", id, "INSERT");
+        }
+      }
+    } catch (e) {
+      console.error("[DB] Failed to seed private employees:", e);
+    }
+
+    // Seed default private categories if empty or missing
+    try {
+      console.log("[DB] Seeding Default Private Categories...");
+      const defaultCategories = ['বাসা ভাড়া', 'ইন্টারনেট', 'বিদ্যুৎ', 'ব্যক্তিগত খরচ', 'পরিবহন', 'জমা', 'উত্তোলন', 'বেতন'];
+      const now = new Date().toISOString();
+      for (const [idx, name] of defaultCategories.entries()) {
+        const exists = db.getFirstSync("SELECT id FROM private_categories WHERE name = ?", [name]);
+        if (!exists) {
+          const id = `pcat_${Date.now()}_${idx}`;
+          db.runSync(
+            "INSERT INTO private_categories (id, name, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, 0)",
+            [id, name, now, now]
+          );
+          enqueueSync("private_categories", id, "INSERT");
+        }
+      }
+    } catch (e) {
+      console.error("[DB] Failed to seed private categories:", e);
+    }
 
     // 5. Initialize Services automatically
     startSyncService();
@@ -1358,6 +1431,17 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
         continue;
       }
 
+      // PRIVATE VAULT SECURITY: Remove private vault tables from sync queue if the current user is not Owner
+      const privateTables = ['private_employees', 'private_categories', 'private_expenses'];
+      if (privateTables.includes(tableName)) {
+        if (getSessionUserRole() !== 'owner') {
+          console.log(`[Queue Cleanup] Blocked private sync item on unauthorized device: queueId=${queueId} collection=${tableName}`);
+          db.runSync("DELETE FROM sync_queue WHERE id = ?", [Number(queueId)]);
+          successfulWrites++;
+          continue;
+        }
+      }
+
       if (!tableName || !recordId) {
         // Delete invalid/empty sync queue records to clear them from SQLite
         console.log(`[Queue Audit] Removing invalid queue item queueId=${queueId} collection=${tableName || ''} recordId=${recordId || ''} action=${action || ''}`);
@@ -1539,6 +1623,10 @@ async function fetchChangedRecordsFromFirestore(collectionName, lastSyncTime) {
     });
 
     if (!res.ok) {
+      if (res.status === 403) {
+        console.log(`[Pull Sync] ${collectionName} is forbidden (403). Handling gracefully (treating as empty).`);
+        return { success: true, documents: [] };
+      }
       console.error(`[Pull Sync] ${collectionName} fetch FAILED with status ${res.status}`);
       return { success: false, documents: [] };
     }
@@ -1910,6 +1998,9 @@ export async function syncLowFrequencyCollections() {
   let hasChanges = false;
   try {
     const lowFreq = ['users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 'app_config', 'expenses', 'eja_history', 'daily_submit', 'supplier_due', 'supplier_due_history'];
+    if (getSessionUserRole() === 'owner') {
+      lowFreq.push('private_employees', 'private_categories', 'private_expenses');
+    }
     incrementReadCounter('lowFrequency', lowFreq.length);
     hasChanges = await traceSyncOperation('syncLowFrequencyCollections', () => syncCollections(lowFreq, 'Low Frequency Sync'));
   } catch (err) {
@@ -1967,6 +2058,10 @@ async function fetchCollection(collectionName) {
       const res = await fetch(url);
       if (!res.ok) {
         if (res.status === 404) return { success: true, documents: [] }; 
+        if (res.status === 403) {
+          console.log(`[Restore] Collection ${collectionName} is forbidden (403). Handling gracefully (treating as empty).`);
+          return { success: true, documents: [] };
+        }
         console.error(`[Restore] Failed to fetch collection ${collectionName}:`, res.status);
         return { success: false, documents: [] };
       }
@@ -4534,5 +4629,197 @@ export async function executeManualPull() {
     console.error("[Manual Pull] Pull failed:", err);
     recordAutoSyncEvent('manual-pull', 'failure', err.message);
     return { success: false, error: err.message };
+  }
+}
+
+export function updateSupplierName(supplierId, newName) {
+  try {
+    const now = new Date().toISOString();
+    db.runSync(
+      "UPDATE supplier_due SET supplier_name = ?, updated_at = ?, is_synced = 0 WHERE id = ?",
+      [newName, now, supplierId]
+    );
+    enqueueSync("supplier_due", supplierId, "UPDATE");
+    return true;
+  } catch (err) {
+    console.error("Update supplier name error:", err);
+    return false;
+  }
+}
+
+export function getSessionUserRole() {
+  try {
+    const username = getAppConfig('login_session_user');
+    if (!username) return null;
+    const user = db.getFirstSync("SELECT role FROM users WHERE username = ?", [username]);
+    return user ? user.role : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// ==========================================
+// OWNER PRIVATE VAULT FUNCTIONS (OWNER ONLY)
+// ==========================================
+
+export function getPrivateEmployees() {
+  try {
+    return db.getAllSync("SELECT * FROM private_employees ORDER BY name ASC");
+  } catch (err) {
+    console.error("getPrivateEmployees error:", err);
+    return [];
+  }
+}
+
+export function addPrivateEmployee(name, salary, note = '') {
+  try {
+    const id = `emp_${Date.now()}`;
+    const now = new Date().toISOString();
+    db.runSync(
+      "INSERT INTO private_employees (id, name, salary, note, last_payment_date, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, '', ?, ?, 0)",
+      [id, name, salary, note, now, now]
+    );
+    enqueueSync("private_employees", id, "INSERT");
+    return true;
+  } catch (err) {
+    console.error("addPrivateEmployee error:", err);
+    return false;
+  }
+}
+
+export function updatePrivateEmployee(id, name, salary, note, lastPaymentDate) {
+  try {
+    const now = new Date().toISOString();
+    db.runSync(
+      "UPDATE private_employees SET name = ?, salary = ?, note = ?, last_payment_date = ?, updated_at = ?, is_synced = 0 WHERE id = ?",
+      [name, salary, note, lastPaymentDate, now, id]
+    );
+    enqueueSync("private_employees", id, "UPDATE");
+    return true;
+  } catch (err) {
+    console.error("updatePrivateEmployee error:", err);
+    return false;
+  }
+}
+
+export function deletePrivateEmployee(id) {
+  try {
+    db.runSync("DELETE FROM private_employees WHERE id = ?", [id]);
+    recordDeletion("private_employees", id);
+    return true;
+  } catch (err) {
+    console.error("deletePrivateEmployee error:", err);
+    return false;
+  }
+}
+
+export function getPrivateCategories() {
+  try {
+    return db.getAllSync("SELECT * FROM private_categories ORDER BY name ASC");
+  } catch (err) {
+    console.error("getPrivateCategories error:", err);
+    return [];
+  }
+}
+
+export function addPrivateCategory(name) {
+  try {
+    const id = `pcat_${Date.now()}`;
+    const now = new Date().toISOString();
+    db.runSync(
+      "INSERT INTO private_categories (id, name, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, 0)",
+      [id, name, now, now]
+    );
+    enqueueSync("private_categories", id, "INSERT");
+    return true;
+  } catch (err) {
+    console.error("addPrivateCategory error:", err);
+    return false;
+  }
+}
+
+export function updatePrivateCategory(id, name) {
+  try {
+    const now = new Date().toISOString();
+    db.runSync(
+      "UPDATE private_categories SET name = ?, updated_at = ?, is_synced = 0 WHERE id = ?",
+      [name, now, id]
+    );
+    enqueueSync("private_categories", id, "UPDATE");
+    return true;
+  } catch (err) {
+    console.error("updatePrivateCategory error:", err);
+    return false;
+  }
+}
+
+export function deletePrivateCategory(id) {
+  try {
+    db.runSync("DELETE FROM private_categories WHERE id = ?", [id]);
+    recordDeletion("private_categories", id);
+    return true;
+  } catch (err) {
+    console.error("deletePrivateCategory error:", err);
+    return false;
+  }
+}
+
+export function getPrivateExpenses() {
+  try {
+    return db.getAllSync("SELECT * FROM private_expenses ORDER BY date DESC, created_at DESC");
+  } catch (err) {
+    console.error("getPrivateExpenses error:", err);
+    return [];
+  }
+}
+
+export function addPrivateExpense(category, amount, date, note = '') {
+  try {
+    const id = `pexp_${Date.now()}`;
+    const now = new Date().toISOString();
+    db.runSync(
+      "INSERT INTO private_expenses (id, category, amount, date, note, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, ?, ?, 0)",
+      [id, category, amount, date, note, now, now]
+    );
+    enqueueSync("private_expenses", id, "INSERT");
+    return true;
+  } catch (err) {
+    console.error("addPrivateExpense error:", err);
+    return false;
+  }
+}
+
+export function updatePrivateExpense(id, category, amount, date, note) {
+  try {
+    const now = new Date().toISOString();
+    db.runSync(
+      "UPDATE private_expenses SET category = ?, amount = ?, date = ?, note = ?, updated_at = ?, is_synced = 0 WHERE id = ?",
+      [category, amount, date, note, now, id]
+    );
+    enqueueSync("private_expenses", id, "UPDATE");
+    return true;
+  } catch (err) {
+    console.error("updatePrivateExpense error:", err);
+    return false;
+  }
+}
+
+export function deletePrivateExpense(id) {
+  try {
+    db.runSync("DELETE FROM private_expenses WHERE id = ?", [id]);
+    recordDeletion("private_expenses", id);
+    return true;
+  } catch (err) {
+    console.error("deletePrivateExpense error:", err);
+    return false;
+  }
+}
+
+export function verifyOwnerPin(pin) {
+  try {
+    const owner = db.getFirstSync("SELECT pin FROM users WHERE role = 'owner'");
+    return owner && owner.pin === String(pin).trim();
+  } catch (e) {
+    return false;
   }
 }

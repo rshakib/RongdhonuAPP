@@ -107,6 +107,7 @@ import ExpensesScreen from './screens/ExpensesScreen';
 import SupplierDueScreen from './screens/SupplierDueScreen';
 import DailyItemSalesReport from './screens/DailyItemSalesReport';
 import SyncDiagnosticsScreen from './screens/SyncDiagnosticsScreen';
+import PrivateVaultScreen from './screens/PrivateVaultScreen';
 
 
 // Default Restaurant Menu (56 items)
@@ -215,6 +216,20 @@ export default function App() {
   const [userRole, setUserRole] = useState(''); // 'owner', 'manager' or 'admin'
   const [userDisplayName, setUserDisplayName] = useState('');
   
+  // Visual Sync Timer Countdowns (Shared for all roles)
+  const [delCountdown, setDelCountdown] = useState(90);
+  const [tabCountdown, setTabCountdown] = useState(15);
+  const [fullCountdown, setFullCountdown] = useState(30);
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      setDelCountdown(prev => (prev <= 1 ? 90 : prev - 1));
+      setTabCountdown(prev => (prev <= 1 ? 15 : prev - 1));
+      setFullCountdown(prev => (prev <= 1 ? 30 : prev - 1));
+    }, 1000);
+    return () => clearInterval(t);
+  }, []);
+
   // Navigation State
   const [currentScreen, setCurrentScreen] = useState('DASHBOARD'); // 'DASHBOARD', 'TABLE_DETAIL', 'PAYMENT_SUCCESS', 'DAILY_SUBMIT', 'ADD_ITEM', 'PAYMENT_CHECKOUT'
   const [selectedTableId, setSelectedTableId] = useState(null);
@@ -1142,6 +1157,9 @@ export default function App() {
               tables={tables}
               deliveries={deliveries}
               completedOrders={completedOrders}
+              delCountdown={delCountdown}
+              tabCountdown={tabCountdown}
+              fullCountdown={fullCountdown}
               onTableSelect={handleTableSelect}
               onCreateDelivery={handleCreateDelivery}
               onUpdateTableName={handleUpdateTableName}
@@ -1176,6 +1194,9 @@ export default function App() {
               tables={tables}
               deliveries={deliveries}
               completedOrders={completedOrders}
+              delCountdown={delCountdown}
+              tabCountdown={tabCountdown}
+              fullCountdown={fullCountdown}
               onTableSelect={handleTableSelect}
               onCreateDelivery={handleCreateDelivery}
               onUpdateTableName={handleUpdateTableName}
@@ -1184,6 +1205,7 @@ export default function App() {
               onNavigateToEditMenu={() => setCurrentScreen('EDIT_MENU')}
               onNavigateToSupplierDue={() => setCurrentScreen('SUPPLIER_DUE')}
               onNavigateToItemSalesReport={() => setCurrentScreen('ITEM_SALES_REPORT')}
+              onNavigateToPrivateVault={() => setCurrentScreen('PRIVATE_VAULT')}
               onCloudRestore={handleCloudRestore}
               onMenuRecovery={handleMenuRecovery}
               onHistoricalMonthDownload={handleHistoricalMonthDownload}
@@ -1206,6 +1228,9 @@ export default function App() {
               tables={tables}
               deliveries={deliveries}
               completedOrders={completedOrders}
+              delCountdown={delCountdown}
+              tabCountdown={tabCountdown}
+              fullCountdown={fullCountdown}
               onTableSelect={handleTableSelect}
               onCreateDelivery={handleCreateDelivery}
               onNavigateToSubmit={() => setCurrentScreen('DAILY_SUBMIT')}
@@ -1402,6 +1427,17 @@ export default function App() {
             onBack={() => setCurrentScreen('DASHBOARD')}
           />
         );
+
+      case 'PRIVATE_VAULT':
+        if (userRole === 'owner') {
+          return (
+            <PrivateVaultScreen
+              onBack={() => setCurrentScreen('DASHBOARD')}
+            />
+          );
+        } else {
+          return null;
+        }
 
       default:
         return null;
