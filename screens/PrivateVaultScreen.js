@@ -5,7 +5,7 @@ import {
   getPrivateEmployees, addPrivateEmployee, updatePrivateEmployee, deletePrivateEmployee,
   getPrivateCategories, addPrivateCategory, updatePrivateCategory, deletePrivateCategory,
   getPrivateExpenses, addPrivateExpense, updatePrivateExpense, deletePrivateExpense,
-  verifyOwnerPin, formatDisplayDate 
+  verifyOwnerPin, formatDisplayDate, getMonthlyRestaurantDeposits, getTodayRestaurantDeposit
 } from '../database';
 
 const { width, height } = Dimensions.get('window');
@@ -84,6 +84,14 @@ export default function PrivateVaultScreen({ onBack }) {
 
     const remainingSalary = Math.max(0, empSalary - paidThisMonth);
     return { paidThisMonth, remainingSalary };
+  };
+
+  const getEmployeeSalaryHistory = (empId) => {
+    return expenses.filter(item => {
+      const isSalaryCat = item.category.toLowerCase().trim() === 'বেতন' || item.category.toLowerCase().trim() === 'salary';
+      const matchesEmp = item.note && item.note.includes(empId);
+      return isSalaryCat && matchesEmp;
+    });
   };
 
   const handlePayEmployeeSalary = (emp, remainingSalary) => {
@@ -310,12 +318,13 @@ export default function PrivateVaultScreen({ onBack }) {
     const thisMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const todayStr = now.toISOString().split('T')[0];
 
-    let previousBalance = 0;
-    let currentMonthDeposits = 0;
+    // Fetch monthly deposits and today's deposit from restaurant daily submits
+    const monthlyDeposits = getMonthlyRestaurantDeposits(thisMonthPrefix);
+    const todayDeposits = getTodayRestaurantDeposit(todayStr);
+
     let currentMonthWithdrawals = 0;
     let currentMonthSalary = 0;
     let currentMonthPersonal = 0;
-    let todayDeposits = 0;
     let todayWithdrawals = 0;
 
     expenses.forEach(item => {
@@ -326,36 +335,28 @@ export default function PrivateVaultScreen({ onBack }) {
 
       // Categorize the transaction type
       let type = 'personal';
-      if (catLower === 'deposit' || catLower === 'জমা') {
-        type = 'deposit';
-      } else if (catLower === 'withdrawal' || catLower === 'উত্তোলন') {
+      if (catLower === 'withdrawal' || catLower === 'উত্তোলন') {
         type = 'withdrawal';
       } else if (catLower === 'salary' || catLower === 'বেতন' || catLower.startsWith('salary:') || catLower.startsWith('বেতন:')) {
         type = 'salary';
       }
 
       if (isThisMonth) {
-        if (type === 'deposit') currentMonthDeposits += amount;
-        else if (type === 'withdrawal') currentMonthWithdrawals += amount;
+        if (type === 'withdrawal') currentMonthWithdrawals += amount;
         else if (type === 'salary') currentMonthSalary += amount;
         else currentMonthPersonal += amount;
-      } else {
-        // Transactions before this month
-        if (type === 'deposit') previousBalance += amount;
-        else previousBalance -= amount; // salary, withdrawal, and personal expenses reduce balance
       }
 
       if (isToday) {
-        if (type === 'deposit') todayDeposits += amount;
-        else if (type === 'withdrawal') todayWithdrawals += amount;
+        if (type === 'withdrawal') todayWithdrawals += amount;
       }
     });
 
-    const ownerBalance = previousBalance + currentMonthDeposits - currentMonthSalary - currentMonthPersonal - currentMonthWithdrawals;
+    const ownerBalance = monthlyDeposits - currentMonthSalary - currentMonthPersonal - currentMonthWithdrawals;
 
     return {
-      previousBalance,
-      currentMonthDeposits,
+      previousBalance: 0,
+      currentMonthDeposits: monthlyDeposits,
       currentMonthWithdrawals,
       currentMonthSalary,
       currentMonthPersonal,
@@ -524,7 +525,7 @@ export default function PrivateVaultScreen({ onBack }) {
                     ৳ {stats.ownerBalance.toLocaleString()}
                   </Text>
                   <Text style={{ color: '#888', fontSize: 10, lineHeight: 14 }}>
-                    হিসাব: পূর্বের ব্যালেন্স + চলতি মাসের জমা - বেতন - খরচ - উত্তোলন
+                    হিসাব: চলতি মাসের জমা - পরিশোধিত বেতন - ব্যক্তিগত খরচ - মালিকের উত্তোলন
                   </Text>
                 </View>
 
@@ -555,31 +556,25 @@ export default function PrivateVaultScreen({ onBack }) {
                 <Text style={[styles.sectionTitle, { marginBottom: 12 }]}>📊 মাসিক সারসংক্ষেপ (Monthly Summary)</Text>
                 <View style={[styles.dataCard, { marginBottom: 20 }]}>
                   <View style={styles.cardDetailRow}>
-                    <Text style={styles.detailLabel}>পূর্বের ব্যালেন্স (Previous Month Balance):</Text>
-                    <Text style={[styles.detailValue, { color: stats.previousBalance >= 0 ? '#34D399' : '#EF4444' }]}>
-                      ৳ {stats.previousBalance.toLocaleString()}
-                    </Text>
+                    <Text style={styles.detailLabel}>চলতি মাসের জমা (Monthly Deposit):</Text>
+                    <Text style={[styles.detailValue, { color: '#34D399', fontWeight: 'bold' }]}>৳ {stats.currentMonthDeposits.toLocaleString()}</Text>
                   </View>
                   <View style={styles.cardDetailRow}>
-                    <Text style={styles.detailLabel}>চলতি মাসের জমা (Total Deposits):</Text>
-                    <Text style={[styles.detailValue, { color: '#34D399' }]}>+ ৳ {stats.currentMonthDeposits.toLocaleString()}</Text>
-                  </View>
-                  <View style={styles.cardDetailRow}>
-                    <Text style={styles.detailLabel}>পরিশোধিত বেতন (Total Salary Paid):</Text>
+                    <Text style={styles.detailLabel}>পরিশোধিত বেতন (Salary Paid):</Text>
                     <Text style={[styles.detailValue, { color: '#EF4444' }]}>- ৳ {stats.currentMonthSalary.toLocaleString()}</Text>
                   </View>
                   <View style={styles.cardDetailRow}>
-                    <Text style={styles.detailLabel}>ব্যক্তিগত খরচ (Total Personal Expense):</Text>
+                    <Text style={styles.detailLabel}>ব্যক্তিগত খরচ (Personal Expense):</Text>
                     <Text style={[styles.detailValue, { color: '#EF4444' }]}>- ৳ {stats.currentMonthPersonal.toLocaleString()}</Text>
                   </View>
                   <View style={styles.cardDetailRow}>
-                    <Text style={styles.detailLabel}>চলতি উত্তোলন (Total Withdrawals):</Text>
+                    <Text style={styles.detailLabel}>মালিকের উত্তোলন (Withdrawals):</Text>
                     <Text style={[styles.detailValue, { color: '#EF4444' }]}>- ৳ {stats.currentMonthWithdrawals.toLocaleString()}</Text>
                   </View>
                   <View style={[styles.historyDivider, { height: 1, backgroundColor: '#161616', marginVertical: 10 }]} />
                   <View style={styles.cardDetailRow}>
-                    <Text style={[styles.detailLabel, { fontWeight: 'bold', color: '#FFF' }]}>মালিকের মোট টাকা (Owner Balance):</Text>
-                    <Text style={[styles.detailValue, { fontWeight: 'bold', color: '#FFB703', fontSize: 16 }]}>
+                    <Text style={[styles.detailLabel, { fontWeight: 'bold', color: '#FFF' }]}>মালিকের হাতে মোট টাকা (Owner Balance):</Text>
+                    <Text style={[styles.detailValue, { fontWeight: 'bold', color: '#34D399', fontSize: 16 }]}>
                       ৳ {stats.ownerBalance.toLocaleString()}
                     </Text>
                   </View>
@@ -646,6 +641,31 @@ export default function PrivateVaultScreen({ onBack }) {
                         {emp.note ? (
                           <Text style={styles.cardNoteText}>নোট: {emp.note}</Text>
                         ) : null}
+
+                        {/* Salary History */}
+                        <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: '#161616', paddingTop: 8 }}>
+                          <Text style={{ color: '#888', fontSize: 11, fontWeight: 'bold', marginBottom: 6 }}>💵 বেতন পরিশোধের ইতিহাস (Salary History):</Text>
+                          {getEmployeeSalaryHistory(emp.id).length === 0 ? (
+                            <Text style={{ color: '#555', fontSize: 10, fontStyle: 'italic' }}>কোনো পেমেন্ট রেকর্ড নেই।</Text>
+                          ) : (
+                            getEmployeeSalaryHistory(emp.id).map(pay => (
+                              <View key={pay.id} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#161616', padding: 8, borderRadius: 6, marginBottom: 4 }}>
+                                <View>
+                                  <Text style={{ color: '#FFF', fontSize: 11, fontWeight: 'bold' }}>৳ {pay.amount.toLocaleString()}</Text>
+                                  <Text style={{ color: '#888', fontSize: 9 }}>{formatDisplayDate(pay.date)}</Text>
+                                </View>
+                                <View style={{ flexDirection: 'row', gap: 10 }}>
+                                  <TouchableOpacity onPress={() => handleOpenEditExpense(pay)} style={{ padding: 4 }}>
+                                    <Text style={{ fontSize: 11 }}>✏️</Text>
+                                  </TouchableOpacity>
+                                  <TouchableOpacity onPress={() => handleDeleteExpenseItem(pay.id)} style={{ padding: 4 }}>
+                                    <Text style={{ fontSize: 11 }}>🗑️</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              </View>
+                            ))
+                          )}
+                        </View>
                       </View>
                     );
                   })

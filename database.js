@@ -4823,3 +4823,26 @@ export function verifyOwnerPin(pin) {
     return false;
   }
 }
+
+export function getMonthlyRestaurantDeposits(monthPrefix) {
+  try {
+    const result = db.getFirstSync(
+      "SELECT SUM(net_deposit) as total FROM daily_submit WHERE date LIKE ?",
+      [`${monthPrefix}%`]
+    );
+    return result ? (result.total || 0) : 0;
+  } catch (err) {
+    console.error("getMonthlyRestaurantDeposits error:", err);
+    return 0;
+  }
+}
+
+export function getTodayRestaurantDeposit(todayStr) {
+  try {
+    const record = db.getFirstSync("SELECT net_deposit FROM daily_submit WHERE date = ?", [todayStr]);
+    return record ? (record.net_deposit || 0) : 0;
+  } catch (err) {
+    console.error("getTodayRestaurantDeposit error:", err);
+    return 0;
+  }
+}
