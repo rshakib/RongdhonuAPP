@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -9,7 +9,8 @@ import {
   Platform,
   StatusBar as RNStatusBar,
   Alert,
-  Modal
+  Modal,
+  BackHandler
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -40,6 +41,22 @@ export default function AddItemScreen({
   const [newItemName, setNewItemName] = useState('');
   const [newItemPrice, setNewItemPrice] = useState('');
   const [newItemCategory, setNewItemCategory] = useState('বার্গার');
+
+  // Android Back Handler for Modals
+  useEffect(() => {
+    const backAction = () => {
+      if (priceEditModalVisible) { setPriceEditModalVisible(false); return true; }
+      if (addItemModalVisible) { setAddItemModalVisible(false); return true; }
+      return false; // Let App.js handle screen back
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      backAction
+    );
+
+    return () => backHandler.remove();
+  }, [priceEditModalVisible, addItemModalVisible]);
 
   if (!table) {
     return (

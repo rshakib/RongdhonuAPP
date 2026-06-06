@@ -9,7 +9,8 @@ import {
   Modal,
   ActivityIndicator,
   Platform,
-  StatusBar as RNStatusBar
+  StatusBar as RNStatusBar,
+  BackHandler
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { 
@@ -59,7 +60,7 @@ const CalendarPicker = ({ visible, onClose, onSelectDate }) => {
   for (let d = 1; d <= daysInMonth; d++) calendarDays.push(d);
 
   return (
-    <Modal visible={visible} transparent={true} animationType="fade">
+    <Modal visible={visible} transparent={true} animationType="fade" onRequestClose={onClose}>
       <TouchableOpacity style={styles.calendarOverlay} activeOpacity={1} onPress={onClose}>
         <View style={styles.calendarContent}>
           <View style={styles.calendarHeader}>
@@ -94,7 +95,7 @@ const CalendarPicker = ({ visible, onClose, onSelectDate }) => {
 // --- WARNING POPUP COMPONENT ---
 const CloudDownloadWarning = ({ visible, onClose, onConfirm, type, period, currentCount, maxCount }) => {
   return (
-    <Modal visible={visible} transparent={true} animationType="fade">
+    <Modal visible={visible} transparent={true} animationType="fade" onRequestClose={onClose}>
       <TouchableOpacity style={styles.calendarOverlay} activeOpacity={1} onPress={onClose}>
         <View style={styles.calendarContent}>
           <Text style={[styles.calTitle, { color: '#EF4444', textAlign: 'center', marginBottom: 15 }]}>⚠️ WARNING</Text>
@@ -144,6 +145,22 @@ export default function DailyItemSalesReport({ onBack }) {
   const [warningVisible, setWarningVisible] = useState(false);
   const [pendingDate, setPendingDate] = useState(null);
   const [downloadingCloud, setDownloadingCloud] = useState(false);
+
+  // Android Back Handler for Modals
+  useEffect(() => {
+    const backAction = () => {
+      if (calendarVisible) { setCalendarVisible(false); return true; }
+      if (warningVisible) { setWarningVisible(false); return true; }
+      return false; // Let App.js handle screen back
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      backAction
+    );
+
+    return () => backHandler.remove();
+  }, [calendarVisible, warningVisible]);
 
   useEffect(() => {
     loadReport();

@@ -10,7 +10,8 @@ import {
   Alert,
   Dimensions,
   Modal,
-  TextInput
+  TextInput,
+  BackHandler
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatDisplayDate, getBusinessDate } from '../database';
@@ -61,7 +62,7 @@ const CalendarPicker = ({ visible, onClose, onSelectDate, initialDate }) => {
   for (let d = 1; d <= daysInMonth; d++) calendarDays.push(d);
 
   return (
-    <Modal visible={visible} transparent={true} animationType="fade">
+    <Modal visible={visible} transparent={true} animationType="fade" onRequestClose={onClose}>
       <TouchableOpacity style={styles.calendarOverlay} activeOpacity={1} onPress={onClose}>
         <View style={styles.calendarContent}>
           <View style={styles.calendarHeader}>
@@ -129,6 +130,28 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
 
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [orderDetailVisible, setOrderDetailVisible] = useState(false);
+
+  // Android Back Handler for Modals
+  useEffect(() => {
+    const backAction = () => {
+      // Priority: Close modals from top to bottom
+      if (orderDetailVisible) { setOrderDetailVisible(false); return true; }
+      if (calendarVisible) { setCalendarVisible(false); return true; }
+      if (pastAccountModalVisible) { setPastAccountModalVisible(false); return true; }
+      if (ijaraModalVisible) { setIjaraModalVisible(false); return true; }
+      if (menuModalVisible) { setMenuModalVisible(false); return true; }
+      if (renameModalVisible) { setRenameModalVisible(false); return true; }
+
+      return false; // Let App.js handle screen back
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      backAction
+    );
+
+    return () => backHandler.remove();
+  }, [orderDetailVisible, calendarVisible, pastAccountModalVisible, ijaraModalVisible, menuModalVisible, renameModalVisible]);
 
   const handleTableLongPress = (table) => {
     setSelectedTableForRename(table);
@@ -613,7 +636,7 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
             )}
 
             <TouchableOpacity style={styles.menuOption} onPress={handleOpenPastAccount}><Text style={styles.menuOptionText}>📅 অতীতের হিসাব</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onNavigateToSupplierDue(); }}><Text style={styles.menuOptionText}>📒 বাকির হিসাব</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onNavigateToSupplierDue(); }}><Text style={styles.menuOptionText}>📒 সাপ্লায়ার পেমেন্ট</Text></TouchableOpacity>
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onNavigateToItemSalesReport(); }}><Text style={styles.menuOptionText}>📊 আইটেম বিক্রয় রিপোর্ট</Text></TouchableOpacity>
 
             <View style={styles.menuSectionHeader}><Text style={styles.menuSectionText}>SYSTEM TOOLS</Text></View>

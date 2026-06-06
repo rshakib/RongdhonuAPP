@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Alert, TouchableOpacity, Modal, ScrollView, Text, Platform, Dimensions, ActivityIndicator, AppState } from 'react-native';
+import { StyleSheet, View, Alert, TouchableOpacity, Modal, ScrollView, Text, Platform, Dimensions, ActivityIndicator, AppState, BackHandler } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import NetInfo from '@react-native-community/netinfo';
@@ -107,7 +107,7 @@ import ExpensesScreen from './screens/ExpensesScreen';
 import SupplierDueScreen from './screens/SupplierDueScreen';
 import DailyItemSalesReport from './screens/DailyItemSalesReport';
 import SyncDiagnosticsScreen from './screens/SyncDiagnosticsScreen';
-import PrivateVaultScreen from './screens/PrivateVaultScreen';
+import DeleteHistoryScreen from './screens/DeleteHistoryScreen';
 
 
 // Default Restaurant Menu (56 items)
@@ -220,6 +220,55 @@ export default function App() {
   const [delCountdown, setDelCountdown] = useState(90);
   const [tabCountdown, setTabCountdown] = useState(15);
   const [fullCountdown, setFullCountdown] = useState(30);
+
+  // Android Back Handler
+  useEffect(() => {
+    const backAction = () => {
+      // 1. If we are on Login screen, let default behavior (exit) happen
+      if (currentScreen === 'LOGIN') {
+        return false;
+      }
+
+      // 2. If we are on Dashboard, show exit confirmation
+      if (currentScreen === 'DASHBOARD') {
+        Alert.alert("অ্যাপ বন্ধ করুন", "আপনি কি নিশ্চিতভাবে অ্যাপটি বন্ধ করতে চান?", [
+          { text: "না", onPress: () => null, style: "cancel" },
+          { text: "হ্যাঁ", onPress: () => BackHandler.exitApp() }
+        ]);
+        return true;
+      }
+
+      // 3. Handle nested screen transitions
+      if (currentScreen === 'ADD_ITEM' || currentScreen === 'PAYMENT_CHECKOUT') {
+        setCurrentScreen('TABLE_DETAIL');
+        return true;
+      }
+
+      if (currentScreen === 'PAYMENT_SUCCESS') {
+        handleReturnHome();
+        return true;
+      }
+
+      // 4. Default: go back to Dashboard
+      if (currentScreen === 'TABLE_DETAIL') {
+        // Trigger the logic in TableDetailScreen onBack if needed
+        // but simplified:
+        setCurrentScreen('DASHBOARD');
+        refreshData();
+        return true;
+      }
+
+      setCurrentScreen('DASHBOARD');
+      return true;
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      backAction
+    );
+
+    return () => backHandler.remove();
+  }, [currentScreen]);
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -410,10 +459,10 @@ export default function App() {
   useEffect(() => {
     if (!isLoggedIn) return;
 
-    registerSyncTimer('auto-low-frequency-pull', 120000, 'syncLowFrequencyCollections');
+    registerSyncTimer('auto-low-frequency-pull', 180000, 'syncLowFrequencyCollections');
     const lowFrequencyPoll = setInterval(async () => {
       await runAutoPull('auto-low-frequency-pull', syncLowFrequencyCollections, refreshData);
-    }, 120000);
+    }, 180000); // Check every 3 minutes (180s)
 
     return () => {
       clearInterval(lowFrequencyPoll);
@@ -1169,6 +1218,7 @@ export default function App() {
               onNavigateToSupplierDue={() => setCurrentScreen('SUPPLIER_DUE')}
               onNavigateToItemSalesReport={() => setCurrentScreen('ITEM_SALES_REPORT')}
               onNavigateToSyncDiagnostics={() => setCurrentScreen('SYNC_DIAGNOSTICS')}
+              onNavigateToDeleteHistory={() => setCurrentScreen('DELETE_HISTORY')}
               onCloudRestore={handleCloudRestore}
               onMenuRecovery={handleMenuRecovery}
               onResetHistoryLimits={handleResetHistoryLimits}
@@ -1205,8 +1255,8 @@ export default function App() {
               onNavigateToEditMenu={() => setCurrentScreen('EDIT_MENU')}
               onNavigateToSupplierDue={() => setCurrentScreen('SUPPLIER_DUE')}
               onNavigateToItemSalesReport={() => setCurrentScreen('ITEM_SALES_REPORT')}
-              onNavigateToPrivateVault={() => setCurrentScreen('PRIVATE_VAULT')}
               onCloudRestore={handleCloudRestore}
+
               onMenuRecovery={handleMenuRecovery}
               onHistoricalMonthDownload={handleHistoricalMonthDownload}
 
@@ -1428,10 +1478,10 @@ export default function App() {
           />
         );
 
-      case 'PRIVATE_VAULT':
-        if (userRole === 'owner') {
+      case 'DELETE_HISTORY':
+        if (userRole === 'admin') {
           return (
-            <PrivateVaultScreen
+            <DeleteHistoryScreen
               onBack={() => setCurrentScreen('DASHBOARD')}
             />
           );

@@ -1,5 +1,5 @@
 import { verifyPinCode, formatDisplayDate, getBusinessDate } from '../database';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -10,7 +10,8 @@ import {
   Alert,
   Modal,
   Platform,
-  StatusBar as RNStatusBar
+  StatusBar as RNStatusBar,
+  BackHandler
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { exportDepositReportPDF } from '../pdfHelper';
@@ -68,6 +69,24 @@ export default function DailySubmitScreen({ dailyExpenses, completedOrders = [],
   const [historyModalVisible, setHistoryModalVisible] = useState(false);
   const [pinCode, setPinCode] = useState('');
   const [pinError, setPinError] = useState('');
+
+  // Android Back Handler for Modals
+  useEffect(() => {
+    const backAction = () => {
+      if (submitModalVisible) { setSubmitModalVisible(false); return true; }
+      if (historyModalVisible) { setHistoryModalVisible(false); return true; }
+      if (monthPickerVisible) { setMonthPickerVisible(false); return true; }
+      if (yearPickerVisible) { setYearPickerVisible(false); return true; }
+      return false; // Let App.js handle screen back
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      backAction
+    );
+
+    return () => backHandler.remove();
+  }, [submitModalVisible, historyModalVisible, monthPickerVisible, yearPickerVisible]);
 
   const numDudu = parseFloat(duduMiah) || 0;
   const numAkash = parseFloat(akashChicken) || 0;

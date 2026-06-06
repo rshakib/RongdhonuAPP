@@ -10,7 +10,8 @@ import {
   StatusBar as RNStatusBar,
   Modal,
   TextInput,
-  Alert
+  Alert,
+  BackHandler
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { exportSalesReportPDF, exportDepositReportPDF } from '../pdfHelper';
@@ -62,7 +63,7 @@ const CalendarPicker = ({ visible, onClose, onSelectDate }) => {
   for (let d = 1; d <= daysInMonth; d++) calendarDays.push(d);
 
   return (
-    <Modal visible={visible} transparent={true} animationType="fade">
+    <Modal visible={visible} transparent={true} animationType="fade" onRequestClose={onClose}>
       <TouchableOpacity style={styles.calendarOverlay} activeOpacity={1} onPress={onClose}>
         <View style={styles.calendarContent}>
           <View style={styles.calendarHeader}>
@@ -94,10 +95,19 @@ const CalendarPicker = ({ visible, onClose, onSelectDate }) => {
   );
 };
 
-export default function AdminDB({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onUpdateTableName, onNavigateToExpenses, onNavigateToSubmit, onNavigateToEditMenu, onNavigateToSupplierDue, onNavigateToItemSalesReport, onNavigateToSyncDiagnostics, onCloudRestore, onMenuRecovery, onResetHistoryLimits, onHistoricalMonthDownload, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, onResetDailySubmit, onResetIjara, delCountdown, tabCountdown, fullCountdown }) {
+export default function AdminDB({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onUpdateTableName, onNavigateToExpenses, onNavigateToSubmit, onNavigateToEditMenu, onNavigateToSupplierDue, onNavigateToItemSalesReport, onNavigateToSyncDiagnostics, onNavigateToDeleteHistory, onCloudRestore, onMenuRecovery, onResetHistoryLimits, onHistoricalMonthDownload, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, onResetDailySubmit, onResetIjara, delCountdown, tabCountdown, fullCountdown }) {
   const [renameModalVisible, setRenameModalVisible] = useState(false);
   const [selectedTableForRename, setSelectedTableForRename] = useState(null);
   const [newTableName, setNewTableName] = useState('');
+
+  // Delete History Widget State
+  const [deleteHistoryWidget, setDeleteHistoryWidget] = useState([]);
+
+  useEffect(() => {
+    // Load latest 10 delete records for widget
+    const { getDeleteHistory } = require('../database');
+    setDeleteHistoryWidget(getDeleteHistory(10));
+  }, []);
 
   // 3-Dot Menu and Report States
   const [menuModalVisible, setMenuModalVisible] = useState(false);
@@ -187,6 +197,34 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
 
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [orderDetailVisible, setOrderDetailVisible] = useState(false);
+
+  // Android Back Handler for Modals
+  useEffect(() => {
+    const backAction = () => {
+      // Priority: Close modals from top to bottom
+      if (orderDetailVisible) { setOrderDetailVisible(false); return true; }
+      if (calendarVisible) { setCalendarVisible(false); return true; }
+      if (yearPickerVisible) { setYearPickerVisible(false); return true; }
+      if (monthPickerVisible) { setMonthPickerVisible(false); return true; }
+      if (pastAccountModalVisible) { setPastAccountModalVisible(false); return true; }
+      if (cleanupModalVisible) { setCleanupModalVisible(false); return true; }
+      if (firebaseUsageVisible) { setFirebaseUsageVisible(false); return true; }
+      if (ijaraModalVisible) { setIjaraModalVisible(false); return true; }
+      if (salesReportVisible) { setSalesReportVisible(false); return true; }
+      if (depositReportVisible) { setDepositReportVisible(false); return true; }
+      if (menuModalVisible) { setMenuModalVisible(false); return true; }
+      if (renameModalVisible) { setRenameModalVisible(false); return true; }
+
+      return false; // Let App.js handle screen back
+    };
+
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      backAction
+    );
+
+    return () => backHandler.remove();
+  }, [orderDetailVisible, calendarVisible, yearPickerVisible, monthPickerVisible, pastAccountModalVisible, cleanupModalVisible, firebaseUsageVisible, ijaraModalVisible, salesReportVisible, depositReportVisible, menuModalVisible, renameModalVisible]);
 
   const handleTableLongPress = (table) => {
     setSelectedTableForRename(table);
@@ -634,8 +672,48 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                   </View>
                 </TouchableOpacity>
               ))}
-          </View>
-        </View>
+              </View>
+              </View>
+
+              {/* SYSTEM AUDIT WIDGET */}
+              <View style={styles.sectionContainer}>
+              <View style={styles.sectionHeaderRow}>
+              <View>
+              <Text style={styles.sectionTitle}>🗑 মুছে ফেলা ইতিহাস (Delete History)</Text>
+              <Text style={styles.sectionSubtitle}>সর্বশেষ ১০টি রেকর্ড</Text>
+              </View>
+              <TouchableOpacity onPress={onNavigateToDeleteHistory}>
+              <Text style={{ color: '#FFB703', fontSize: 12, fontWeight: 'bold' }}>সব দেখুন ❯</Text>
+              </TouchableOpacity>
+              </View>
+
+              <View style={styles.orderList}>
+              {deleteHistoryWidget.length === 0 ? (
+              <View style={{ padding: 20, alignItems: 'center' }}>
+               <Text style={{ color: '#666', fontSize: 12 }}>কোনো ডাটা পাওয়া যায়নি।</Text>
+              </View>
+              ) : (
+              deleteHistoryWidget.map((item, index) => (
+               <TouchableOpacity key={item.id} style={styles.orderItem} onPress={onNavigateToDeleteHistory}>
+                 <View style={styles.orderItemLeft}>
+                   <View style={[styles.tableIconCircle, { backgroundColor: 'rgba(255, 77, 77, 0.1)' }]}>
+                     <Text style={[styles.tableCircleText, { color: '#EF4444' }]}>🗑</Text>
+                   </View>
+                   <View style={styles.orderMeta}>
+                     <Text style={styles.orderTableText}>{item.record_type} Deleted</Text>
+                     <Text style={styles.orderItemsText}>By: {item.deleted_by}</Text>
+                   </View>
+                 </View>
+                 <View style={styles.amountCol}>
+                   <Text style={styles.orderTimeText}>{formatDisplayDate(item.deleted_at)}</Text>
+                   <Text style={[styles.orderItemStatus, { color: '#888' }]}>{item.record_id}</Text>
+                 </View>
+               </TouchableOpacity>
+              ))
+              )}
+              </View>
+              </View>
+
       </ScrollView>
 
       {/* Floating Buttons */}
@@ -720,9 +798,10 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onNavigateToEditMenu(); }}><Text style={styles.menuOptionText}>🍴 Edit Menu</Text></TouchableOpacity>
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onNavigateToItemSalesReport(); }}><Text style={styles.menuOptionText}>📊 আইটেম বিক্রয় রিপোর্ট</Text></TouchableOpacity>
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onNavigateToSyncDiagnostics(); }}><Text style={styles.menuOptionText}>🛠️ Sync Diagnostics</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onNavigateToDeleteHistory(); }}><Text style={styles.menuOptionText}>🗑️ Delete History</Text></TouchableOpacity>
 
             <TouchableOpacity style={styles.menuOption} onPress={handleOpenPastAccount}><Text style={styles.menuOptionText}>📅 অতীতের হিসাব</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onNavigateToSupplierDue(); }}><Text style={styles.menuOptionText}>📒 বাকির হিসাব</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onNavigateToSupplierDue(); }}><Text style={styles.menuOptionText}>📒 সাপ্লায়ার পেমেন্ট</Text></TouchableOpacity>
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); setSalesReportVisible(true); }}><Text style={styles.menuOptionText}>📋 Sales Report</Text></TouchableOpacity>
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); setDepositReportVisible(true); }}><Text style={styles.menuOptionText}>📊 Deposit Report</Text></TouchableOpacity>
 

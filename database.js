@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 let dbInstance = null;
 
@@ -490,11 +490,42 @@ const TABLE_SCHEMAS = {
       is_synced INTEGER DEFAULT 0
     );
   `,
+  supplier_payment_ledger: `
+    CREATE TABLE IF NOT EXISTS supplier_payment_ledger (
+      id TEXT PRIMARY KEY,
+      payment_date TEXT UNIQUE,
+      month TEXT,
+      year TEXT,
+      variety_store_amount REAL DEFAULT 0,
+      morgir_dokan_amount REAL DEFAULT 0,
+      burger_ban_amount REAL DEFAULT 0,
+      created_by TEXT,
+      created_at TEXT,
+      updated_at TEXT,
+      is_synced INTEGER DEFAULT 0
+    );
+  `,
   deletions: `
     CREATE TABLE IF NOT EXISTS deletions (
       id TEXT PRIMARY KEY, -- tableName_recordId
       table_name TEXT,
       record_id TEXT,
+      created_at TEXT,
+      updated_at TEXT,
+      is_synced INTEGER DEFAULT 0
+    );
+  `,
+  delete_history: `
+    CREATE TABLE IF NOT EXISTS delete_history (
+      id TEXT PRIMARY KEY,
+      record_type TEXT,
+      record_id TEXT,
+      deleted_by TEXT,
+      deleted_at TEXT,
+      created_by TEXT,
+      original_created_at TEXT,
+      snapshot_data TEXT,
+      sync_status INTEGER DEFAULT 0,
       created_at TEXT,
       updated_at TEXT,
       is_synced INTEGER DEFAULT 0
@@ -507,39 +538,6 @@ const TABLE_SCHEMAS = {
       requested_period TEXT, -- YYYY-MM-DD or YYYY-MM
       downloaded_at TEXT,
       downloaded_by TEXT
-    );
-  `,
-  private_employees: `
-    CREATE TABLE IF NOT EXISTS private_employees (
-      id TEXT PRIMARY KEY,
-      name TEXT,
-      salary REAL DEFAULT 0,
-      note TEXT,
-      last_payment_date TEXT,
-      created_at TEXT,
-      updated_at TEXT,
-      is_synced INTEGER DEFAULT 0
-    );
-  `,
-  private_categories: `
-    CREATE TABLE IF NOT EXISTS private_categories (
-      id TEXT PRIMARY KEY,
-      name TEXT UNIQUE,
-      created_at TEXT,
-      updated_at TEXT,
-      is_synced INTEGER DEFAULT 0
-    );
-  `,
-  private_expenses: `
-    CREATE TABLE IF NOT EXISTS private_expenses (
-      id TEXT PRIMARY KEY,
-      category TEXT,
-      amount REAL DEFAULT 0,
-      date TEXT,
-      note TEXT,
-      created_at TEXT,
-      updated_at TEXT,
-      is_synced INTEGER DEFAULT 0
     );
   `
 };
@@ -742,6 +740,22 @@ export function migrateDailySubmitUnified() {
   }
 }
 
+export function migrateDeleteHistory() {
+  try {
+    const tableInfo = db.getAllSync("PRAGMA table_info(delete_history)");
+    if (tableInfo.length > 0) {
+      const hasOriginalCreatedAt = tableInfo.some(c => c.name === 'original_created_at');
+      if (!hasOriginalCreatedAt) {
+        console.log("[DB Migration] Old delete_history found. Dropping and recreating for new audit system...");
+        db.execSync("DROP TABLE IF EXISTS delete_history");
+        db.execSync(TABLE_SCHEMAS.delete_history);
+      }
+    }
+  } catch (err) {
+    console.error("[DB Migration] Delete history migration failed:", err);
+  }
+}
+
 export function migrateSupplierDue() {
   try {
     const tableInfo = db.getAllSync("PRAGMA table_info(supplier_due)");
@@ -812,6 +826,7 @@ export function initDatabase(skipSeeding = false) {
     migrateSplitPayments();
     migrateDailySubmitUnified();
     migrateSupplierDue();
+    migrateDeleteHistory();
     migrateMLExportTables();
 
     // 1. Create tables
@@ -942,46 +957,6 @@ export function initDatabase(skipSeeding = false) {
 
     // Clean up duplicate menu items locally and push deletes to Firebase
     cleanupDuplicateMenuItems();
-
-    // Seed default private employees if empty
-    try {
-      const empCount = db.getFirstSync("SELECT COUNT(*) as count FROM private_employees");
-      if (empCount.count === 0) {
-        console.log("[DB] Seeding Default Private Employees...");
-        const defaultEmployees = ['পিয়াস', 'রবিন', 'নাঈম'];
-        const now = new Date().toISOString();
-        for (const [idx, name] of defaultEmployees.entries()) {
-          const id = `emp_${Date.now()}_${idx}`;
-          db.runSync(
-            "INSERT INTO private_employees (id, name, salary, note, last_payment_date, created_at, updated_at, is_synced) VALUES (?, ?, 0, '', '', ?, ?, 0)",
-            [id, name, now, now]
-          );
-          enqueueSync("private_employees", id, "INSERT");
-        }
-      }
-    } catch (e) {
-      console.error("[DB] Failed to seed private employees:", e);
-    }
-
-    // Seed default private categories if empty or missing
-    try {
-      console.log("[DB] Seeding Default Private Categories...");
-      const defaultCategories = ['বাসা ভাড়া', 'ইন্টারনেট', 'বিদ্যুৎ', 'ব্যক্তিগত খরচ', 'পরিবহন', 'জমা', 'উত্তোলন', 'বেতন'];
-      const now = new Date().toISOString();
-      for (const [idx, name] of defaultCategories.entries()) {
-        const exists = db.getFirstSync("SELECT id FROM private_categories WHERE name = ?", [name]);
-        if (!exists) {
-          const id = `pcat_${Date.now()}_${idx}`;
-          db.runSync(
-            "INSERT INTO private_categories (id, name, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, 0)",
-            [id, name, now, now]
-          );
-          enqueueSync("private_categories", id, "INSERT");
-        }
-      }
-    } catch (e) {
-      console.error("[DB] Failed to seed private categories:", e);
-    }
 
     // 5. Initialize Services automatically
     startSyncService();
@@ -1429,17 +1404,6 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
         db.runSync("DELETE FROM sync_queue WHERE id = ?", [Number(queueId)]);
         successfulWrites++;
         continue;
-      }
-
-      // PRIVATE VAULT SECURITY: Remove private vault tables from sync queue if the current user is not Owner
-      const privateTables = ['private_employees', 'private_categories', 'private_expenses'];
-      if (privateTables.includes(tableName)) {
-        if (getSessionUserRole() !== 'owner') {
-          console.log(`[Queue Cleanup] Blocked private sync item on unauthorized device: queueId=${queueId} collection=${tableName}`);
-          db.runSync("DELETE FROM sync_queue WHERE id = ?", [Number(queueId)]);
-          successfulWrites++;
-          continue;
-        }
       }
 
       if (!tableName || !recordId) {
@@ -1977,7 +1941,7 @@ export async function syncHighFrequencyCollections() {
   isPullingSyncHigh = true;
   let hasChanges = false;
   try {
-    const highFreq = ['orders', 'order_items', 'payments', 'deliveries', 'deletions'];
+    const highFreq = ['orders', 'order_items', 'payments', 'deliveries'];
     incrementReadCounter('highFrequency', highFreq.length);
     hasChanges = await traceSyncOperation('syncHighFrequencyCollections', () => syncCollections(highFreq, 'High Frequency Sync'));
   } catch (err) {
@@ -1997,10 +1961,7 @@ export async function syncLowFrequencyCollections() {
   isPullingSyncLow = true;
   let hasChanges = false;
   try {
-    const lowFreq = ['users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 'app_config', 'expenses', 'eja_history', 'daily_submit', 'supplier_due', 'supplier_due_history'];
-    if (getSessionUserRole() === 'owner') {
-      lowFreq.push('private_employees', 'private_categories', 'private_expenses');
-    }
+    const lowFreq = ['users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 'app_config', 'expenses', 'eja_history', 'daily_submit', 'supplier_due', 'supplier_due_history', 'supplier_payment_ledger', 'delete_history'];
     incrementReadCounter('lowFrequency', lowFreq.length);
     hasChanges = await traceSyncOperation('syncLowFrequencyCollections', () => syncCollections(lowFreq, 'Low Frequency Sync'));
   } catch (err) {
@@ -2106,13 +2067,13 @@ export async function restoreDatabaseFromCloud() {
   const yesterday = yesterdayDate.toISOString().substring(0, 10);
 
   // 1. Collections that must always be fully restored
-  const alwaysFull = ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due'];
+  const alwaysFull = ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due', 'supplier_payment_ledger'];
   
   // 2. Collections that should only be restored for Today + Yesterday on fresh install
   const recentOnly = [
     'orders', 'order_items', 'payments', 'expenses', 'deliveries', 
     'daily_submit', 'daily_summary', 'due_payments', 'eja_history', 
-    'off_days', 'weather_data', 'supplier_due_history'
+    'off_days', 'weather_data'
   ];
 
   console.log("[Restore] Starting Smart History Restoration from Firestore...");
@@ -2150,16 +2111,31 @@ export async function restoreDatabaseFromCloud() {
     }
   };
 
+  // Capture start time to use as sync marker baseline
+  const restoreStartTime = new Date().toISOString();
+
   // 1. Process Always Full
   for (const table of alwaysFull) {
     try {
       console.log(`[Restore] Restoring full table: ${table}...`);
       incrementReadCounter('restore', 1);
       const { success, documents: docs } = await fetchCollection(table);
-      if (success) await processDocs(table, docs);
+      if (success) {
+        await processDocs(table, docs);
+        // Initialize sync marker so background sync doesn't re-download full history
+        db.runSync("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)", [`last_sync_time_${table}`, restoreStartTime]);
+      }
     } catch (err) {
       console.error(`[Restore] Critical error restoring ${table}:`, err);
     }
+  }
+
+  // EMERGENCY FIX: Initialize markers for tables that are not explicitly restored 
+  // but exist in sync cycles to prevent background full-fetch loop.
+  const backgroundOnlyTables = ['deletions', 'delete_history', 'supplier_due_history'];
+  for (const table of backgroundOnlyTables) {
+    db.runSync("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)", [`last_sync_time_${table}`, restoreStartTime]);
+    console.log(`[Restore Emergency Fix] Initialized marker for background table: ${table}`);
   }
 
   // 2. Process Recent Only (Today + Yesterday)
@@ -2170,19 +2146,25 @@ export async function restoreDatabaseFromCloud() {
       // Fetch Today
       incrementReadCounter('restore', 1);
       const todayResult = await fetchChangedRecordsFromFirestore(table, today + "T00:00:00Z");
-      if (todayResult.success) await processDocs(table, todayResult.documents);
       
       // Fetch Yesterday
       incrementReadCounter('restore', 1);
       const yesterdayResult = await fetchChangedRecordsFromFirestore(table, yesterday + "T00:00:00Z");
-      // Filter yesterday result to only include records from that specific day to avoid overlaps if needed
-      if (yesterdayResult.success) {
-        const filteredYesterday = yesterdayResult.documents.filter(doc => {
-          const row = fromFirestoreDocument(doc);
-          const dateStr = row.date || (row.created_at ? row.created_at.substring(0, 10) : "");
-          return dateStr === yesterday;
-        });
-        await processDocs(table, filteredYesterday);
+      
+      if (todayResult.success || yesterdayResult.success) {
+        if (todayResult.success) await processDocs(table, todayResult.documents);
+        if (yesterdayResult.success) {
+          const filteredYesterday = yesterdayResult.documents.filter(doc => {
+            const row = fromFirestoreDocument(doc);
+            const dateStr = row.date || (row.created_at ? row.created_at.substring(0, 10) : "");
+            return dateStr === yesterday;
+          });
+          await processDocs(table, filteredYesterday);
+        }
+        
+        // Initialize sync marker to prevent full history pull.
+        // We set it to restoreStartTime so future delta syncs only pick up NEW records.
+        db.runSync("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)", [`last_sync_time_${table}`, restoreStartTime]);
       }
     } catch (err) {
       console.error(`[Restore] Critical error restoring recent ${table}:`, err);
@@ -3182,6 +3164,7 @@ export function deleteMenuItem(itemName, category = null) {
     }
     
     if (item) {
+      logDeleteHistory("menu_items", item.id, "Menu Items");
       db.runSync("DELETE FROM menu_items WHERE id = ?", [item.id]);
       recordDeletion("menu_items", item.id);
       return true;
@@ -3313,6 +3296,7 @@ export function updateDeliveryDetails(id, delCharge, changeMoney) {
 
 export function removeDelivery(id) {
   try {
+    logDeleteHistory("deliveries", id, "Others");
     db.runSync("DELETE FROM deliveries WHERE id = ?", [id]);
     recordDeletion("deliveries", id);
   } catch (err) {
@@ -3631,12 +3615,91 @@ export function getSupplierDueHistory(supplierId) {
 
 export function deleteSupplierDueHistory(historyId) {
   try {
+    logDeleteHistory("supplier_due_history", historyId, "Due Records");
     db.runSync("DELETE FROM supplier_due_history WHERE id = ?", [historyId]);
     recordDeletion("supplier_due_history", historyId);
     return true;
   } catch (err) {
     console.error("Delete supplier due history error:", err);
     return false;
+  }
+}
+
+// ==========================================
+// DAILY SUPPLIER PAYMENT LEDGER
+// ==========================================
+
+/**
+ * Fetch all payment records for a specific month (YYYY-MM).
+ */
+export function getSupplierPaymentLedger(monthStr) {
+  try {
+    return db.getAllSync(
+      "SELECT * FROM supplier_payment_ledger WHERE month = ? ORDER BY payment_date ASC",
+      [monthStr]
+    );
+  } catch (err) {
+    console.error("[DB] Failed to get supplier payment ledger:", err);
+    return [];
+  }
+}
+
+/**
+ * Saves or updates a supplier payment amount for a specific date.
+ * Enforces 48-hour lock rule.
+ */
+export function saveSupplierPayment(dateStr, supplierField, amount, createdBy) {
+  try {
+    const now = new Date().toISOString();
+    const monthStr = dateStr.substring(0, 7);
+    const yearStr = dateStr.substring(0, 4);
+    const id = `spl_${dateStr}`;
+
+    const existing = db.getFirstSync("SELECT * FROM supplier_payment_ledger WHERE payment_date = ?", [dateStr]);
+
+    if (existing) {
+      // 48 Hour Lock Check: Only lock if more than 48 hours have passed since creation
+      const createdAt = new Date(existing.created_at);
+      const currentTime = new Date();
+      const diffHours = (currentTime - createdAt) / (1000 * 60 * 60);
+      
+      if (diffHours > 48) {
+        return { success: false, error: "Locked: 48 hours passed since entry creation." };
+      }
+
+      db.runSync(
+        `UPDATE supplier_payment_ledger SET ${supplierField} = ?, updated_at = ?, is_synced = 0 WHERE id = ?`,
+        [amount, now, existing.id]
+      );
+      enqueueSync("supplier_payment_ledger", existing.id, "UPDATE");
+      syncRecordImmediately("supplier_payment_ledger", existing.id);
+    } else {
+      const fields = {
+        variety_store_amount: 0,
+        morgir_dokan_amount: 0,
+        burger_ban_amount: 0
+      };
+      fields[supplierField] = amount;
+
+      db.runSync(
+        `INSERT INTO supplier_payment_ledger (
+          id, payment_date, month, year, 
+          variety_store_amount, morgir_dokan_amount, burger_ban_amount, 
+          created_by, created_at, updated_at, is_synced
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+        [
+          id, dateStr, monthStr, yearStr, 
+          fields.variety_store_amount, fields.morgir_dokan_amount, fields.burger_ban_amount, 
+          createdBy, now, now
+        ]
+      );
+      enqueueSync("supplier_payment_ledger", id, "INSERT");
+      syncRecordImmediately("supplier_payment_ledger", id);
+    }
+    return { success: true };
+  } catch (err) {
+    console.error("[DB] Failed to save supplier payment:", err);
+    return { success: false, error: err.message };
   }
 }
 
@@ -3807,6 +3870,8 @@ export function savePastAccount(record) {
 
 export function deleteSubmission(dateStr) {
   try {
+    logDeleteHistory("daily_submit", dateStr, "Deposits");
+    logDeleteHistory("daily_summary", dateStr, "Deposits");
     db.runSync("DELETE FROM daily_submit WHERE date = ?", [dateStr]);
     db.runSync("DELETE FROM daily_summary WHERE date = ?", [dateStr]);
     recordDeletion("daily_submit", dateStr);
@@ -3957,10 +4022,12 @@ export function checkAndApplyIjaraRollover() {
     }
 
     export function resetDailySubmitLock() {
-
   try {
     const todayStr = getBusinessDate();
     
+    logDeleteHistory("daily_submit", todayStr, "Deposits");
+    logDeleteHistory("daily_summary", todayStr, "Deposits");
+
     // 1. Delete from daily_submit locally and record deletion
     db.runSync("DELETE FROM daily_submit WHERE date = ?", [todayStr]);
     recordDeletion("daily_submit", todayStr);
@@ -4035,7 +4102,16 @@ export function deleteCompletedOrder(orderId) {
   try {
     const orderIdStr = String(orderId);
     
-    // Check if this order is a delivery and delete the corresponding record in deliveries table
+    // 0. Log snapshots before deletion
+    logDeleteHistory("orders", orderIdStr, "Orders");
+    // Also log payments and items if they exist
+    const itemsToLog = db.getAllSync("SELECT id FROM order_items WHERE order_id = ?", [orderIdStr]);  
+    itemsToLog.forEach(item => logDeleteHistory("order_items", item.id, "Orders"));
+    const payToLog = db.getFirstSync("SELECT id FROM payments WHERE order_id = ?", [orderIdStr]);     
+    if (payToLog) logDeleteHistory("payments", payToLog.id, "Orders");
+
+    // Check if this order is a delivery and delete the corresponding record in deliveries table      
+
     const ord = db.getFirstSync("SELECT table_id FROM orders WHERE id = ?", [orderIdStr]);
     if (ord && ord.table_id && ord.table_id.toString().includes('Delivery')) {
       const delName = ord.table_id.trim();
@@ -4322,6 +4398,8 @@ export function inspectDatabaseStats() {
     'eja_history',
     'off_days',
     'weather_data',
+    'supplier_payment_ledger',
+    'delete_history',
     'notifications',
     'app_config',
     'sync_queue'
@@ -4460,6 +4538,23 @@ export function deleteDataByDate(targetDate) {
   try {
     const now = new Date().toISOString();
 
+    // 0. Log snapshots for history
+    try {
+      const orders = db.getAllSync("SELECT id FROM orders WHERE date(created_at, 'localtime') = ?", [targetDate]);
+      orders.forEach(o => logDeleteHistory("orders", o.id, "Orders"));
+      
+      const deliveries = db.getAllSync("SELECT id FROM deliveries WHERE date(completed_at, 'localtime') = ?", [targetDate]);
+      deliveries.forEach(d => logDeleteHistory("deliveries", d.id, "Others"));
+      
+      const expenses = db.getAllSync("SELECT id FROM expenses WHERE date(created_at, 'localtime') = ?", [targetDate]);
+      expenses.forEach(e => logDeleteHistory("expenses", e.id, "Expenses"));
+
+      logDeleteHistory("daily_submit", targetDate, "Deposits");
+      logDeleteHistory("daily_summary", targetDate, "Deposits");
+    } catch (e) {
+      console.warn("[Admin Tool] Snapshot failed during cleanup:", e);
+    }
+
     // 1. Orders
     db.runSync("DELETE FROM orders WHERE date(created_at, 'localtime') = ?", [targetDate]);
     
@@ -4496,7 +4591,75 @@ export function deleteDataByDate(targetDate) {
 // 8. TOMBSTONE DELETION AND MANUAL SYNC ENGINE
 // ==========================================
 
+export function getDeleteHistory(limit = null) {
+  try {
+    if (limit) {
+      return db.getAllSync("SELECT * FROM delete_history ORDER BY deleted_at DESC LIMIT ?", [limit]);
+    }
+    return db.getAllSync("SELECT * FROM delete_history ORDER BY deleted_at DESC");
+  } catch (err) {
+    console.error("[DB] Failed to get delete history:", err);
+    return [];
+  }
+}
+
+export function logDeleteHistory(tableName, recordId, recordType) {
+  try {
+    const recordIdStr = String(recordId);
+    console.log(`[Delete History] Attempting to log snapshot for ${tableName} ID ${recordIdStr}...`);
+
+    // 1. Fetch current record snapshot before it is deleted
+    let record = null;
+    try {
+      record = db.getFirstSync(`SELECT * FROM ${tableName} WHERE id = ?`, [recordIdStr]);
+      if (!record) {
+        record = db.getFirstSync(`SELECT * FROM ${tableName} WHERE date = ?`, [recordIdStr]);
+      }
+    } catch (e) {
+      try {
+        record = db.getFirstSync(`SELECT * FROM ${tableName} WHERE date = ?`, [recordIdStr]);
+      } catch (e2) {}
+    }
+
+    if (!record) {
+      console.warn(`[Delete History] Snapshot failed: Record not found for ${tableName} with ID/Date ${recordIdStr}`);
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const deletedBy = getAppConfig('login_session_user') || 'Unknown';
+    
+    // Extract metadata from record if available
+    const createdBy = record.created_by || record.manager_name || 'System';
+    const originalCreatedAt = record.created_at || record.date || now;
+
+    const historyId = `delh_${tableName}_${recordIdStr}_${Date.now()}`;
+    
+    // 2. Save snapshot to local delete_history table
+    db.runSync(
+      `INSERT INTO delete_history (
+        id, record_type, record_id, deleted_by, deleted_at, 
+        created_by, original_created_at, snapshot_data, 
+        created_at, updated_at, is_synced
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+      [
+        historyId, recordType, recordIdStr, deletedBy, now,
+        createdBy, originalCreatedAt, JSON.stringify(record),
+        now, now
+      ]
+    );
+    
+    // 3. Enqueue for sync push to Firestore
+    enqueueSync("delete_history", historyId, "INSERT");
+    syncRecordImmediately("delete_history", historyId);
+    console.log(`[Delete History] SUCCESSFULLY logged snapshot for ${tableName} (${recordType}) ID ${recordIdStr}`);
+  } catch (err) {
+    console.error("[Delete History] CRITICAL ERROR logging deletion history:", err);
+  }
+}
+
 export function recordDeletion(tableName, recordId) {
+
   try {
     const id = `${tableName}_${recordId}`;
     const now = new Date().toISOString();
@@ -4575,7 +4738,7 @@ export async function executeManualPush() {
       'users', 'restaurant_tables', 'orders', 'order_items', 'payments', 
       'expenses', 'deliveries', 'daily_submit', 'daily_summary', 
       'due_payments', 'eja_history', 'off_days', 'weather_data', 
-      'notifications', 'app_config', 'ml_export_history', 'deletions'
+      'supplier_payment_ledger', 'notifications', 'app_config', 'ml_export_history', 'deletions', 'delete_history'
     ];
     
     let countEnqueued = 0;
@@ -4655,163 +4818,6 @@ export function getSessionUserRole() {
     return user ? user.role : null;
   } catch (e) {
     return null;
-  }
-}
-
-// ==========================================
-// OWNER PRIVATE VAULT FUNCTIONS (OWNER ONLY)
-// ==========================================
-
-export function getPrivateEmployees() {
-  try {
-    return db.getAllSync("SELECT * FROM private_employees ORDER BY name ASC");
-  } catch (err) {
-    console.error("getPrivateEmployees error:", err);
-    return [];
-  }
-}
-
-export function addPrivateEmployee(name, salary, note = '') {
-  try {
-    const id = `emp_${Date.now()}`;
-    const now = new Date().toISOString();
-    db.runSync(
-      "INSERT INTO private_employees (id, name, salary, note, last_payment_date, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, '', ?, ?, 0)",
-      [id, name, salary, note, now, now]
-    );
-    enqueueSync("private_employees", id, "INSERT");
-    return true;
-  } catch (err) {
-    console.error("addPrivateEmployee error:", err);
-    return false;
-  }
-}
-
-export function updatePrivateEmployee(id, name, salary, note, lastPaymentDate) {
-  try {
-    const now = new Date().toISOString();
-    db.runSync(
-      "UPDATE private_employees SET name = ?, salary = ?, note = ?, last_payment_date = ?, updated_at = ?, is_synced = 0 WHERE id = ?",
-      [name, salary, note, lastPaymentDate, now, id]
-    );
-    enqueueSync("private_employees", id, "UPDATE");
-    return true;
-  } catch (err) {
-    console.error("updatePrivateEmployee error:", err);
-    return false;
-  }
-}
-
-export function deletePrivateEmployee(id) {
-  try {
-    db.runSync("DELETE FROM private_employees WHERE id = ?", [id]);
-    recordDeletion("private_employees", id);
-    return true;
-  } catch (err) {
-    console.error("deletePrivateEmployee error:", err);
-    return false;
-  }
-}
-
-export function getPrivateCategories() {
-  try {
-    return db.getAllSync("SELECT * FROM private_categories ORDER BY name ASC");
-  } catch (err) {
-    console.error("getPrivateCategories error:", err);
-    return [];
-  }
-}
-
-export function addPrivateCategory(name) {
-  try {
-    const id = `pcat_${Date.now()}`;
-    const now = new Date().toISOString();
-    db.runSync(
-      "INSERT INTO private_categories (id, name, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, 0)",
-      [id, name, now, now]
-    );
-    enqueueSync("private_categories", id, "INSERT");
-    return true;
-  } catch (err) {
-    console.error("addPrivateCategory error:", err);
-    return false;
-  }
-}
-
-export function updatePrivateCategory(id, name) {
-  try {
-    const now = new Date().toISOString();
-    db.runSync(
-      "UPDATE private_categories SET name = ?, updated_at = ?, is_synced = 0 WHERE id = ?",
-      [name, now, id]
-    );
-    enqueueSync("private_categories", id, "UPDATE");
-    return true;
-  } catch (err) {
-    console.error("updatePrivateCategory error:", err);
-    return false;
-  }
-}
-
-export function deletePrivateCategory(id) {
-  try {
-    db.runSync("DELETE FROM private_categories WHERE id = ?", [id]);
-    recordDeletion("private_categories", id);
-    return true;
-  } catch (err) {
-    console.error("deletePrivateCategory error:", err);
-    return false;
-  }
-}
-
-export function getPrivateExpenses() {
-  try {
-    return db.getAllSync("SELECT * FROM private_expenses ORDER BY date DESC, created_at DESC");
-  } catch (err) {
-    console.error("getPrivateExpenses error:", err);
-    return [];
-  }
-}
-
-export function addPrivateExpense(category, amount, date, note = '') {
-  try {
-    const id = `pexp_${Date.now()}`;
-    const now = new Date().toISOString();
-    db.runSync(
-      "INSERT INTO private_expenses (id, category, amount, date, note, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, ?, ?, 0)",
-      [id, category, amount, date, note, now, now]
-    );
-    enqueueSync("private_expenses", id, "INSERT");
-    return true;
-  } catch (err) {
-    console.error("addPrivateExpense error:", err);
-    return false;
-  }
-}
-
-export function updatePrivateExpense(id, category, amount, date, note) {
-  try {
-    const now = new Date().toISOString();
-    db.runSync(
-      "UPDATE private_expenses SET category = ?, amount = ?, date = ?, note = ?, updated_at = ?, is_synced = 0 WHERE id = ?",
-      [category, amount, date, note, now, id]
-    );
-    enqueueSync("private_expenses", id, "UPDATE");
-    return true;
-  } catch (err) {
-    console.error("updatePrivateExpense error:", err);
-    return false;
-  }
-}
-
-export function deletePrivateExpense(id) {
-  try {
-    db.runSync("DELETE FROM private_expenses WHERE id = ?", [id]);
-    recordDeletion("private_expenses", id);
-    return true;
-  } catch (err) {
-    console.error("deletePrivateExpense error:", err);
-    return false;
   }
 }
 
