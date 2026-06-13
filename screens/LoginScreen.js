@@ -11,10 +11,12 @@ import {
   ScrollView,
   TouchableWithoutFeedback,
   Keyboard,
-  Vibration
+  Vibration,
+  Alert
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { verifyUserLogin, checkUserExists, getAppConfig, setAppConfig } from '../database';
+import NetInfo from '@react-native-community/netinfo';
+import { verifyUserLogin, checkUserExists, getAppConfig, setAppConfig, getPendingSyncCount } from '../database';
 
 const BUTTON_SIZE = 72; // Circular buttons sized perfectly to fit all displays
 
@@ -23,8 +25,9 @@ export default function LoginScreen({ onLoginSuccess }) {
   const [isFirstLogin, setIsFirstLogin] = useState(true);
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
+  const [syncMode, setSyncMode] = useState('online_only');
 
-  // Fetch remembered user on mount
+  // Fetch remembered user and mode on mount
   useEffect(() => {
     try {
       const savedUser = getAppConfig('remembered_username');
@@ -38,7 +41,42 @@ export default function LoginScreen({ onLoginSuccess }) {
       console.error("Failed to load remembered user from SQLite:", err);
       setIsFirstLogin(true);
     }
+
+    try {
+      const savedMode = getAppConfig('sync_mode');
+      if (savedMode === 'hybrid') {
+        setSyncMode('hybrid');
+      } else {
+        setSyncMode('online_only');
+      }
+    } catch (e) {
+      console.error("Failed to load sync_mode:", e);
+    }
   }, []);
+
+  const handleModeChange = (newMode) => {
+    if (newMode === syncMode) return;
+    
+    const pendingCount = getPendingSyncCount();
+    if (pendingCount > 0) {
+      Alert.alert(
+        "সতর্কবার্তা",
+        `বর্তমানে ${pendingCount} টি Sync Pending আছে।\n\nMode পরিবর্তন করলে কোনো Data Loss হবে না।\n\nPending Sync স্বয়ংক্রিয়ভাবে চলতে থাকবে।`,
+        [
+          { 
+            text: "ঠিক আছে", 
+            onPress: () => {
+              setSyncMode(newMode);
+              setAppConfig('sync_mode', newMode);
+            } 
+          }
+        ]
+      );
+    } else {
+      setSyncMode(newMode);
+      setAppConfig('sync_mode', newMode);
+    }
+  };
 
   const handleUsernameNext = () => {
     Keyboard.dismiss();
@@ -74,7 +112,7 @@ export default function LoginScreen({ onLoginSuccess }) {
     setPin(pin.slice(0, -1));
   };
 
-  const handlePinSubmit = (enteredPin) => {
+  const handlePinSubmit = async (enteredPin) => {
     const cleanUsername = username.trim().toLowerCase();
     const cleanPin = enteredPin.trim();
 
@@ -82,6 +120,19 @@ export default function LoginScreen({ onLoginSuccess }) {
       setError('ইউজারনেম প্রয়োজন!');
       setPin('');
       return;
+    }
+
+    if (syncMode === 'online_only') {
+      const state = await NetInfo.fetch();
+      const isOnline = state.isConnected && state.isInternetReachable !== false;
+      if (!isOnline) {
+        Alert.alert(
+          "ইন্টারনেট সংযোগ নেই।",
+          "এই ডিভাইসটি Online Only মোডে চলছে।\n\nদয়া করে ইন্টারনেট সংযোগ চালু করুন।",
+          [{ text: "ঠিক আছে", onPress: () => setPin('') }]
+        );
+        return;
+      }
     }
 
     const user = verifyUserLogin(cleanUsername, cleanPin);
@@ -94,7 +145,7 @@ export default function LoginScreen({ onLoginSuccess }) {
         console.error("Failed to save session:", e);
       }
       setError('');
-      onLoginSuccess(user.role, user.display_name);
+      onLoginSuccess(user.role, user.display_name, syncMode);
     } else {
       Vibration.vibrate(100);
       setError('ভুল PIN নম্বর! আবার চেষ্টা করুন।');
@@ -291,6 +342,38 @@ export default function LoginScreen({ onLoginSuccess }) {
                 </TouchableOpacity>
               </View>
             )}
+
+            {/* Mode Selector Card */}
+            <View style={styles.modeSelectorCard}>
+              <Text style={styles.modeSelectorTitle}>সিঙ্ক মোড নির্বাচন করুন (Select Sync Mode)</Text>
+              <View style={styles.modeSelectorRow}>
+                <TouchableOpacity 
+                  style={[styles.modeOption, syncMode === 'online_only' && styles.modeOptionActive]}
+                  onPress={() => handleModeChange('online_only')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.modeOptionCheck, syncMode === 'online_only' && styles.modeOptionCheckActive]}>
+                    {syncMode === 'online_only' ? '☑' : '☐'}
+                  </Text>
+                  <Text style={[styles.modeOptionText, syncMode === 'online_only' && styles.modeOptionTextActive]}>
+                    Online Only
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={[styles.modeOption, syncMode === 'hybrid' && styles.modeOptionActive]}
+                  onPress={() => handleModeChange('hybrid')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.modeOptionCheck, syncMode === 'hybrid' && styles.modeOptionCheckActive]}>
+                    {syncMode === 'hybrid' ? '☑' : '☐'}
+                  </Text>
+                  <Text style={[styles.modeOptionText, syncMode === 'hybrid' && styles.modeOptionTextActive]}>
+                    Online + Offline
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
 
             {/* Footer */}
             <Text style={styles.footerText}>ধন্যবাদ আমাদের সাথে থাকার জন্য 💛</Text>
@@ -558,5 +641,62 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 18,
     letterSpacing: 0.5,
+  },
+  modeSelectorCard: {
+    width: '100%',
+    backgroundColor: '#0D0D0D',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#1F1F1F',
+    padding: 16,
+    marginTop: 20,
+    marginBottom: 10,
+    alignItems: 'center',
+  },
+  modeSelectorTitle: {
+    color: '#888888',
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 12,
+    letterSpacing: 0.5,
+  },
+  modeSelectorRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+    gap: 10,
+  },
+  modeOption: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#161616',
+    borderWidth: 1,
+    borderColor: '#262626',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+  },
+  modeOptionActive: {
+    backgroundColor: 'rgba(255, 215, 0, 0.08)',
+    borderColor: '#FFD700',
+  },
+  modeOptionCheck: {
+    fontSize: 16,
+    color: '#555555',
+    marginRight: 6,
+  },
+  modeOptionCheckActive: {
+    color: '#FFD700',
+  },
+  modeOptionText: {
+    fontSize: 11,
+    color: '#888888',
+    fontWeight: '500',
+  },
+  modeOptionTextActive: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
   },
 });

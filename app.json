@@ -6,11 +6,18 @@
     "orientation": "portrait",
     "icon": "./image/mylogo.png",
     "userInterfaceStyle": "light",
-    "splash": {
-      "image": "./image/mylogo.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./image/mylogo.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ],
+      "expo-sharing",
+      "expo-sqlite"
+    ],
     "ios": {
       "supportsTablet": true
     },

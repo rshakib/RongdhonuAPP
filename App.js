@@ -215,60 +215,13 @@ export default function App() {
   });
   const [userRole, setUserRole] = useState(''); // 'owner', 'manager' or 'admin'
   const [userDisplayName, setUserDisplayName] = useState('');
+  const [isOnline, setIsOnline] = useState(true);
+  const [isOnlineOnlyMode, setIsOnlineOnlyMode] = useState(true);
   
   // Visual Sync Timer Countdowns (Shared for all roles)
   const [delCountdown, setDelCountdown] = useState(90);
   const [tabCountdown, setTabCountdown] = useState(15);
   const [fullCountdown, setFullCountdown] = useState(30);
-
-  // Android Back Handler
-  useEffect(() => {
-    const backAction = () => {
-      // 1. If we are on Login screen, let default behavior (exit) happen
-      if (currentScreen === 'LOGIN') {
-        return false;
-      }
-
-      // 2. If we are on Dashboard, show exit confirmation
-      if (currentScreen === 'DASHBOARD') {
-        Alert.alert("অ্যাপ বন্ধ করুন", "আপনি কি নিশ্চিতভাবে অ্যাপটি বন্ধ করতে চান?", [
-          { text: "না", onPress: () => null, style: "cancel" },
-          { text: "হ্যাঁ", onPress: () => BackHandler.exitApp() }
-        ]);
-        return true;
-      }
-
-      // 3. Handle nested screen transitions
-      if (currentScreen === 'ADD_ITEM' || currentScreen === 'PAYMENT_CHECKOUT') {
-        setCurrentScreen('TABLE_DETAIL');
-        return true;
-      }
-
-      if (currentScreen === 'PAYMENT_SUCCESS') {
-        handleReturnHome();
-        return true;
-      }
-
-      // 4. Default: go back to Dashboard
-      if (currentScreen === 'TABLE_DETAIL') {
-        // Trigger the logic in TableDetailScreen onBack if needed
-        // but simplified:
-        setCurrentScreen('DASHBOARD');
-        refreshData();
-        return true;
-      }
-
-      setCurrentScreen('DASHBOARD');
-      return true;
-    };
-
-    const backHandler = BackHandler.addEventListener(
-      "hardwareBackPress",
-      backAction
-    );
-
-    return () => backHandler.remove();
-  }, [currentScreen]);
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -338,6 +291,18 @@ export default function App() {
 
         // 1. Just create schemas (no seeding yet)
         initDatabase(true);
+
+        // Fetch current online status and mode preference
+        try {
+          const netState = await NetInfo.fetch();
+          setIsOnline(netState.isConnected && netState.isInternetReachable !== false);
+          
+          const { getAppConfig } = require('./database');
+          const savedMode = getAppConfig('sync_mode');
+          setIsOnlineOnlyMode(savedMode !== 'hybrid');
+        } catch (netErr) {
+          console.error("[App] Failed to fetch network state or mode on startup:", netErr);
+        }
 
         // --- DB MAINTENANCE ---
         const { clearDeadQueueItems } = require('./database');
@@ -502,16 +467,17 @@ export default function App() {
   useEffect(() => {
     if (!isLoggedIn) return;
 
-    let wasOffline = false;
+    let wasOffline = !isOnline;
     
     const unsubscribe = NetInfo.addEventListener(async state => {
       // isInternetReachable can be null initially, we treat explicitly false as offline
-      const isOnline = state.isConnected && state.isInternetReachable !== false;
+      const isOnlineState = state.isConnected && state.isInternetReachable !== false;
+      setIsOnline(isOnlineState);
       
       const { setSystemOnline } = require('./database');
-      setSystemOnline(isOnline);
+      setSystemOnline(isOnlineState);
 
-      if (!isOnline) {
+      if (!isOnlineState) {
         wasOffline = true;
         return;
       }
@@ -680,9 +646,10 @@ export default function App() {
     }
   };
 
-  const handleLoginSuccess = async (role, displayName) => {
+  const handleLoginSuccess = async (role, displayName, mode = 'online_only') => {
     setUserRole(role);
     setUserDisplayName(displayName);
+    setIsOnlineOnlyMode(mode === 'online_only');
     setIsLoggedIn(true);
     setCurrentScreen('DASHBOARD');
 
@@ -758,13 +725,7 @@ export default function App() {
           
           // If it was FREE (no items) and now getting items, set the start time
           if (!activeDelivery.items || activeDelivery.items.length === 0) {
-             const now = new Date();
-             let hours = now.getHours();
-             let minutes = now.getMinutes();
-             const ampm = hours >= 12 ? 'PM' : 'AM';
-             hours = hours % 12 || 12;
-             minutes = minutes < 10 ? '0' + minutes : minutes;
-             newStartTime = `${hours}:${minutes} ${ampm}`;
+             newStartTime = new Date().toISOString();
           }
           updateDeliveryState(tableId, updatedItems, status, newStartTime);
         }
@@ -775,14 +736,7 @@ export default function App() {
         const isTransitionToBusy = activeTable.status === 'FREE' && updatedItems.length > 0;
         let newStartTime = activeTable.startTime;
         if (isTransitionToBusy) {
-          const now = new Date();
-          let hours = now.getHours();
-          let minutes = now.getMinutes();
-          const ampm = hours >= 12 ? 'PM' : 'AM';
-          hours = hours % 12;
-          hours = hours ? hours : 12;
-          minutes = minutes < 10 ? '0' + minutes : minutes;
-          newStartTime = `${hours}:${minutes} ${ampm}`;
+          newStartTime = new Date().toISOString();
         }
         const status = updatedItems.length > 0 ? 'BUSY' : 'FREE';
         updateTableState(tableId, updatedItems, status, updatedItems.length > 0 ? newStartTime : '');
@@ -901,8 +855,11 @@ export default function App() {
   const handleCompletePayment = async (paid, method, breakdown = {}) => {
     const activeTable = tables.find(t => t.id === selectedTableId) || deliveries.find(d => d.id === selectedTableId);
     if (activeTable) {
+      const baseStartTime = activeTable.startTime || new Date().toISOString();
+      const cleanStartTime = baseStartTime.replace(/[:.]/g, '-');
+      const orderId = `${selectedTableId}_${cleanStartTime}`;
       const orderRecord = {
-        id: Date.now(),
+        id: orderId,
         tableId: activeTable.name || activeTable.id,
         items: activeTable.items.map(i => `${i.name} x${i.qty} @${i.price}`).join(', '),
         totalAmount: paymentAmount,
@@ -1164,26 +1121,26 @@ export default function App() {
 
     // Check limit
     if (getDailyDownloadCount('DEPOSIT_REPORT') >= 2) {
-      Alert.alert("Limit Reached", "Daily historical month download limit reached. Contact Admin.");
+      Alert.alert("সীমা অতিক্রম হয়েছে", "আজকের ক্লাউড ডাউনলোড সীমা অতিক্রম হয়েছে। অ্যাডমিনের সাথে যোগাযোগ করুন।");
       return;
     }
 
     Alert.alert(
-      "WARNING",
-      `This report is not available locally.\n\nDownloading this data for ${monthName} will increase Firebase cloud reads.\n\nExcessive downloads may consume daily cloud quota. Do you want to continue?`,
+      "ক্লাউড ডাউনলোড",
+      "এই মাসের ডাটা লোকাল ডিভাইসে নেই।\n\nআপনি কি ক্লাউড থেকে ডাটা ডাউনলোড করতে চান?",
       [
-        { text: "Cancel", style: "cancel" },
+        { text: "বাতিল", style: "cancel" },
         {
-          text: "Download",
+          text: "ডাউনলোড",
           onPress: async () => {
             showToast(`🔄 ${monthName} ডাটা ডাউনলোড হচ্ছে...`, "sync");
             try {
               await fetchHistoricalMonthData(monthStr);
               logHistoryDownload('DEPOSIT_REPORT', monthStr, 'System');
               refreshData();
-              Alert.alert("Success", `${monthName} data downloaded and stored locally.`);
+              Alert.alert("ডাউনলোড সফল", "মাসের ডাটা সফলভাবে ডাউনলোড হয়েছে।");
             } catch (err) {
-              Alert.alert("Error", "Failed to download historical month data.");
+              Alert.alert("ত্রুটি", "ডাটা ডাউনলোড করতে ব্যর্থ হয়েছে।");
             }
           }
         }
@@ -1194,7 +1151,7 @@ export default function App() {
   // Renders screen content based on custom router state
   const renderScreen = () => {
     if (!isLoggedIn) {
-      return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
+      return <LoginScreen onLoginSuccess={(role, name, mode) => handleLoginSuccess(role, name, mode)} />;
     }
 
     switch (currentScreen) {
@@ -1500,6 +1457,25 @@ export default function App() {
         <StatusBar style="light" translucent={true} backgroundColor="transparent" />
         {renderScreen()}
 
+        {/* RUNTIME ONLINE ONLY BLOCKING OVERLAY */}
+        <Modal 
+          visible={isLoggedIn && isOnlineOnlyMode && !isOnline} 
+          transparent={true} 
+          animationType="fade"
+          onRequestClose={() => {}}
+        >
+          <View style={styles.blockOverlay}>
+            <View style={styles.blockContent}>
+              <Text style={styles.blockIcon}>⚠️</Text>
+              <Text style={styles.blockTitle}>ইন্টারনেট সংযোগ বিচ্ছিন্ন।</Text>
+              <Text style={styles.blockSubtitle}>Online Only মোড সক্রিয়।</Text>
+              <Text style={styles.blockMessage}>
+                ইন্টারনেট পুনরায় সংযুক্ত না হওয়া পর্যন্ত কাজ করা যাবে না।
+              </Text>
+            </View>
+          </View>
+        </Modal>
+
         {/* NOTIFICATION TOAST */}
         <NotificationToast visible={toastVisible} message={toastMessage} type={toastType} />
 
@@ -1579,5 +1555,46 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '600',
+  },
+  blockOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  blockContent: {
+    alignItems: 'center',
+    backgroundColor: '#0D0D0D',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: '#FFB703',
+    padding: 32,
+    width: '90%',
+    maxWidth: 360,
+  },
+  blockIcon: {
+    fontSize: 48,
+    marginBottom: 20,
+  },
+  blockTitle: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  blockSubtitle: {
+    color: '#FFB703',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  blockMessage: {
+    color: '#A0AEC0',
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'center',
   },
 });

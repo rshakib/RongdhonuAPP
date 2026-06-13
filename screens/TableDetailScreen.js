@@ -12,6 +12,24 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+const formatStartTime = (timeStr) => {
+  if (!timeStr) return '';
+  if (timeStr.includes('T')) {
+    try {
+      const d = new Date(timeStr);
+      if (!isNaN(d.getTime())) {
+        let hours = d.getHours();
+        let minutes = d.getMinutes();
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12 || 12;
+        minutes = minutes < 10 ? '0' + minutes : minutes;
+        return `${hours}:${minutes} ${ampm}`;
+      }
+    } catch (e) {}
+  }
+  return timeStr;
+};
+
 export default function TableDetailScreen({
   table,
   onBack,
@@ -111,7 +129,7 @@ export default function TableDetailScreen({
             <View style={styles.statusRow}>
               <View style={styles.busyDot} />
               <Text style={styles.statusText}>BUSY</Text>
-              <Text style={styles.timeText}>শুরু: {table.startTime || 'এখনি'}</Text>
+              <Text style={styles.timeText}>শুরু: {formatStartTime(table.startTime) || 'এখনি'}</Text>
             </View>
           </View>
         </View>

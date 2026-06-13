@@ -94,6 +94,24 @@ const CalendarPicker = ({ visible, onClose, onSelectDate, initialDate }) => {
   );
 };
 
+const formatStartTime = (timeStr) => {
+  if (!timeStr) return '';
+  if (timeStr.includes('T')) {
+    try {
+      const d = new Date(timeStr);
+      if (!isNaN(d.getTime())) {
+        let hours = d.getHours();
+        let minutes = d.getMinutes();
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12 || 12;
+        minutes = minutes < 10 ? '0' + minutes : minutes;
+        return `${hours}:${minutes} ${ampm}`;
+      }
+    } catch (e) {}
+  }
+  return timeStr;
+};
+
 export default function ManagerDashboard({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onNavigateToSubmit, onUpdateTableName, onNavigateToExpenses, onNavigateToSupplierDue, onNavigateToItemSalesReport, onCloudRestore, onMenuRecovery, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, delCountdown, tabCountdown, fullCountdown }) {
   const [renameModalVisible, setRenameModalVisible] = useState(false);
   const [selectedTableForRename, setSelectedTableForRename] = useState(null);
@@ -463,7 +481,7 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                        <View>
                          <Text style={styles.deliveryTitle}>{delivery.name}</Text>
-                         <Text style={styles.deliveryTime}>শুরু: {delivery.startTime}</Text>
+                         <Text style={styles.deliveryTime}>শুরু: {formatStartTime(delivery.startTime)}</Text>
                        </View>
                        <Text style={styles.deliveryAmount}>৳ {delivery.items.reduce((sum, i) => sum + (i.price * i.qty), 0)}</Text>
                      </View>

@@ -52,6 +52,7 @@ const db = new Proxy({}, {
 
 // Global state to track sync error for diagnostics
 let lastSyncError = "None";
+let isProcessingSyncQueue = false;
 
 const cleanEnvVar = (val) => {
   if (!val) return '';
@@ -1279,8 +1280,8 @@ export function getSyncRuntimeDiagnostics() {
 
 export function startSyncService() {
   if (syncIntervalId) return;
-  console.log("[Sync] Starting Background Sync Daemon...");
-  registerSyncTimer('queue-push-daemon', 30000, 'processSyncQueue');
+  console.log("[Sync] Starting Background Sync Daemon (Fast Recovery Mode: 5s)...");
+  registerSyncTimer('queue-push-daemon', 5000, 'processSyncQueue');
   
   syncIntervalId = setInterval(async () => {
     const timerName = 'queue-push-daemon';
@@ -1289,11 +1290,18 @@ export function startSyncService() {
       return;
     }
 
+    if (isProcessingSyncQueue) {
+      recordAutoSyncEvent(timerName, 'skipped', 'already-processing-queue');
+      return;
+    }
+
     let watchdog = null;
     try {
+      // 4-second watchdog for 5-second cycle
       watchdog = setTimeout(() => {
-        recordAutoSyncEvent(timerName, 'hang', 'processSyncQueue has not returned after 25000ms');
-      }, 25000);
+        recordAutoSyncEvent(timerName, 'hang', 'processSyncQueue has not returned after 4000ms');
+      }, 4000);
+      
       const result = await traceSyncOperation(`${timerName}:processSyncQueue`, () => processSyncQueue());
       recordAutoSyncEvent(timerName, 'success', `writes=${result.successfulWrites || 0} failed=${result.failedWrites || 0}`);
     } catch (err) {
@@ -1301,234 +1309,238 @@ export function startSyncService() {
     } finally {
       if (watchdog) clearTimeout(watchdog);
     }
-  }, 30000); // Check and push changes every 30 seconds
+  }, 5000); // Check and push changes every 5 seconds
 }
 
 export async function processSyncQueue(singleRecordId = null, singleTableName = null) {
-  const projectId = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID);
-  const apiKey = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_API_KEY);
-
-  if (!projectId || !apiKey) {
-    lastSyncError = "Environment variables missing: EXPO_PUBLIC_FIREBASE_PROJECT_ID or EXPO_PUBLIC_FIREBASE_API_KEY is not defined.";
-    return {
-      beforeCount: 0,
-      afterCount: 0,
-      successfulWrites: 0,
-      failedWrites: 0,
-      error: lastSyncError
-    };
-  }
-
-  let beforeCount = 0;
-  let afterCount = 0;
-  let successfulWrites = 0;
-  let failedWrites = 0;
-
-  if (!isSystemOnline && !singleRecordId) {
-    console.log("[Sync Processor] Skipping queue processing because system is OFFLINE.");
-    return { beforeCount: 0, afterCount: 0, successfulWrites: 0, failedWrites: 0 };
-  }
+  // Concurrency Lock: Prevent multiple cycles from overlapping
+  if (isProcessingSyncQueue && !singleRecordId) return { beforeCount: 0, afterCount: 0, successfulWrites: 0, failedWrites: 0 };
+  
+  if (!singleRecordId) isProcessingSyncQueue = true;
 
   try {
-    // Check if database instance is active before querying
-    if (!db) {
-      throw new Error("[Sync] Native SQLite Database reference 'db' is null or undefined.");
+    const projectId = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID);
+    const apiKey = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_API_KEY);
+
+    if (!projectId || !apiKey) {
+      lastSyncError = "Environment variables missing: EXPO_PUBLIC_FIREBASE_PROJECT_ID or EXPO_PUBLIC_FIREBASE_API_KEY is not defined.";
+      return {
+        beforeCount: 0,
+        afterCount: 0,
+        successfulWrites: 0,
+        failedWrites: 0,
+        error: lastSyncError
+      };
     }
 
-    // 1. Fetch items to process
-    let pendingItems = [];
-    if (singleRecordId && singleTableName) {
-      // Immediate mode: process only the requested record if it's in the queue
-      pendingItems = db.getAllSync(
-        "SELECT * FROM sync_queue WHERE record_id = ? AND table_name = ? AND (status = 'PENDING' OR status = 'FAILED') ORDER BY status DESC, id ASC",
-        [String(singleRecordId), singleTableName]
-      );
-    } else {
-      // Batch mode: fetch up to 20 pending or failed items, prioritizing PENDING before FAILED
-      const beforeRes = db.getFirstSync(
-        "SELECT COUNT(*) as count FROM sync_queue WHERE status = 'PENDING' OR status = 'FAILED'"
-      );
-      beforeCount = beforeRes ? beforeRes.count : 0;
+    let beforeCount = 0;
+    let afterCount = 0;
+    let successfulWrites = 0;
+    let failedWrites = 0;
 
-      pendingItems = db.getAllSync(
-        "SELECT * FROM sync_queue WHERE status = 'PENDING' ORDER BY id ASC LIMIT 20"
-      );
+    if (!isSystemOnline && !singleRecordId) {
+      console.log("[Sync Processor] Skipping queue processing because system is OFFLINE.");
+      return { beforeCount: 0, afterCount: 0, successfulWrites: 0, failedWrites: 0 };
+    }
 
-      if (pendingItems.length < 20) {
-        const failedCandidates = db.getAllSync(
-          "SELECT * FROM sync_queue WHERE status = 'FAILED' ORDER BY id ASC LIMIT 100"
+    // Wrap core logic to ensure lock release
+    const runProcessor = async () => {
+      // Check if database instance is active before querying
+      if (!dbInstance) {
+        throw new Error("[Sync] Native SQLite Database reference 'db' is null or undefined.");
+      }
+
+      // 1. Fetch items to process
+      let pendingItems = [];
+      if (singleRecordId && singleTableName) {
+        // Immediate mode: process only the requested record if it's in the queue
+        pendingItems = dbInstance.getAllSync(
+          "SELECT * FROM sync_queue WHERE record_id = ? AND table_name = ? AND (status = 'PENDING' OR status = 'FAILED') ORDER BY status DESC, id ASC",
+          [String(singleRecordId), singleTableName]
         );
-        const nowMs = Date.now();
-        const retryDue = failedCandidates.filter(item => isFailedQueueItemRetryDue(item, nowMs));
-        const skippedFailed = failedCandidates.length - retryDue.length;
-        if (skippedFailed > 0) {
-          console.log(`[Queue Audit] Backoff skipped ${skippedFailed} failed records this cycle. New pending records are not blocked.`);
+      } else {
+        // Batch mode: fetch up to 20 pending or failed items, prioritizing PENDING before FAILED
+        const beforeRes = dbInstance.getFirstSync(
+          "SELECT COUNT(*) as count FROM sync_queue WHERE status = 'PENDING' OR status = 'FAILED'"
+        );
+        beforeCount = beforeRes ? beforeRes.count : 0;
+
+        pendingItems = dbInstance.getAllSync(
+          "SELECT * FROM sync_queue WHERE status = 'PENDING' ORDER BY id ASC LIMIT 20"
+        );
+
+        if (pendingItems.length < 20) {
+          const failedCandidates = dbInstance.getAllSync(
+            "SELECT * FROM sync_queue WHERE status = 'FAILED' ORDER BY id ASC LIMIT 100"
+          );
+          const nowMs = Date.now();
+          const retryDue = failedCandidates.filter(item => isFailedQueueItemRetryDue(item, nowMs));
+          const skippedFailed = failedCandidates.length - retryDue.length;
+          if (skippedFailed > 0) {
+            console.log(`[Queue Audit] Backoff skipped ${skippedFailed} failed records this cycle. New pending records are not blocked.`);
+          }
+          pendingItems = pendingItems.concat(retryDue.slice(0, 20 - pendingItems.length));
         }
-        pendingItems = pendingItems.concat(retryDue.slice(0, 20 - pendingItems.length));
-      }
-    }
-
-    if (pendingItems.length === 0) {
-      return { beforeCount, afterCount: 0, successfulWrites, failedWrites };
-    }
-
-    if (!singleRecordId) {
-      console.log(`[Sync Processor] Starting batch sync. Queue size before: ${beforeCount}. Items in batch: ${pendingItems.length}`);
-      const queueSnapshot = pendingItems.map(item => ({
-        queueId: item.id,
-        collection: item.table_name,
-        recordId: item.record_id,
-        action: item.action,
-        status: item.status,
-        retryCount: item.retry_count || 0,
-        lastError: item.last_error || '',
-        createdAt: item.created_at,
-        lastAttemptAt: item.last_attempt_at || ''
-      }));
-      const oldestFailed = db.getFirstSync(
-        "SELECT * FROM sync_queue WHERE status = 'FAILED' ORDER BY datetime(created_at) ASC, id ASC LIMIT 1"
-      );
-      console.log(`[Queue Audit] First ${pendingItems.length} pending/failed records: ${JSON.stringify(queueSnapshot)}`);
-      console.log(`[Queue Audit] Oldest failed queue item: ${JSON.stringify(oldestFailed || null)}`);
-    }
-
-    for (const item of pendingItems) {
-      const { id: queueId, record_id: recordId, table_name: tableName, action } = item;
-      
-      if (!queueId) continue;
-
-      // SURGICAL CLEANUP: Remove local-only tables from sync queue (Prevents 403 blocks)
-      const forbiddenTables = ['ml_export_queue', 'ml_export_history', 'weather_timeline_queue'];
-      if (forbiddenTables.includes(tableName)) {
-        console.log(`[Queue Cleanup] Removing forbidden local-only item queueId=${queueId} collection=${tableName}`);
-        db.runSync("DELETE FROM sync_queue WHERE id = ?", [Number(queueId)]);
-        successfulWrites++;
-        continue;
       }
 
-      if (!tableName || !recordId) {
-        // Delete invalid/empty sync queue records to clear them from SQLite
-        console.log(`[Queue Audit] Removing invalid queue item queueId=${queueId} collection=${tableName || ''} recordId=${recordId || ''} action=${action || ''}`);
-        db.runSync("DELETE FROM sync_queue WHERE id = ?", [Number(queueId)]);
-        successfulWrites++;
-        continue;
+      if (pendingItems.length === 0) {
+        return { beforeCount, afterCount: 0, successfulWrites, failedWrites };
       }
 
-      try {
-        const attemptAt = new Date().toISOString();
-        const currentRetryCount = Number(item.retry_count || 0);
-        db.runSync(
-          "UPDATE sync_queue SET last_attempt_at = ?, retry_count = ? WHERE id = ?",
-          [attemptAt, currentRetryCount + 1, Number(queueId)]
-        );
-        console.log(`[Queue Audit] Attempt queueId=${queueId} collection=${tableName} recordId=${recordId} action=${action} retry=${currentRetryCount + 1}`);
+      if (!singleRecordId) {
+        console.log(`[Sync Processor] Starting batch sync. Queue size before: ${beforeCount}. Items in batch: ${pendingItems.length}`);
+        const queueSnapshot = pendingItems.map(item => ({
+          queueId: item.id,
+          collection: item.table_name,
+          recordId: item.record_id,
+          action: item.action,
+          status: item.status,
+          retryCount: item.retry_count || 0,
+          lastError: item.last_error || '',
+          createdAt: item.created_at,
+          lastAttemptAt: item.last_attempt_at || ''
+        }));
+        console.log(`[Queue Audit] First ${pendingItems.length} pending/failed records: ${JSON.stringify(queueSnapshot)}`);
+      }
 
-        const encodedId = encodeURIComponent(recordId);
-        if (action === 'DELETE') {
-          const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${tableName}/${encodedId}?key=${apiKey}`;
-          const res = await fetch(url, { method: 'DELETE' });
-          
-          if (res.ok || res.status === 404) {
-            // Delete record from sync queue upon successful synchronization
-            db.runSync("DELETE FROM sync_queue WHERE id = ?", [Number(queueId)]);
-            lastSyncError = "None";
-            successfulWrites++;
+      for (const item of pendingItems) {
+        const { id: queueId, record_id: recordId, table_name: tableName, action } = item;
+        
+        if (!queueId) continue;
+
+        // SURGICAL CLEANUP: Remove local-only tables from sync queue (Prevents 403 blocks)
+        const forbiddenTables = ['ml_export_queue', 'ml_export_history', 'weather_timeline_queue'];
+        if (forbiddenTables.includes(tableName)) {
+          console.log(`[Queue Cleanup] Removing forbidden local-only item queueId=${queueId} collection=${tableName}`);
+          dbInstance.runSync("DELETE FROM sync_queue WHERE id = ?", [Number(queueId)]);
+          successfulWrites++;
+          continue;
+        }
+
+        if (!tableName || !recordId) {
+          // Delete invalid/empty sync queue records to clear them from SQLite
+          console.log(`[Queue Audit] Removing invalid queue item queueId=${queueId} collection=${tableName || ''} recordId=${recordId || ''} action=${action || ''}`);
+          dbInstance.runSync("DELETE FROM sync_queue WHERE id = ?", [Number(queueId)]);
+          successfulWrites++;
+          continue;
+        }
+
+        try {
+          const attemptAt = new Date().toISOString();
+          const currentRetryCount = Number(item.retry_count || 0);
+          dbInstance.runSync(
+            "UPDATE sync_queue SET last_attempt_at = ?, retry_count = ? WHERE id = ?",
+            [attemptAt, currentRetryCount + 1, Number(queueId)]
+          );
+          console.log(`[Queue Audit] Attempt queueId=${queueId} collection=${tableName} recordId=${recordId} action=${action} retry=${currentRetryCount + 1}`);
+
+          const encodedId = encodeURIComponent(recordId);
+          if (action === 'DELETE') {
+            const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${tableName}/${encodedId}?key=${apiKey}`;
+            const res = await fetch(url, { method: 'DELETE' });
             
-            // Track metrics
-            firestoreDeletesToday++;
-            syncUploadsToday++;
-          } else {
-            const errText = await res.text();
-            lastSyncError = `HTTP ${res.status}: ${errText}`;
-            db.runSync(
-              "UPDATE sync_queue SET status = 'FAILED', last_error = ? WHERE id = ?",
-              [lastSyncError, Number(queueId)]
-            );
-            console.log(`[Queue Audit] FAIL queueId=${queueId} collection=${tableName} recordId=${recordId} action=${action} retry=${currentRetryCount + 1} error=${lastSyncError}`);
-            failedWrites++;
-          }
-        } else {
-          let row = null;
-          const rIdStr = String(recordId);
-          if (tableName === 'daily_submit' || tableName === 'daily_summary' || tableName === 'ml_export_history') {
-            row = db.getFirstSync(`SELECT * FROM ${tableName} WHERE date = ?`, [rIdStr]);
-          } else {
-            row = db.getFirstSync(`SELECT * FROM ${tableName} WHERE id = ?`, [rIdStr]);
-          }
-
-          if (!row) {
-            // Record deleted locally before sync; delete it from the queue
-            console.log(`[Queue Audit] Missing local row, removing queue item queueId=${queueId} collection=${tableName} recordId=${recordId} action=${action}`);
-            db.runSync("DELETE FROM sync_queue WHERE id = ?", [Number(queueId)]);
-            successfulWrites++;
-            continue;
-          }
-
-          const firestoreDoc = toFirestoreDocument(row);
-          const targetCollection = tableName === 'deletions' ? 'app_config' : tableName;
-          const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${targetCollection}/${encodeURIComponent(rIdStr)}?key=${apiKey}`;
-          
-          const res = await fetch(url, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(firestoreDoc)
-          });
-
-          if (res.ok) {
-            // Delete record from sync queue upon successful synchronization
-            db.runSync("DELETE FROM sync_queue WHERE id = ?", [Number(queueId)]);
-            lastSyncError = "None";
-            successfulWrites++;
-            
-            // Track metrics
-            firestoreWritesToday++;
-            syncUploadsToday++;
-            
-            if (tableName === 'daily_submit' || tableName === 'daily_summary' || tableName === 'ml_export_history') {
-              db.runSync(`UPDATE ${tableName} SET is_synced = 1 WHERE date = ?`, [rIdStr]);
+            if (res.ok || res.status === 404) {
+              // Delete record from sync queue upon successful synchronization
+              dbInstance.runSync("DELETE FROM sync_queue WHERE id = ?", [Number(queueId)]);
+              lastSyncError = "None";
+              successfulWrites++;
+              
+              // Track metrics
+              firestoreDeletesToday++;
+              syncUploadsToday++;
             } else {
-              db.runSync(`UPDATE ${tableName} SET is_synced = 1 WHERE id = ?`, [rIdStr]);
+              const errText = await res.text();
+              lastSyncError = `HTTP ${res.status}: ${errText}`;
+              dbInstance.runSync(
+                "UPDATE sync_queue SET status = 'FAILED', last_error = ? WHERE id = ?",
+                [lastSyncError, Number(queueId)]
+              );
+              console.log(`[Queue Audit] FAIL queueId=${queueId} collection=${tableName} recordId=${recordId} action=${action} retry=${currentRetryCount + 1} error=${lastSyncError}`);
+              failedWrites++;
             }
           } else {
-            const errText = await res.text();
-            lastSyncError = `HTTP ${res.status}: ${errText}`;
-            db.runSync(
-              "UPDATE sync_queue SET status = 'FAILED', last_error = ? WHERE id = ?",
-              [lastSyncError, Number(queueId)]
-            );
-            console.log(`[Queue Audit] FAIL queueId=${queueId} collection=${tableName} recordId=${recordId} action=${action} retry=${currentRetryCount + 1} error=${lastSyncError}`);
-            failedWrites++;
-          }
-        }
-      } catch (err) {
-        lastSyncError = `Sync Error: ${err.message}`;
-        db.runSync(
-          "UPDATE sync_queue SET status = 'FAILED', last_error = ? WHERE id = ?",
-          [lastSyncError, Number(queueId)]
-        );
-        console.log(`[Queue Audit] FAIL queueId=${queueId} collection=${tableName} recordId=${recordId} action=${action} retry=${Number(item.retry_count || 0) + 1} error=${lastSyncError}`);
-        failedWrites++;
-      }
-    }
+            let row = null;
+            const rIdStr = String(recordId);
+            if (tableName === 'daily_submit' || tableName === 'daily_summary' || tableName === 'ml_export_history') {
+              row = dbInstance.getFirstSync(`SELECT * FROM ${tableName} WHERE date = ?`, [rIdStr]);
+            } else {
+              row = dbInstance.getFirstSync(`SELECT * FROM ${tableName} WHERE id = ?`, [rIdStr]);
+            }
 
-    if (!singleRecordId) {
-      const afterRes = db.getFirstSync(
-        "SELECT COUNT(*) as count FROM sync_queue WHERE status = 'PENDING' OR status = 'FAILED'"
-      );
-      afterCount = afterRes ? afterRes.count : 0;
-    }
+            if (!row) {
+              // Record deleted locally before sync; delete it from the queue
+              console.log(`[Queue Audit] Missing local row, removing queue item queueId=${queueId} collection=${tableName} recordId=${recordId} action=${action}`);
+              dbInstance.runSync("DELETE FROM sync_queue WHERE id = ?", [Number(queueId)]);
+              successfulWrites++;
+              continue;
+            }
+
+            const firestoreDoc = toFirestoreDocument(row);
+            const targetCollection = tableName === 'deletions' ? 'app_config' : tableName;
+            const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${targetCollection}/${encodeURIComponent(rIdStr)}?key=${apiKey}`;
+            
+            const res = await fetch(url, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(firestoreDoc)
+            });
+
+            if (res.ok) {
+              // Delete record from sync queue upon successful synchronization
+              dbInstance.runSync("DELETE FROM sync_queue WHERE id = ?", [Number(queueId)]);
+              lastSyncError = "None";
+              successfulWrites++;
+              
+              // Track metrics
+              firestoreWritesToday++;
+              syncUploadsToday++;
+              
+              if (tableName === 'daily_submit' || tableName === 'daily_summary' || tableName === 'ml_export_history') {
+                dbInstance.runSync(`UPDATE ${tableName} SET is_synced = 1 WHERE date = ?`, [rIdStr]);
+              } else {
+                dbInstance.runSync(`UPDATE ${tableName} SET is_synced = 1 WHERE id = ?`, [rIdStr]);
+              }
+            } else {
+              const errText = await res.text();
+              lastSyncError = `HTTP ${res.status}: ${errText}`;
+              dbInstance.runSync(
+                "UPDATE sync_queue SET status = 'FAILED', last_error = ? WHERE id = ?",
+                [lastSyncError, Number(queueId)]
+              );
+              console.log(`[Queue Audit] FAIL queueId=${queueId} collection=${tableName} recordId=${recordId} action=${action} retry=${currentRetryCount + 1} error=${lastSyncError}`);
+              failedWrites++;
+            }
+          }
+        } catch (err) {
+          lastSyncError = `Sync Error: ${err.message}`;
+          dbInstance.runSync(
+            "UPDATE sync_queue SET status = 'FAILED', last_error = ? WHERE id = ?",
+            [lastSyncError, Number(queueId)]
+          );
+          console.log(`[Queue Audit] FAIL queueId=${queueId} collection=${tableName} recordId=${recordId} action=${action} retry=${Number(item.retry_count || 0) + 1} error=${lastSyncError}`);
+          failedWrites++;
+        }
+      }
+
+      if (!singleRecordId) {
+        const afterRes = dbInstance.getFirstSync(
+          "SELECT COUNT(*) as count FROM sync_queue WHERE status = 'PENDING' OR status = 'FAILED'"
+        );
+        afterCount = afterRes ? afterRes.count : 0;
+      }
+
+      return { beforeCount, afterCount, successfulWrites, failedWrites };
+    };
+
+    return await runProcessor();
 
   } catch (err) {
     lastSyncError = `Daemon execution error: ${err.message}`;
     console.error("[Sync] Daemon execution error:", err);
+    return { beforeCount: 0, afterCount: 0, successfulWrites: 0, failedWrites: 0 };
+  } finally {
+    if (!singleRecordId) isProcessingSyncQueue = false;
   }
-
-  return {
-    beforeCount,
-    afterCount,
-    successfulWrites,
-    failedWrites
-  };
 }
 
 export async function syncRecordImmediately(tableName, recordId) {
@@ -3648,7 +3660,7 @@ export function getSupplierPaymentLedger(monthStr) {
  * Saves or updates a supplier payment amount for a specific date.
  * Enforces 48-hour lock rule.
  */
-export function saveSupplierPayment(dateStr, supplierField, amount, createdBy) {
+export function saveSupplierPayment(dateStr, supplierField, amount, createdBy, userRole = '') {
   try {
     const now = new Date().toISOString();
     const monthStr = dateStr.substring(0, 7);
@@ -3663,7 +3675,7 @@ export function saveSupplierPayment(dateStr, supplierField, amount, createdBy) {
       const currentTime = new Date();
       const diffHours = (currentTime - createdAt) / (1000 * 60 * 60);
       
-      if (diffHours > 48) {
+      if (diffHours > 48 && userRole !== 'admin') {
         return { success: false, error: "Locked: 48 hours passed since entry creation." };
       }
 

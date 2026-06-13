@@ -95,19 +95,28 @@ const CalendarPicker = ({ visible, onClose, onSelectDate }) => {
   );
 };
 
+const formatStartTime = (timeStr) => {
+  if (!timeStr) return '';
+  if (timeStr.includes('T')) {
+    try {
+      const d = new Date(timeStr);
+      if (!isNaN(d.getTime())) {
+        let hours = d.getHours();
+        let minutes = d.getMinutes();
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12 || 12;
+        minutes = minutes < 10 ? '0' + minutes : minutes;
+        return `${hours}:${minutes} ${ampm}`;
+      }
+    } catch (e) {}
+  }
+  return timeStr;
+};
+
 export default function AdminDB({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onUpdateTableName, onNavigateToExpenses, onNavigateToSubmit, onNavigateToEditMenu, onNavigateToSupplierDue, onNavigateToItemSalesReport, onNavigateToSyncDiagnostics, onNavigateToDeleteHistory, onCloudRestore, onMenuRecovery, onResetHistoryLimits, onHistoricalMonthDownload, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, onResetDailySubmit, onResetIjara, delCountdown, tabCountdown, fullCountdown }) {
   const [renameModalVisible, setRenameModalVisible] = useState(false);
   const [selectedTableForRename, setSelectedTableForRename] = useState(null);
   const [newTableName, setNewTableName] = useState('');
-
-  // Delete History Widget State
-  const [deleteHistoryWidget, setDeleteHistoryWidget] = useState([]);
-
-  useEffect(() => {
-    // Load latest 10 delete records for widget
-    const { getDeleteHistory } = require('../database');
-    setDeleteHistoryWidget(getDeleteHistory(10));
-  }, []);
 
   // 3-Dot Menu and Report States
   const [menuModalVisible, setMenuModalVisible] = useState(false);
@@ -570,6 +579,26 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     return true;
   });
 
+  const handleSalesCheckCloud = () => {
+    let targetDate = new Date();
+    if (salesFilter === 'Yesterday') {
+      targetDate.setDate(targetDate.getDate() - 1);
+    } else if (salesFilter === 'Pick Date') {
+      const parsed = parseCustomDateToYYYYMMDD(pickDate);
+      if (parsed) {
+        targetDate = new Date(parsed);
+      }
+    }
+    
+    const year = targetDate.getFullYear();
+    const month = targetDate.getMonth();
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const monthName = `${monthNames[month]} ${year}`;
+    const monthStr = `${year}-${String(month + 1).padStart(2, '0')}`;
+    
+    onHistoricalMonthDownload(monthStr, monthName);
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <CalendarPicker visible={calendarVisible} onClose={() => setCalendarVisible(false)} onSelectDate={(date) => { if (calendarTarget === 'past') handlePastDateChange(date); else setPickDate(date); }}/>
@@ -640,7 +669,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
              {deliveries.filter(d => d.status === 'BUSY').map((delivery) => (
                    <TouchableOpacity key={delivery.id} style={[styles.deliveryCard, { marginBottom: 10 }]} onPress={() => onTableSelect(delivery.id)}>
                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                       <View><Text style={styles.deliveryTitle}>{delivery.name}</Text><Text style={styles.deliveryTime}>শুরু: {delivery.startTime}</Text></View>
+                       <View><Text style={styles.deliveryTitle}>{delivery.name}</Text><Text style={styles.deliveryTime}>শুরু: {formatStartTime(delivery.startTime)}</Text></View>
                        <Text style={styles.deliveryAmount}>৳ {delivery.items.reduce((sum, i) => sum + (i.price * i.qty), 0)}</Text>
                      </View>
                    </TouchableOpacity>
@@ -672,45 +701,6 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                   </View>
                 </TouchableOpacity>
               ))}
-              </View>
-              </View>
-
-              {/* SYSTEM AUDIT WIDGET */}
-              <View style={styles.sectionContainer}>
-              <View style={styles.sectionHeaderRow}>
-              <View>
-              <Text style={styles.sectionTitle}>🗑 মুছে ফেলা ইতিহাস (Delete History)</Text>
-              <Text style={styles.sectionSubtitle}>সর্বশেষ ১০টি রেকর্ড</Text>
-              </View>
-              <TouchableOpacity onPress={onNavigateToDeleteHistory}>
-              <Text style={{ color: '#FFB703', fontSize: 12, fontWeight: 'bold' }}>সব দেখুন ❯</Text>
-              </TouchableOpacity>
-              </View>
-
-              <View style={styles.orderList}>
-              {deleteHistoryWidget.length === 0 ? (
-              <View style={{ padding: 20, alignItems: 'center' }}>
-               <Text style={{ color: '#666', fontSize: 12 }}>কোনো ডাটা পাওয়া যায়নি।</Text>
-              </View>
-              ) : (
-              deleteHistoryWidget.map((item, index) => (
-               <TouchableOpacity key={item.id} style={styles.orderItem} onPress={onNavigateToDeleteHistory}>
-                 <View style={styles.orderItemLeft}>
-                   <View style={[styles.tableIconCircle, { backgroundColor: 'rgba(255, 77, 77, 0.1)' }]}>
-                     <Text style={[styles.tableCircleText, { color: '#EF4444' }]}>🗑</Text>
-                   </View>
-                   <View style={styles.orderMeta}>
-                     <Text style={styles.orderTableText}>{item.record_type} Deleted</Text>
-                     <Text style={styles.orderItemsText}>By: {item.deleted_by}</Text>
-                   </View>
-                 </View>
-                 <View style={styles.amountCol}>
-                   <Text style={styles.orderTimeText}>{formatDisplayDate(item.deleted_at)}</Text>
-                   <Text style={[styles.orderItemStatus, { color: '#888' }]}>{item.record_id}</Text>
-                 </View>
-               </TouchableOpacity>
-              ))
-              )}
               </View>
               </View>
 
@@ -844,14 +834,26 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
             <View style={styles.sheetContainer}><ScrollView horizontal><View>
                   <View style={styles.sheetHeader}><Text style={[styles.sheetHeaderText, { width: 120, textAlign: 'left' }]}>তারিখ ও সময়</Text><Text style={[styles.sheetHeaderText, { width: 50 }]}>টেবিল</Text><Text style={[styles.sheetHeaderText, { width: 220, textAlign: 'left' }]}>আইটেম</Text><Text style={[styles.sheetHeaderText, { width: 70, textAlign: 'right' }]}>বিক্রয়</Text></View>
                   <ScrollView style={styles.sheetBody}>
-                    {filteredSalesOrders.map((order, idx) => (
-                      <TouchableOpacity key={idx} style={[styles.sheetRow, idx % 2 === 1 && styles.sheetRowAlt]} onPress={() => { setSelectedOrder({...order, table: order.tableId, amount: order.paidAmount, status: 'Done'}); setOrderDetailVisible(true); }}>
-                        <View style={{ width: 120 }}><Text style={styles.sheetCellTextMain}>{order.fullDate ? formatDisplayDate(order.fullDate) : 'আজ'}</Text><Text style={styles.sheetCellTextSub}>{order.time}</Text></View>
-                        <Text style={[styles.sheetCell, { width: 50 }]}>{order.tableId}</Text>
-                        <Text style={[styles.sheetCell, { width: 220, fontSize: 9, textAlign: 'left', color: '#FFB703' }]} numberOfLines={2}>{order.items}</Text>
-                        <Text style={[styles.sheetCell, { width: 70, textAlign: 'right', color: '#34D399', fontWeight: 'bold' }]}>৳{order.paidAmount}</Text>
-                      </TouchableOpacity>
-                    ))}
+                    {filteredSalesOrders.length === 0 ? (
+                      <View style={{ width: 460, alignItems: 'center', padding: 40 }}>
+                        <Text style={styles.emptySheetText}>কোনো বিক্রয় ইতিহাস পাওয়া যায়নি।</Text>
+                        <TouchableOpacity 
+                          style={{ marginTop: 20, backgroundColor: '#34D399', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 }}
+                          onPress={handleSalesCheckCloud}
+                        >
+                          <Text style={{ color: '#000', fontWeight: 'bold' }}>☁️ ক্লাউড থেকে ডাটা আনুন</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      filteredSalesOrders.map((order, idx) => (
+                        <TouchableOpacity key={idx} style={[styles.sheetRow, idx % 2 === 1 && styles.sheetRowAlt]} onPress={() => { setSelectedOrder({...order, table: order.tableId, amount: order.paidAmount, status: 'Done'}); setOrderDetailVisible(true); }}>
+                          <View style={{ width: 120 }}><Text style={styles.sheetCellTextMain}>{order.fullDate ? formatDisplayDate(order.fullDate) : 'আজ'}</Text><Text style={styles.sheetCellTextSub}>{order.time}</Text></View>
+                          <Text style={[styles.sheetCell, { width: 50 }]}>{order.tableId}</Text>
+                          <Text style={[styles.sheetCell, { width: 220, fontSize: 9, textAlign: 'left', color: '#FFB703' }]} numberOfLines={2}>{order.items}</Text>
+                          <Text style={[styles.sheetCell, { width: 70, textAlign: 'right', color: '#34D399', fontWeight: 'bold' }]}>৳{order.paidAmount}</Text>
+                        </TouchableOpacity>
+                      ))
+                    )}
                   </ScrollView></View></ScrollView></View>
             <View style={styles.modalFooterActions}><TouchableOpacity style={styles.exportBtn} onPress={() => exportSalesReportPDF(filteredSalesOrders, salesFilter)}><Text style={styles.exportBtnIcon}>📄</Text><Text style={styles.exportBtnText}>PDF ডাউনলোড</Text></TouchableOpacity><TouchableOpacity style={styles.historyCloseBtn} onPress={() => setSalesReportVisible(false)}><Text style={styles.historyCloseBtnText}>বন্ধ করুন</Text></TouchableOpacity></View>
         </View></View>
@@ -934,7 +936,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                             onHistoricalMonthDownload(monthStr, activeFilter);
                           }}
                         >
-                          <Text style={{ color: '#000', fontWeight: 'bold' }}>☁️ Check Cloud for {activeFilter}</Text>
+                          <Text style={{ color: '#000', fontWeight: 'bold' }}>☁️ ক্লাউড থেকে ডাটা আনুন</Text>
                         </TouchableOpacity>
                       </View>
                     ) : (

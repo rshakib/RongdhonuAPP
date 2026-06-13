@@ -115,7 +115,7 @@ export default function SupplierDueScreen({ userRole, userDisplayName, onBack })
     }
 
     const record = ledgerData[date];
-    if (record) {
+    if (record && userRole !== 'admin') {
       // 48 Hour Lock Check
       const createdAt = new Date(record.created_at);
       const currentTime = new Date();
@@ -143,7 +143,7 @@ export default function SupplierDueScreen({ userRole, userDisplayName, onBack })
 
   const handleSaveAmount = () => {
     const amount = parseFloat(editAmount) || 0;
-    const result = saveSupplierPayment(editingDate, editingSupplierField, amount, userDisplayName);
+    const result = saveSupplierPayment(editingDate, editingSupplierField, amount, userDisplayName, userRole);
     
     if (result.success) {
       setEditModalVisible(false);
@@ -181,6 +181,7 @@ export default function SupplierDueScreen({ userRole, userDisplayName, onBack })
   };
 
   const isRowLocked = (date) => {
+    if (userRole === 'admin') return false;
     const record = ledgerData[date];
     if (!record) return false;
     const createdAt = new Date(record.created_at);
