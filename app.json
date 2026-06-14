@@ -26,16 +26,17 @@
         "backgroundColor": "#ffffff",
         "foregroundImage": "./image/mylogo.png"
       },
-      "package": "com.riajulshakib.rongdhonu"
+      "package": "com.riajulshakib.rongdhonu",
+      "versionCode": 2
     },
     "web": {
       "favicon": "./image/mylogo.png"
     },
+    "owner": "riajulshakib",
     "extra": {
       "eas": {
-        "projectId": "cee67edd-3dcd-4cba-b17c-6b7ecd97b4ab"
+        "projectId": "c0ef37bc-f64e-4a5d-8f68-8296556b722a"
       }
-    },
-    "owner": "riajulhasanshakib"
+    }
   }
 }

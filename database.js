@@ -3318,9 +3318,9 @@ export function removeDelivery(id) {
 
 export function getCompletedOrders() {
   try {
-    const rows = db.getAllSync("SELECT * FROM orders ORDER BY id DESC");
+    const rows = db.getAllSync("SELECT * FROM orders ORDER BY created_at DESC");
     return rows.map(r => ({
-      id: Number(r.id),
+      id: r.id,
       tableId: r.table_id,
       items: r.items,
       totalAmount: (r.subtotal !== null && r.subtotal !== undefined) ? r.subtotal : r.grand_total,
@@ -4116,17 +4116,21 @@ export function deleteCompletedOrder(orderId) {
     
     // 0. Log snapshots before deletion
     logDeleteHistory("orders", orderIdStr, "Orders");
-    // Also log payments and items if they exist
+    
+    // Also log associated records if they exist
     const itemsToLog = db.getAllSync("SELECT id FROM order_items WHERE order_id = ?", [orderIdStr]);  
     itemsToLog.forEach(item => logDeleteHistory("order_items", item.id, "Orders"));
+    
     const payToLog = db.getFirstSync("SELECT id FROM payments WHERE order_id = ?", [orderIdStr]);     
     if (payToLog) logDeleteHistory("payments", payToLog.id, "Orders");
+    
+    const dueToLog = db.getFirstSync("SELECT id FROM due_payments WHERE order_id = ?", [orderIdStr]);
+    if (dueToLog) logDeleteHistory("due_payments", dueToLog.id, "Orders");
 
     // Check if this order is a delivery and delete the corresponding record in deliveries table      
-
     const ord = db.getFirstSync("SELECT table_id FROM orders WHERE id = ?", [orderIdStr]);
-    if (ord && ord.table_id && ord.table_id.toString().includes('Delivery')) {
-      const delName = ord.table_id.trim();
+    if (ord && ord.table_id && String(ord.table_id).toLowerCase().includes('delivery')) {
+      const delName = String(ord.table_id).trim();
       const del = db.getFirstSync("SELECT id FROM deliveries WHERE customer_name = ?", [delName]);
       if (del && del.id) {
         db.runSync("DELETE FROM deliveries WHERE id = ?", [String(del.id)]);
@@ -4134,26 +4138,30 @@ export function deleteCompletedOrder(orderId) {
       }
     }
     
-    // Find payment ID
+    // Find associated IDs for tombstone recording
     const pay = db.getFirstSync("SELECT id FROM payments WHERE order_id = ?", [orderIdStr]);
-    
-    // Find order item IDs
     const items = db.getAllSync("SELECT id FROM order_items WHERE order_id = ?", [orderIdStr]);
+    const due = db.getFirstSync("SELECT id FROM due_payments WHERE order_id = ?", [orderIdStr]);
     
-    // Delete from local DB
-    db.runSync("DELETE FROM orders WHERE id = ?", [orderIdStr]);
+    // Delete from local DB - CHILD RECORDS FIRST
     db.runSync("DELETE FROM order_items WHERE order_id = ?", [orderIdStr]);
     db.runSync("DELETE FROM payments WHERE order_id = ?", [orderIdStr]);
+    db.runSync("DELETE FROM due_payments WHERE order_id = ?", [orderIdStr]);
     
-    // Record deletion tombstone for main order
+    // PARENT RECORD LAST
+    db.runSync("DELETE FROM orders WHERE id = ?", [orderIdStr]);
+    
+    // Record deletion tombstones for Firestore sync
     recordDeletion("orders", orderIdStr);
     
-    // Record deletion tombstone for payment
     if (pay && pay.id) {
       recordDeletion("payments", String(pay.id));
     }
     
-    // Record deletion tombstone for all order items
+    if (due && due.id) {
+      recordDeletion("due_payments", String(due.id));
+    }
+    
     if (items && items.length > 0) {
       items.forEach(item => {
         if (item.id) {
@@ -4567,22 +4575,28 @@ export function deleteDataByDate(targetDate) {
       console.warn("[Admin Tool] Snapshot failed during cleanup:", e);
     }
 
-    // 1. Orders
-    db.runSync("DELETE FROM orders WHERE date(created_at, 'localtime') = ?", [targetDate]);
-    
-    // 2. Payments
+    // 1. Order Items (CHILD)
+    db.runSync("DELETE FROM order_items WHERE order_id IN (SELECT id FROM orders WHERE date(created_at, 'localtime') = ?)", [targetDate]);
+
+    // 2. Payments (CHILD)
     db.runSync("DELETE FROM payments WHERE date(created_at, 'localtime') = ?", [targetDate]);
+
+    // 3. Due Payments (CHILD)
+    db.runSync("DELETE FROM due_payments WHERE date(created_at, 'localtime') = ?", [targetDate]);
     
-    // 3. Deliveries
+    // 4. Deliveries
     db.runSync("DELETE FROM deliveries WHERE date(completed_at, 'localtime') = ?", [targetDate]);
     
-    // 4. Expenses
+    // 5. Orders (PARENT)
+    db.runSync("DELETE FROM orders WHERE date(created_at, 'localtime') = ?", [targetDate]);
+    
+    // 6. Expenses
     db.runSync("DELETE FROM expenses WHERE date(created_at, 'localtime') = ?", [targetDate]);
     
-    // 5. Daily Submit
+    // 7. Daily Submit
     db.runSync("DELETE FROM daily_submit WHERE date = ?", [targetDate]);
     
-    // 6. Daily Summary
+    // 8. Daily Summary
     db.runSync("DELETE FROM daily_summary WHERE date = ?", [targetDate]);
     
     // Note: To clear sync_queue correctly and prevent it from trying to push deleted things 
