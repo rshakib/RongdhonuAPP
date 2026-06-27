@@ -115,7 +115,6 @@ import DatabaseHealthScreen from './screens/DatabaseHealthScreen';
 import SyncStatusScreen from './screens/SyncStatusScreen';
 import DatabaseStatsScreen from './screens/DatabaseStatsScreen';
 import SystemInfoScreen from './screens/SystemInfoScreen';
-import RecoveryCenterScreen from './screens/RecoveryCenterScreen';
 import DatabaseExplorerScreen from './screens/DatabaseExplorerScreen';
 import TableViewerScreen from './screens/TableViewerScreen';
 import RowDetailScreen from './screens/RowDetailScreen';
@@ -1615,17 +1614,6 @@ export default function App() {
         if (userRole === 'admin') {
           return (
             <SystemInfoScreen
-              onBack={() => setCurrentScreen('SYSTEM_TOOLS')}
-            />
-          );
-        } else {
-          return null;
-        }
-
-      case 'RECOVERY_CENTER':
-        if (userRole === 'admin') {
-          return (
-            <RecoveryCenterScreen
               onBack={() => setCurrentScreen('SYSTEM_TOOLS')}
             />
           );
