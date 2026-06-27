@@ -4518,7 +4518,19 @@ export function inspectDatabaseStats() {
 }
 
 export function executeInspectorQuery(rawSql, params = []) {
-  if (!rawSql.trim().toUpperCase().startsWith('SELECT')) {
+  const normalizedSql = rawSql.trim().toUpperCase();
+  const isSelect = normalizedSql.startsWith('SELECT');
+  
+  const allowedPragmas = [
+    'PRAGMA INTEGRITY_CHECK',
+    'PRAGMA FOREIGN_KEY_CHECK',
+    'PRAGMA FREELIST_COUNT',
+    'PRAGMA PAGE_COUNT',
+    'PRAGMA QUICK_CHECK'
+  ];
+  const isAllowedPragma = allowedPragmas.some(pragma => normalizedSql.startsWith(pragma));
+
+  if (!isSelect && !isAllowedPragma) {
     throw new Error('Only SELECT queries are allowed for safety and security.');
   }
   
