@@ -145,6 +145,15 @@ export default function DeleteHistoryScreen({ onBack }) {
   };
 
   const filteredHistory = history.filter(item => {
+    // Hide associated order rows (order_items, payments, due_payments) from list UI
+    if (
+      item.id.startsWith('delh_order_items_') ||
+      item.id.startsWith('delh_payments_') ||
+      item.id.startsWith('delh_due_payments_')
+    ) {
+      return false;
+    }
+
     // Type Filter
     const matchesType = filterType === 'All' || item.record_type === filterType;
     
