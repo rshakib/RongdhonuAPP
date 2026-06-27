@@ -116,6 +116,9 @@ import SyncStatusScreen from './screens/SyncStatusScreen';
 import DatabaseStatsScreen from './screens/DatabaseStatsScreen';
 import SystemInfoScreen from './screens/SystemInfoScreen';
 import RecoveryCenterScreen from './screens/RecoveryCenterScreen';
+import DatabaseExplorerScreen from './screens/DatabaseExplorerScreen';
+import TableViewerScreen from './screens/TableViewerScreen';
+import RowDetailScreen from './screens/RowDetailScreen';
 
 
 // Default Restaurant Menu (56 items)
@@ -259,6 +262,10 @@ export default function App() {
   const [showMandatoryPreviousSubmitModal, setShowMandatoryPreviousSubmitModal] = useState(false);
   const [missingSubmitDate, setMissingSubmitDate] = useState('');
   const [missingSubmitSummary, setMissingSubmitSummary] = useState(null);
+
+  // Database Explorer states
+  const [selectedDBTable, setSelectedDBTable] = useState('');
+  const [selectedDBRow, setSelectedDBRow] = useState(null);
 
   // Submission History for the month
   const [submissionHistory, setSubmissionHistory] = useState([]);
@@ -1620,6 +1627,49 @@ export default function App() {
           return (
             <RecoveryCenterScreen
               onBack={() => setCurrentScreen('SYSTEM_TOOLS')}
+            />
+          );
+        } else {
+          return null;
+        }
+
+      case 'DB_EXPLORER':
+        if (userRole === 'admin') {
+          return (
+            <DatabaseExplorerScreen
+              onBack={() => setCurrentScreen('SYSTEM_TOOLS')}
+              onSelectTable={(table) => {
+                setSelectedDBTable(table);
+                setCurrentScreen('TABLE_VIEWER');
+              }}
+            />
+          );
+        } else {
+          return null;
+        }
+
+      case 'TABLE_VIEWER':
+        if (userRole === 'admin') {
+          return (
+            <TableViewerScreen
+              tableName={selectedDBTable}
+              onBack={() => setCurrentScreen('DB_EXPLORER')}
+              onSelectRow={(row) => {
+                setSelectedDBRow(row);
+                setCurrentScreen('ROW_DETAIL');
+              }}
+            />
+          );
+        } else {
+          return null;
+        }
+
+      case 'ROW_DETAIL':
+        if (userRole === 'admin') {
+          return (
+            <RowDetailScreen
+              rowData={selectedDBRow}
+              onBack={() => setCurrentScreen('TABLE_VIEWER')}
             />
           );
         } else {

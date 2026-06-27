@@ -9,6 +9,7 @@ export default function SystemToolsScreen({ onBack, onNavigate }) {
     { title: '📊 Database Stats', description: 'Row counts across all internal database tables', screen: 'DB_STATS' },
     { title: 'ℹ️ System Info', description: 'Operating system details, versioning, environment settings', screen: 'SYSTEM_INFO' },
     { title: '🛠️ Recovery Center', description: 'Failed sync retry, force queue process, cloud download', screen: 'RECOVERY_CENTER' },
+    { title: '📂 Database Explorer', description: 'Inspect SQLite tables, row list, and raw JSON fields', screen: 'DB_EXPLORER' },
   ];
 
   return (
