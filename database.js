@@ -540,6 +540,18 @@ const TABLE_SCHEMAS = {
       downloaded_at TEXT,
       downloaded_by TEXT
     );
+  `,
+  daily_submit_priority: `
+    CREATE TABLE IF NOT EXISTS daily_submit_priority (
+      business_date TEXT PRIMARY KEY,
+      submitted_by TEXT,
+      role TEXT,
+      priority INTEGER,
+      sync_source_device TEXT,
+      created_at TEXT,
+      updated_at TEXT,
+      is_synced INTEGER DEFAULT 0
+    );
   `
 };
 
@@ -1463,6 +1475,8 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
             const rIdStr = String(recordId);
             if (tableName === 'daily_submit' || tableName === 'daily_summary' || tableName === 'ml_export_history') {
               row = dbInstance.getFirstSync(`SELECT * FROM ${tableName} WHERE date = ?`, [rIdStr]);
+            } else if (tableName === 'daily_submit_priority') {
+              row = dbInstance.getFirstSync(`SELECT * FROM ${tableName} WHERE business_date = ?`, [rIdStr]);
             } else {
               row = dbInstance.getFirstSync(`SELECT * FROM ${tableName} WHERE id = ?`, [rIdStr]);
             }
@@ -1473,6 +1487,35 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
               dbInstance.runSync("DELETE FROM sync_queue WHERE id = ?", [Number(queueId)]);
               successfulWrites++;
               continue;
+            }
+
+            // Priority Conflict Resolution Check
+            if (tableName === 'daily_submit') {
+              try {
+                const localPriorityRec = getDailySubmitPriority(rIdStr);
+                const localPriority = localPriorityRec ? localPriorityRec.priority : 10; // default to manager priority
+
+                // Fetch remote priority from Firestore for this business date
+                const remotePriorityUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/daily_submit_priority/${encodeURIComponent(rIdStr)}?key=${apiKey}`;
+                const remotePriorityRes = await fetch(remotePriorityUrl);
+                
+                if (remotePriorityRes.ok) {
+                  const remotePriorityDoc = await remotePriorityRes.json();
+                  const remoteFields = remotePriorityDoc.fields || {};
+                  const remotePriority = remoteFields.priority ? Number(remoteFields.priority.integerValue || remoteFields.priority.doubleValue || 0) : 0;
+                  
+                  if (remotePriority > localPriority) {
+                    console.log(`[Priority Sync] Remote priority (${remotePriority}) is higher than local priority (${localPriority}) for daily_submit date ${rIdStr}. Skipping upload.`);
+                    // Skip upload and mark queue complete (delete from queue)
+                    dbInstance.runSync("DELETE FROM sync_queue WHERE id = ?", [Number(queueId)]);
+                    successfulWrites++;
+                    continue;
+                  }
+                }
+              } catch (err) {
+                console.error("[Priority Sync] Conflict check failed:", err.message);
+                // In case of error (e.g. offline during check), we proceed with default sync behavior
+              }
             }
 
             const firestoreDoc = toFirestoreDocument(row);
@@ -1497,6 +1540,8 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
               
               if (tableName === 'daily_submit' || tableName === 'daily_summary' || tableName === 'ml_export_history') {
                 dbInstance.runSync(`UPDATE ${tableName} SET is_synced = 1 WHERE date = ?`, [rIdStr]);
+              } else if (tableName === 'daily_submit_priority') {
+                dbInstance.runSync(`UPDATE ${tableName} SET is_synced = 1 WHERE business_date = ?`, [rIdStr]);
               } else {
                 dbInstance.runSync(`UPDATE ${tableName} SET is_synced = 1 WHERE id = ?`, [rIdStr]);
               }
@@ -3851,6 +3896,8 @@ export function savePastAccount(record) {
       now
     ]);
     enqueueSync("daily_submit", dateStr, "INSERT");
+    const role = getSessionUserRole() || 'owner';
+    saveDailySubmitPriority(dateStr, 'Manual Entry', role);
 
     db.runSync(`
       INSERT OR REPLACE INTO daily_summary (
@@ -3945,6 +3992,8 @@ export function submitDailySheet(summary, submittedBy, submissionType = 'MANUAL'
       submissionType
     ]);
     enqueueSync("daily_submit", todayStr, "INSERT");
+    const role = getSessionUserRole() || 'manager';
+    saveDailySubmitPriority(todayStr, submittedBy, role);
 
     // --- AUTO-FILL SUPPLIER LEDGER ---
     const monthStr = todayStr.substring(0, 7);
@@ -4902,5 +4951,40 @@ export function getTodayRestaurantDeposit(todayStr) {
   } catch (err) {
     console.error("getTodayRestaurantDeposit error:", err);
     return 0;
+  }
+}
+
+export function getRolePriority(role) {
+  const r = String(role).trim().toLowerCase();
+  if (r === 'owner') return 100;
+  if (r === 'admin') return 50;
+  if (r === 'manager') return 10;
+  return 0;
+}
+
+export function saveDailySubmitPriority(businessDate, submittedBy, role, syncSourceDevice = '') {
+  try {
+    const now = new Date().toISOString();
+    const priority = getRolePriority(role);
+    db.runSync(`
+      INSERT OR REPLACE INTO daily_submit_priority (
+        business_date, submitted_by, role, priority, sync_source_device, created_at, updated_at, is_synced
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+    `, [businessDate, submittedBy, role, priority, syncSourceDevice || Platform.OS, now, now]);
+    enqueueSync("daily_submit_priority", businessDate, "INSERT");
+    return true;
+  } catch (err) {
+    console.error("saveDailySubmitPriority error:", err);
+    return false;
+  }
+}
+
+export function getDailySubmitPriority(businessDate) {
+  try {
+    const row = db.getFirstSync("SELECT * FROM daily_submit_priority WHERE business_date = ?", [businessDate]);
+    return row || null;
+  } catch (err) {
+    console.error("getDailySubmitPriority error:", err);
+    return null;
   }
 }
