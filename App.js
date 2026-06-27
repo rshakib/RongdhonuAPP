@@ -110,6 +110,11 @@ import SupplierDueScreen from './screens/SupplierDueScreen';
 import DailyItemSalesReport from './screens/DailyItemSalesReport';
 import SyncDiagnosticsScreen from './screens/SyncDiagnosticsScreen';
 import DeleteHistoryScreen from './screens/DeleteHistoryScreen';
+import SystemToolsScreen from './screens/SystemToolsScreen';
+import DatabaseHealthScreen from './screens/DatabaseHealthScreen';
+import SyncStatusScreen from './screens/SyncStatusScreen';
+import DatabaseStatsScreen from './screens/DatabaseStatsScreen';
+import SystemInfoScreen from './screens/SystemInfoScreen';
 
 
 // Default Restaurant Menu (56 items)
@@ -1282,6 +1287,7 @@ export default function App() {
               onNavigateToItemSalesReport={() => setCurrentScreen('ITEM_SALES_REPORT')}
               onNavigateToSyncDiagnostics={() => setCurrentScreen('SYNC_DIAGNOSTICS')}
               onNavigateToDeleteHistory={() => setCurrentScreen('DELETE_HISTORY')}
+              onNavigateToSystemTools={() => setCurrentScreen('SYSTEM_TOOLS')}
               onCloudRestore={handleCloudRestore}
               onMenuRecovery={handleMenuRecovery}
               onResetHistoryLimits={handleResetHistoryLimits}
@@ -1546,6 +1552,62 @@ export default function App() {
           return (
             <DeleteHistoryScreen
               onBack={() => setCurrentScreen('DASHBOARD')}
+            />
+          );
+        } else {
+          return null;
+        }
+
+      case 'SYSTEM_TOOLS':
+        if (userRole === 'admin') {
+          return (
+            <SystemToolsScreen
+              onBack={() => setCurrentScreen('DASHBOARD')}
+              onNavigate={(screen) => setCurrentScreen(screen)}
+            />
+          );
+        } else {
+          return null;
+        }
+
+      case 'DB_HEALTH':
+        if (userRole === 'admin') {
+          return (
+            <DatabaseHealthScreen
+              onBack={() => setCurrentScreen('SYSTEM_TOOLS')}
+            />
+          );
+        } else {
+          return null;
+        }
+
+      case 'SYNC_STATUS':
+        if (userRole === 'admin') {
+          return (
+            <SyncStatusScreen
+              onBack={() => setCurrentScreen('SYSTEM_TOOLS')}
+            />
+          );
+        } else {
+          return null;
+        }
+
+      case 'DB_STATS':
+        if (userRole === 'admin') {
+          return (
+            <DatabaseStatsScreen
+              onBack={() => setCurrentScreen('SYSTEM_TOOLS')}
+            />
+          );
+        } else {
+          return null;
+        }
+
+      case 'SYSTEM_INFO':
+        if (userRole === 'admin') {
+          return (
+            <SystemInfoScreen
+              onBack={() => setCurrentScreen('SYSTEM_TOOLS')}
             />
           );
         } else {
