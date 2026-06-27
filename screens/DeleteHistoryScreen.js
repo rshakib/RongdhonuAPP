@@ -19,6 +19,25 @@ const { width } = Dimensions.get('window');
 
 const recordTypes = ['All', 'Orders', 'Expenses', 'Deposits', 'Due Records', 'Menu Items', 'Others'];
 
+const recordTypeIcons = {
+  Orders: "🛒",
+  Expenses: "💸",
+  Deposits: "🏦",
+  "Daily Submit": "🏦",
+  Supplier: "🚚",
+  "Supplier Payment": "🚚",
+  "Supplier Due": "🚚",
+  "Menu Items": "🍔",
+  Users: "👤",
+  Deliveries: "🛵",
+  Payments: "💰",
+  Tables: "🪑",
+  Categories: "📂",
+  Weather: "🌤️",
+  OffDays: "📅",
+  Eja: "🏠",
+};
+
 // --- CUSTOM CALENDAR PICKER COMPONENT ---
 const CalendarPicker = ({ visible, onClose, onSelectDate }) => {
   const [viewDate, setViewDate] = useState(new Date());
@@ -153,23 +172,82 @@ export default function DeleteHistoryScreen({ onBack }) {
       console.error(e);
     }
 
+    const isOrder = selectedItem.record_type === 'Orders';
+    let parsedItems = [];
+    if (isOrder && snapshot.items) {
+      try {
+        parsedItems = JSON.parse(snapshot.items);
+      } catch (err) {
+        parsedItems = [];
+      }
+    }
+
+    const icon = recordTypeIcons[selectedItem.record_type] || "🗑️";
+
     return (
       <View style={styles.detailCard}>
-        <Text style={styles.detailTitle}>🗑 {selectedItem.record_type.toUpperCase()} DELETED</Text>
+        <Text style={styles.detailTitle}>{icon} {selectedItem.record_type.toUpperCase()} DELETED</Text>
         <Text style={styles.detailSubtitle}>ID: {selectedItem.record_id}</Text>
 
         <View style={styles.detailDivider} />
 
         <ScrollView style={styles.detailScroll}>
-          {Object.entries(snapshot).map(([key, value]) => {
-            if (key === 'is_synced' || key === 'id' || key === 'snapshot_data') return null;
-            return (
-              <View key={key} style={styles.detailRow}>
-                <Text style={styles.detailKey}>{key.replace(/_/g, ' ').toUpperCase()}:</Text>
-                <Text style={styles.detailValue}>{String(value)}</Text>
+          {isOrder ? (
+            <View style={{ width: '100%' }}>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailKey}>ORDER ID:</Text>
+                <Text style={styles.detailValue}>{snapshot.id || selectedItem.record_id}</Text>
               </View>
-            );
-          })}
+              <View style={styles.detailRow}>
+                <Text style={styles.detailKey}>TABLE:</Text>
+                <Text style={styles.detailValue}>{snapshot.table_id || 'N/A'}</Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailKey}>AMOUNT:</Text>
+                <Text style={[styles.detailValue, { color: '#34D399', fontWeight: 'bold' }]}>৳{snapshot.grand_total || 0}</Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailKey}>PAYMENT METHOD:</Text>
+                <Text style={styles.detailValue}>{snapshot.payment_method || 'N/A'}</Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailKey}>PAYMENT STATUS:</Text>
+                <Text style={styles.detailValue}>{snapshot.payment_status || 'N/A'}</Text>
+              </View>
+              <View style={styles.detailRow}>
+                <Text style={styles.detailKey}>TIME:</Text>
+                <Text style={styles.detailValue}>{snapshot.time || 'N/A'}</Text>
+              </View>
+
+              <Text style={[styles.detailKey, { marginTop: 16, marginBottom: 8, color: '#FFB703' }]}>ORDER ITEMS:</Text>
+              <View style={{ backgroundColor: '#1A1A1A', borderRadius: 8, padding: 10, borderWidth: 1, borderColor: '#333' }}>
+                {parsedItems.map((item, idx) => {
+                  const name = item.name || item.itemName || 'Unknown Item';
+                  const qty = item.quantity || 1;
+                  const amt = item.revenue || (qty * (item.unitPrice || 0));
+                  return (
+                    <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 }}>
+                      <Text style={{ color: '#FFF', fontSize: 12 }}>• {name} x{qty}</Text>
+                      <Text style={{ color: '#888', fontSize: 12 }}>৳{amt}</Text>
+                    </View>
+                  );
+                })}
+                {parsedItems.length === 0 && (
+                  <Text style={{ color: '#666', fontStyle: 'italic', fontSize: 11 }}>No items recorded.</Text>
+                )}
+              </View>
+            </View>
+          ) : (
+            Object.entries(snapshot).map(([key, value]) => {
+              if (key === 'is_synced' || key === 'id' || key === 'snapshot_data') return null;
+              return (
+                <View key={key} style={styles.detailRow}>
+                  <Text style={styles.detailKey}>{key.replace(/_/g, ' ').toUpperCase()}:</Text>
+                  <Text style={styles.detailValue}>{String(value)}</Text>
+                </View>
+              );
+            })
+          )}
         </ScrollView>
 
         <View style={styles.detailDivider} />
@@ -253,7 +331,7 @@ export default function DeleteHistoryScreen({ onBack }) {
                 onPress={() => handleShowDetail(item)}
               >
                 <View style={styles.cardLeft}>
-                  <Text style={styles.cardType}>🗑 {item.record_type}</Text>
+                  <Text style={styles.cardType}>{recordTypeIcons[item.record_type] || "🗑️"} {item.record_type}</Text>
                   <Text style={styles.cardId}>ID: {item.record_id}</Text>
                 </View>
                 <View style={styles.cardRight}>
