@@ -8,6 +8,7 @@ export default function SystemToolsScreen({ onBack, onNavigate }) {
     { title: '🔄 Sync Status', description: 'Pending queue count, sync service state, queue details', screen: 'SYNC_STATUS' },
     { title: '📊 Database Stats', description: 'Row counts across all internal database tables', screen: 'DB_STATS' },
     { title: 'ℹ️ System Info', description: 'Operating system details, versioning, environment settings', screen: 'SYSTEM_INFO' },
+    { title: '🛠️ Recovery Center', description: 'Failed sync retry, force queue process, cloud download', screen: 'RECOVERY_CENTER' },
   ];
 
   return (
@@ -38,9 +39,9 @@ export default function SystemToolsScreen({ onBack, onNavigate }) {
         ))}
 
         <View style={styles.footerNote}>
-          <Text style={styles.footerTitle}>🔒 Security Notice</Text>
+          <Text style={styles.footerTitle}>🔒 Security & Safety Policy</Text>
           <Text style={styles.footerText}>
-            All diagnostics screens operate in strict Read-Only mode. No database mutations, deletions, or cloud writes can be triggered from these views.
+            Diagnostics screens operate in strict Read-Only mode. Recovery center repairs are strictly whitelisted, safe, and audited with audit trail logs written locally.
           </Text>
         </View>
       </ScrollView>
