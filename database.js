@@ -2073,22 +2073,17 @@ function fromFirestoreDocument(doc) {
 }
 
 export async function restoreDatabaseFromCloud() {
-  const today = getBusinessDate();
-  const yesterdayDate = new Date();
-  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-  const yesterday = yesterdayDate.toISOString().substring(0, 10);
-
   // 1. Collections that must always be fully restored
-  const alwaysFull = ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due', 'supplier_payment_ledger'];
+  const alwaysFull = ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due'];
   
-  // 2. Collections that should only be restored for Today + Yesterday on fresh install
+  // 2. Collections that should be restored for the last 31 days on fresh install
   const recentOnly = [
     'orders', 'order_items', 'payments', 'expenses', 'deliveries', 
     'daily_submit', 'daily_summary', 'due_payments', 'eja_history', 
-    'off_days', 'weather_data'
+    'off_days', 'weather_data', 'supplier_payment_ledger'
   ];
 
-  console.log("[Restore] Starting Smart History Restoration from Firestore...");
+  console.log("[Restore] Starting Smart History Restoration (31-Day Window)...");
   console.log(`[Restore] Targeting: Full=[${alwaysFull.join(',')}] Recent=[${recentOnly.join(',')}]`);
 
   const processDocs = async (table, docs) => {
@@ -2126,6 +2121,11 @@ export async function restoreDatabaseFromCloud() {
   // Capture start time to use as sync marker baseline
   const restoreStartTime = new Date().toISOString();
 
+  // Threshold for recent history: 31 days ago
+  const thresholdDate = new Date();
+  thresholdDate.setDate(thresholdDate.getDate() - 31);
+  const thresholdIso = thresholdDate.toISOString();
+
   // 1. Process Always Full
   for (const table of alwaysFull) {
     try {
@@ -2150,32 +2150,17 @@ export async function restoreDatabaseFromCloud() {
     console.log(`[Restore Emergency Fix] Initialized marker for background table: ${table}`);
   }
 
-  // 2. Process Recent Only (Today + Yesterday)
+  // 2. Process Recent Only (Last 31 Days)
   for (const table of recentOnly) {
     try {
-      console.log(`[Restore] Restoring recent records for: ${table}...`);
+      console.log(`[Restore] Restoring last 31 days for: ${table}...`);
       
-      // Fetch Today
       incrementReadCounter('restore', 1);
-      const todayResult = await fetchChangedRecordsFromFirestore(table, today + "T00:00:00Z");
+      const result = await fetchChangedRecordsFromFirestore(table, thresholdIso);
       
-      // Fetch Yesterday
-      incrementReadCounter('restore', 1);
-      const yesterdayResult = await fetchChangedRecordsFromFirestore(table, yesterday + "T00:00:00Z");
-      
-      if (todayResult.success || yesterdayResult.success) {
-        if (todayResult.success) await processDocs(table, todayResult.documents);
-        if (yesterdayResult.success) {
-          const filteredYesterday = yesterdayResult.documents.filter(doc => {
-            const row = fromFirestoreDocument(doc);
-            const dateStr = row.date || (row.created_at ? row.created_at.substring(0, 10) : "");
-            return dateStr === yesterday;
-          });
-          await processDocs(table, filteredYesterday);
-        }
-        
+      if (result.success) {
+        await processDocs(table, result.documents);
         // Initialize sync marker to prevent full history pull.
-        // We set it to restoreStartTime so future delta syncs only pick up NEW records.
         db.runSync("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)", [`last_sync_time_${table}`, restoreStartTime]);
       }
     } catch (err) {
@@ -3816,7 +3801,22 @@ export function getSubmissionHistory() {
 
 export function savePastAccount(record) {
   try {
-    const dateStr = record.date;
+    let dateStr = record.date;
+    // Convert "DD MMM YYYY" (e.g. "17 Jun 2026") to "YYYY-MM-DD"
+    if (dateStr) {
+      const textMatch = String(dateStr).trim().match(/^(\d{1,2})\s+([A-Za-z]{3,10})\s+(\d{4})/);
+      if (textMatch) {
+        const day = String(textMatch[1]).padStart(2, '0');
+        const monthName = textMatch[2].substring(0, 3).toLowerCase();
+        const year = textMatch[3];
+        const monthsShort = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+        const monthIndex = monthsShort.indexOf(monthName);
+        if (monthIndex !== -1) {
+          const month = String(monthIndex + 1).padStart(2, '0');
+          dateStr = `${year}-${month}-${day}`;
+        }
+      }
+    }
     const now = new Date().toISOString();
     
     db.runSync(`
@@ -3945,6 +3945,32 @@ export function submitDailySheet(summary, submittedBy, submissionType = 'MANUAL'
       submissionType
     ]);
     enqueueSync("daily_submit", todayStr, "INSERT");
+
+    // --- AUTO-FILL SUPPLIER LEDGER ---
+    const monthStr = todayStr.substring(0, 7);
+    const yearStr = todayStr.substring(0, 4);
+    const splId = `spl_${todayStr}`;
+
+    // Use latest values from breakdown; preserve created_by/created_at if existing
+    const existingSpl = db.getFirstSync("SELECT created_by, created_at FROM supplier_payment_ledger WHERE id = ?", [splId]);
+    const finalCreatedBy = existingSpl ? existingSpl.created_by : submittedBy;
+    const finalCreatedAt = existingSpl ? existingSpl.created_at : now;
+
+    db.runSync(`
+      INSERT OR REPLACE INTO supplier_payment_ledger (
+        id, payment_date, month, year,
+        variety_store_amount, morgir_dokan_amount, burger_ban_amount,
+        created_by, created_at, updated_at, is_synced
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+    `, [
+      splId, todayStr, monthStr, yearStr,
+      summary.breakdown?.dudu || 0,
+      summary.breakdown?.akash || 0,
+      summary.breakdown?.burger || 0,
+      finalCreatedBy, finalCreatedAt, now
+    ]);
+    enqueueSync("supplier_payment_ledger", splId, "INSERT");
+    syncRecordImmediately("supplier_payment_ledger", splId);
 
     db.runSync("UPDATE orders SET locked_at = ? WHERE date(created_at, 'localtime') = ?", [now, todayStr]);
 

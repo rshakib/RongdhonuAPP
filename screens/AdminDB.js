@@ -314,13 +314,31 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     // Default to yesterday
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-    const dateStr = formatDisplayDate(yesterday);
+    const y = yesterday.getFullYear();
+    const m = String(yesterday.getMonth() + 1).padStart(2, '0');
+    const d = String(yesterday.getDate()).padStart(2, '0');
+    const dateStr = `${y}-${m}-${d}`;
     setPastDate(dateStr);
     setPastAccountModalVisible(true);
   };
 
   const handlePastDateChange = (date) => {
-    setPastDate(date);
+    let normalized = date;
+    if (date && date.includes(' ')) {
+      const match = String(date).trim().match(/^(\d{1,2})\s+([A-Za-z]{3,10})\s+(\d{4})/);
+      if (match) {
+        const day = String(match[1]).padStart(2, '0');
+        const monthName = match[2].substring(0, 3).toLowerCase();
+        const year = match[3];
+        const monthsShort = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+        const monthIndex = monthsShort.indexOf(monthName);
+        if (monthIndex !== -1) {
+          const month = String(monthIndex + 1).padStart(2, '0');
+          normalized = `${year}-${month}-${day}`;
+        }
+      }
+    }
+    setPastDate(normalized);
   };
 
   const handleSavePastEntry = () => {
@@ -422,10 +440,10 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
   const handleRunCleanupAudit = () => {
     try {
       const target = cleanupTargetDate;
-      const countOrders = executeInspectorQuery("SELECT COUNT(*) as c FROM orders WHERE date(created_at, 'localtime', '-1 hour') = ?", [target])[0]?.c || 0;
-      const countPayments = executeInspectorQuery("SELECT COUNT(*) as c FROM payments WHERE date(created_at, 'localtime', '-1 hour') = ?", [target])[0]?.c || 0;
-      const countDeliveries = executeInspectorQuery("SELECT COUNT(*) as c FROM deliveries WHERE date(completed_at, 'localtime', '-1 hour') = ?", [target])[0]?.c || 0;
-      const countExpenses = executeInspectorQuery("SELECT COUNT(*) as c FROM expenses WHERE date(created_at, 'localtime', '-1 hour') = ?", [target])[0]?.c || 0;
+      const countOrders = executeInspectorQuery("SELECT COUNT(*) as c FROM orders WHERE date(created_at, 'localtime') = ?", [target])[0]?.c || 0;
+      const countPayments = executeInspectorQuery("SELECT COUNT(*) as c FROM payments WHERE date(created_at, 'localtime') = ?", [target])[0]?.c || 0;
+      const countDeliveries = executeInspectorQuery("SELECT COUNT(*) as c FROM deliveries WHERE date(completed_at, 'localtime') = ?", [target])[0]?.c || 0;
+      const countExpenses = executeInspectorQuery("SELECT COUNT(*) as c FROM expenses WHERE date(created_at, 'localtime') = ?", [target])[0]?.c || 0;
       const countSubmit = executeInspectorQuery("SELECT COUNT(*) as c FROM daily_submit WHERE date = ?", [target])[0]?.c || 0;
       const countSummary = executeInspectorQuery("SELECT COUNT(*) as c FROM daily_summary WHERE date = ?", [target])[0]?.c || 0;
       const countSyncQueue = executeInspectorQuery("SELECT COUNT(*) as c FROM sync_queue WHERE record_id LIKE ?", [`%${target}%`])[0]?.c || 0;
@@ -831,6 +849,22 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               </ScrollView>{salesFilter === 'Pick Date' && (
                 <TouchableOpacity style={styles.pickDateWrapper} onPress={() => { setCalendarTarget('sales'); setCalendarVisible(true); }}><Text style={{color:'#FFF', fontSize:12}}>{pickDate}</Text></TouchableOpacity>
               )}</View>
+
+            {/* PERSISTENT CLOUD CATCH-UP OPTION */}
+            {salesFilter !== 'Today' && (
+              <View style={{ paddingHorizontal: 12, marginBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#111', paddingVertical: 10, borderRadius: 8, marginHorizontal: 8, borderWidth: 1, borderColor: '#333' }}>
+                <View style={{ flex: 1, marginRight: 10 }}>
+                  <Text style={{ color: '#FFB703', fontSize: 10, fontWeight: 'bold' }}>⚠️ এই মাসের সম্পূর্ণ ডাটা লোকাল ডিভাইসে নাও থাকতে পারে।</Text>
+                </View>
+                <TouchableOpacity 
+                  style={{ backgroundColor: '#34D399', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 }}
+                  onPress={handleSalesCheckCloud}
+                >
+                  <Text style={{ color: '#000', fontSize: 11, fontWeight: 'bold' }}>☁️ ক্লাউড থেকে সম্পূর্ণ মাস ডাউনলোড করুন</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             <View style={styles.sheetContainer}><ScrollView horizontal><View>
                   <View style={styles.sheetHeader}><Text style={[styles.sheetHeaderText, { width: 120, textAlign: 'left' }]}>তারিখ ও সময়</Text><Text style={[styles.sheetHeaderText, { width: 50 }]}>টেবিল</Text><Text style={[styles.sheetHeaderText, { width: 220, textAlign: 'left' }]}>আইটেম</Text><Text style={[styles.sheetHeaderText, { width: 70, textAlign: 'right' }]}>বিক্রয়</Text></View>
                   <ScrollView style={styles.sheetBody}>
@@ -908,6 +942,23 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                 </TouchableOpacity>
               </View>
             </View>
+
+            {/* PERSISTENT CLOUD CATCH-UP OPTION */}
+            <View style={{ paddingHorizontal: 12, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#111', paddingVertical: 10, borderRadius: 8, marginHorizontal: 8, borderWidth: 1, borderColor: '#333' }}>
+               <View style={{ flex: 1, marginRight: 10 }}>
+                 <Text style={{ color: '#FFB703', fontSize: 10, fontWeight: 'bold' }}>⚠️ এই মাসের সম্পূর্ণ ডাটা লোকাল ডিভাইসে নাও থাকতে পারে।</Text>
+               </View>
+               <TouchableOpacity 
+                 style={{ backgroundColor: 'rgba(52, 211, 153, 0.15)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, borderWidth: 1, borderColor: '#34D399' }}
+                 onPress={() => {
+                   const monthStr = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
+                   onHistoricalMonthDownload(monthStr, activeFilter);
+                 }}
+               >
+                 <Text style={{ color: '#34D399', fontSize: 11, fontWeight: 'bold' }}>☁️ ক্লাউড থেকে সম্পূর্ণ মাস ডাউনলোড করুন</Text>
+               </TouchableOpacity>
+            </View>
+
             <View style={styles.sheetContainer}><ScrollView horizontal><View>
                   <View style={styles.sheetHeader}>
                     <Text style={[styles.sheetHeaderText, { width: 100, textAlign: 'left' }]}>তারিখ</Text>
@@ -1355,7 +1406,7 @@ const styles = StyleSheet.create({
   fabIconSmall: { fontSize: 16, color: '#FFB703' },
   fabLabelSmall: { fontSize: 10, fontWeight: 'bold', color: '#FFB703', marginTop: 2 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { backgroundColor: '#0D0D0D', borderWidth: 1, borderColor: '#FFB703', borderRadius: 20, padding: 24, width: '85%', alignItems: 'center' },
+  modalContent: { backgroundColor: '#0D0D0D', borderWidth: 1, borderColor: '#FFB703', borderRadius: 20, padding: 16, width: '85%', alignItems: 'center' },
   modalTitle: { fontSize: 17, fontWeight: 'bold', color: '#FFF', marginBottom: 10 },
   modalSubtitle: { fontSize: 11, color: '#888', textAlign: 'center' },
   detailRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderColor: '#1A1A1A' },
@@ -1374,10 +1425,10 @@ const styles = StyleSheet.create({
   menuDivider: { height: 1, backgroundColor: '#262626' },
   menuSectionHeader: { backgroundColor: '#111', paddingVertical: 4, paddingHorizontal: 14, borderBottomWidth: 1, borderColor: '#262626' },
   menuSectionText: { color: '#555', fontSize: 9, fontWeight: 'bold', letterSpacing: 1 },
-  sheetContainer: { width: '100%', backgroundColor: '#111', borderRadius: 12, borderWidth: 1, borderColor: '#333', overflow: 'hidden' },
+  sheetContainer: { width: '100%', backgroundColor: '#111', borderRadius: 12, borderWidth: 1, borderColor: '#333', overflow: 'hidden', flexShrink: 1 },
   sheetHeader: { flexDirection: 'row', backgroundColor: '#222', paddingVertical: 10, paddingHorizontal: 10, borderBottomWidth: 1, borderColor: '#444' },
   sheetHeaderText: { color: '#FFB703', fontSize: 10, fontWeight: 'bold', textAlign: 'center' },
-  sheetBody: { maxHeight: 380 },
+  sheetBody: { maxHeight: 300 },
   sheetRow: { flexDirection: 'row', paddingVertical: 12, paddingHorizontal: 10, borderBottomWidth: 0.5, borderColor: '#222', alignItems: 'center' },
   sheetRowAlt: { backgroundColor: '#0A0A0A' },
   sheetCell: { color: '#FFF', fontSize: 10, textAlign: 'center' },

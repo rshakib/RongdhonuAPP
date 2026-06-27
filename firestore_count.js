@@ -1,8 +1,28 @@
 const fetch = require('node-fetch');
-require('dotenv').config();
+const fs = require('fs');
 
-const PROJECT_ID = process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID;
-const API_KEY = process.env.EXPO_PUBLIC_FIREBASE_API_KEY;
+function readEnv() {
+  const env = {};
+  try {
+    const text = fs.readFileSync('.env', 'utf8');
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) continue;
+      const index = trimmed.indexOf('=');
+      const key = trimmed.slice(0, index).trim();
+      let value = trimmed.slice(index + 1).trim();
+      value = value.replace(/^['"]|['"]$/g, '');
+      env[key] = value;
+    }
+  } catch (err) {
+    console.error("Could not read .env file:", err.message);
+  }
+  return env;
+}
+
+const env = readEnv();
+const PROJECT_ID = env.EXPO_PUBLIC_FIREBASE_PROJECT_ID;
+const API_KEY = env.EXPO_PUBLIC_FIREBASE_API_KEY;
 
 const collections = [
   'users',

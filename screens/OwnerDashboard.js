@@ -296,13 +296,31 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
     // Default to yesterday
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-    const dateStr = formatDisplayDate(yesterday);
+    const y = yesterday.getFullYear();
+    const m = String(yesterday.getMonth() + 1).padStart(2, '0');
+    const d = String(yesterday.getDate()).padStart(2, '0');
+    const dateStr = `${y}-${m}-${d}`;
     setPastDate(dateStr);
     setPastAccountModalVisible(true);
   };
 
   const handlePastDateChange = (date) => {
-    setPastDate(date);
+    let normalized = date;
+    if (date && date.includes(' ')) {
+      const match = String(date).trim().match(/^(\d{1,2})\s+([A-Za-z]{3,10})\s+(\d{4})/);
+      if (match) {
+        const day = String(match[1]).padStart(2, '0');
+        const monthName = match[2].substring(0, 3).toLowerCase();
+        const year = match[3];
+        const monthsShort = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+        const monthIndex = monthsShort.indexOf(monthName);
+        if (monthIndex !== -1) {
+          const month = String(monthIndex + 1).padStart(2, '0');
+          normalized = `${year}-${month}-${day}`;
+        }
+      }
+    }
+    setPastDate(normalized);
     // Auto-fill removed to allow manual entry without pre-filled data, 
     // unless explicitly editing via the edit button.
   };
