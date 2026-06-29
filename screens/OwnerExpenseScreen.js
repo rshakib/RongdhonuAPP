@@ -63,7 +63,7 @@ export default function OwnerExpenseScreen({
   const [newCatName, setNewCatName] = useState('');
 
   useEffect(() => {
-    if (userRole === 'owner') {
+    if (userRole === 'owner' || userRole === 'admin') {
       const todayMonth = new Date().toISOString().substring(0, 7);
       setCurrentMonth(todayMonth);
       loadCustomCategories();
@@ -73,7 +73,7 @@ export default function OwnerExpenseScreen({
   }, [userRole]);
 
   useEffect(() => {
-    if (userRole === 'owner' && currentMonth) {
+    if ((userRole === 'owner' || userRole === 'admin') && currentMonth) {
       loadData();
     }
   }, [currentMonth]);
@@ -318,6 +318,10 @@ export default function OwnerExpenseScreen({
   });
 
   const allCategoriesList = [...DEFAULT_CATEGORIES, ...customCategories];
+
+  if (userRole !== 'owner' && userRole !== 'admin') {
+    return <AccessDenied onBack={onBack} />;
+  }
 
   return (
     <SafeAreaView style={styles.container}>

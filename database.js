@@ -5365,4 +5365,46 @@ export function getOwnerDepositByMonth(month) {
   }
 }
 
+export function verifyOwnerOrAdminPin(pin) {
+  try {
+    const user = db.getFirstSync("SELECT role FROM users WHERE pin = ? AND role IN ('owner', 'admin')", [String(pin).trim()]);
+    return user ? user.role : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+export function deleteOwnerDepositByMonth(month) {
+  try {
+    const record = db.getFirstSync("SELECT id FROM owner_deposits WHERE month = ?", [month]);
+    if (record) {
+      logDeleteHistory("owner_deposits", record.id, "OwnerDeposits");
+      db.runSync("DELETE FROM owner_deposits WHERE id = ?", [record.id]);
+      recordDeletion("owner_deposits", record.id);
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.error("[DB] deleteOwnerDepositByMonth error:", err);
+    return false;
+  }
+}
+
+export function insertNotification(title, message) {
+  try {
+    const now = new Date().toISOString();
+    const id = `notif_${Date.now()}`;
+    db.runSync(
+      `INSERT INTO notifications (id, title, message, read, created_at, updated_at, is_synced)
+       VALUES (?, ?, ?, 0, ?, ?, 0)`,
+      [id, title, message, now, now]
+    );
+    enqueueSync("notifications", id, "INSERT");
+    return id;
+  } catch (err) {
+    console.error("[DB] insertNotification error:", err);
+    return null;
+  }
+}
+
 

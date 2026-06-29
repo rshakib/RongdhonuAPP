@@ -261,7 +261,7 @@ export default function EmployeeListScreen({
     );
   };
 
-  if (userRole !== 'owner') {
+  if (userRole !== 'owner' && userRole !== 'admin') {
     return <AccessDenied onBack={onBack} />;
   }
 

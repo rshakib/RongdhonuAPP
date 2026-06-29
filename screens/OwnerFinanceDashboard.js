@@ -64,9 +64,10 @@ export default function OwnerFinanceDashboard({
   // PIN verification states
   const [pinModalVisible, setPinModalVisible] = useState(false);
   const [enteredPin, setEnteredPin] = useState('');
+  const [pinAction, setPinAction] = useState('CLOSE'); // CLOSE or UNLOCK
 
   useEffect(() => {
-    if (userRole === 'owner') {
+    if (userRole === 'owner' || userRole === 'admin') {
       const todayMonth = new Date().toISOString().substring(0, 7);
       setCurrentMonth(todayMonth);
       checkPreviousMonthOpen(todayMonth);
@@ -76,7 +77,7 @@ export default function OwnerFinanceDashboard({
   }, [userRole]);
 
   useEffect(() => {
-    if (userRole === 'owner' && currentMonth) {
+    if ((userRole === 'owner' || userRole === 'admin') && currentMonth) {
       loadDashboardData();
     }
   }, [currentMonth]);
@@ -190,40 +191,75 @@ export default function OwnerFinanceDashboard({
     }
 
     // Trigger PIN prompt Modal
+    setPinAction('CLOSE');
     setEnteredPin('');
     setPinModalVisible(true);
   };
 
-  const handleVerifyPinAndClose = () => {
+  const handleUnlockMonthTrigger = () => {
+    Alert.alert(
+      "⚠️ আপনি কি নিশ্চিত?",
+      "এই মাস Unlock করলে পুনরায় পরিবর্তন করা যাবে।",
+      [
+        {
+          text: "Unlock",
+          onPress: () => {
+            setPinAction('UNLOCK');
+            setEnteredPin('');
+            setPinModalVisible(true);
+          }
+        },
+        {
+          text: "Cancel",
+          style: "cancel"
+        }
+      ]
+    );
+  };
+
+  const handleVerifyPinAndAction = () => {
     try {
-      const { verifyOwnerPin } = require('../database');
-      const isCorrect = verifyOwnerPin(enteredPin);
-      if (!isCorrect) {
+      const { verifyOwnerOrAdminPin, deleteOwnerDepositByMonth, insertNotification } = require('../database');
+      const role = verifyOwnerOrAdminPin(enteredPin);
+      if (!role) {
         Alert.alert("ত্রুটি", "ভুল PIN");
         return;
       }
 
       setPinModalVisible(false);
 
-      // Prompt for Deposit confirmation
-      Alert.alert(
-        "মাস বন্ধ নিশ্চিতকরণ",
-        "Net Savings কে Owner Deposit হিসেবে সংরক্ষণ করবেন?",
-        [
-          {
-            text: "হ্যাঁ",
-            onPress: () => performMonthClose(true)
-          },
-          {
-            text: "না",
-            onPress: () => performMonthClose(false)
-          },
-          {
-            text: "বাতিল",
-            style: "cancel"
-          }
-        ]
-      );
+      if (pinAction === 'CLOSE') {
+        // Prompt for Deposit confirmation
+        Alert.alert(
+          "মাস বন্ধ নিশ্চিতকরণ",
+          "Net Savings কে Owner Deposit হিসেবে সংরক্ষণ করবেন?",
+          [
+            {
+              text: "হ্যাঁ",
+              onPress: () => performMonthClose(true)
+            },
+            {
+              text: "না",
+              onPress: () => performMonthClose(false)
+            },
+            {
+              text: "বাতিল",
+              style: "cancel"
+            }
+          ]
+        );
+      } else if (pinAction === 'UNLOCK') {
+        const success = deleteOwnerDepositByMonth(currentMonth);
+        if (success) {
+          const displayRole = role === 'owner' ? 'Owner' : 'Admin';
+          insertNotification("Owner Finance", `Owner Finance: ${currentMonth} month unlocked by ${displayRole}`);
+          
+          Alert.alert("সফল", `${getMonthNameBangla(currentMonth)} মাস সফলভাবে আনলক করা হয়েছে।`);
+          loadDashboardData();
+        } else {
+          Alert.alert("ত্রুটি", "মাস আনলক করতে ব্যর্থ হয়েছে।");
+        }
+      }
     } catch (err) {
       console.error("[OwnerFinanceDashboard] PIN verification error:", err);
       Alert.alert("ত্রুটি", "ভুল PIN");
@@ -266,7 +302,7 @@ export default function OwnerFinanceDashboard({
     return `${monthNames[m] || ''} ${y}`;
   };
 
-  if (userRole !== 'owner') {
+  if (userRole !== 'owner' && userRole !== 'admin') {
     return <AccessDenied onBack={onBack} />;
   }
 
@@ -362,14 +398,21 @@ export default function OwnerFinanceDashboard({
           </View>
         </View>
 
-        {/* Month Close Action button */}
+        {/* Month Close / Unlock Action button */}
         {!metrics.isClosed ? (
           <TouchableOpacity style={styles.closeMonthBtn} onPress={handleCloseMonthTrigger}>
             <Text style={styles.closeMonthBtnText}>🔒 {getMonthNameBangla(currentMonth)} এর হিসাব বন্ধ করুন</Text>
           </TouchableOpacity>
         ) : (
-          <View style={styles.closedMonthMessage}>
-            <Text style={styles.closedMonthMessageText}>🔒 এই মাসের হিসাব স্থায়ীভাবে বন্ধ এবং আর্কাইভ করা হয়েছে।</Text>
+          <View style={{ gap: 12 }}>
+            <View style={styles.closedMonthMessage}>
+              <Text style={styles.closedMonthMessageText}>🔒 এই মাসের হিসাব স্থায়ীভাবে বন্ধ এবং আর্কাইভ করা হয়েছে।</Text>
+            </View>
+            {(userRole === 'owner' || userRole === 'admin') && (
+              <TouchableOpacity style={styles.unlockMonthBtn} onPress={handleUnlockMonthTrigger}>
+                <Text style={styles.unlockMonthBtnText}>🔓 Unlock Month</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
@@ -448,8 +491,10 @@ export default function OwnerFinanceDashboard({
             style={styles.pinModalContent}
           >
             <Text style={styles.pinModalIcon}>🔒</Text>
-            <Text style={styles.pinModalTitle}>ওনার পিন ভেরিফিকেশন</Text>
-            <Text style={styles.pinModalLabel}>মাস বন্ধ করার জন্য ৪-ডিজিটের ওনার PIN প্রদান করুন:</Text>
+            <Text style={styles.pinModalTitle}>পিন ভেরিফিকেশন</Text>
+            <Text style={styles.pinModalLabel}>
+              {pinAction === 'UNLOCK' ? 'মাস আনলক করার জন্য' : 'মাস বন্ধ করার জন্য'} ৪-ডিজিটের পিন কোড প্রদান করুন:
+            </Text>
             
             <TextInput
               style={styles.pinInput}
@@ -472,7 +517,7 @@ export default function OwnerFinanceDashboard({
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.modalSaveBtn}
-                onPress={handleVerifyPinAndClose}
+                onPress={handleVerifyPinAndAction}
               >
                 <Text style={styles.modalSaveBtnText}>নিশ্চিত করুন</Text>
               </TouchableOpacity>
@@ -662,6 +707,20 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 12,
     fontWeight: '500',
+  },
+  unlockMonthBtn: {
+    backgroundColor: 'rgba(255, 183, 3, 0.15)',
+    borderWidth: 1,
+    borderColor: '#FFB703',
+    height: 50,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  unlockMonthBtnText: {
+    color: '#FFB703',
+    fontSize: 13,
+    fontWeight: 'bold',
   },
   statsGrid: {
     flexDirection: 'row',
