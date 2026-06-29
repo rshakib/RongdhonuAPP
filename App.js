@@ -1694,6 +1694,10 @@ export default function App() {
               setSelectedEmployeeId(empId);
               setCurrentScreen('EMPLOYEE_DETAIL');
             }}
+            onEditEmployee={(empId) => {
+              setSelectedEmployeeId(empId);
+              setCurrentScreen('ADD_EMPLOYEE');
+            }}
             refreshData={refreshData}
           />
         );
@@ -1704,13 +1708,11 @@ export default function App() {
             userRole={userRole}
             employeeId={selectedEmployeeId}
             onBack={() => {
-              if (selectedEmployeeId) {
-                setCurrentScreen('EMPLOYEE_DETAIL');
-              } else {
-                setCurrentScreen('EMPLOYEE_LIST');
-              }
+              setSelectedEmployeeId(null);
+              setCurrentScreen('EMPLOYEE_LIST');
             }}
             onSaveSuccess={() => {
+              setSelectedEmployeeId(null);
               setCurrentScreen('EMPLOYEE_LIST');
               refreshData();
             }}

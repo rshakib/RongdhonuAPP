@@ -33,6 +33,7 @@ export default function EmployeeListScreen({
   onBack,
   onAddEmployee,
   onSelectEmployee,
+  onEditEmployee,
   refreshData
 }) {
   const [loading, setLoading] = useState(true);
@@ -150,6 +151,64 @@ export default function EmployeeListScreen({
     }
   };
 
+  const handleDeleteEmployee = (emp) => {
+    Alert.alert(
+      "কর্মচারী অপসারণ",
+      `আপনি কি নিশ্চিতভাবে ${emp.name}-কে তালিকা থেকে বাদ দিতে চান?`,
+      [
+        { text: "বাতিল", style: "cancel" },
+        {
+          text: "অপসারণ করুন",
+          style: "destructive",
+          onPress: () => {
+            try {
+              const { deleteOwnerEmployee } = require('../database');
+              const success = deleteOwnerEmployee(emp.id);
+              if (success) {
+                Alert.alert("সফল", "কর্মচারী সফলভাবে অপসারিত হয়েছে।");
+                loadEmployees();
+                if (refreshData) {
+                  refreshData();
+                }
+              } else {
+                Alert.alert("ত্রুটি", "অপসারণ করতে ব্যর্থ হয়েছে।");
+              }
+            } catch (err) {
+              console.error("[EmployeeListScreen] Delete employee error:", err);
+              Alert.alert("ত্রুটি", "অপসারণ করতে ব্যর্থ হয়েছে।");
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleLongPressCard = (emp) => {
+    Alert.alert(
+      "কর্মচারী ব্যবস্থাপনা",
+      `${emp.name} (${emp.designation || 'পদবী উল্লেখ নেই'})`,
+      [
+        {
+          text: "✏️ Edit Employee",
+          onPress: () => {
+            if (onEditEmployee) {
+              onEditEmployee(emp.id);
+            }
+          }
+        },
+        {
+          text: "🗑 Delete Employee",
+          style: "destructive",
+          onPress: () => handleDeleteEmployee(emp)
+        },
+        {
+          text: "❌ Cancel",
+          style: "cancel"
+        }
+      ]
+    );
+  };
+
   const handleLongPressLedgerItem = (entry, empId) => {
     Alert.alert(
       "পেমেন্ট এন্ট্রি ডিলিট",
@@ -206,7 +265,8 @@ export default function EmployeeListScreen({
         {/* Main Tappable Card Body (Opens detailed profile) */}
         <TouchableOpacity
           style={styles.cardInfoSection}
-          onPress={() => onSelectEmployee(item.id)}
+          onPress={() => handleToggleLedger(item.id)}
+          onLongPress={() => handleLongPressCard(item)}
           activeOpacity={0.7}
         >
           <View style={styles.cardHeader}>
