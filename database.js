@@ -552,6 +552,21 @@ const TABLE_SCHEMAS = {
       updated_at TEXT,
       is_synced INTEGER DEFAULT 0
     );
+  `,
+  owner_employees: `
+    CREATE TABLE IF NOT EXISTS owner_employees (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      phone TEXT,
+      designation TEXT,
+      monthly_salary REAL NOT NULL,
+      joining_date TEXT,
+      status TEXT DEFAULT 'ACTIVE',
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      is_synced INTEGER DEFAULT 0
+    );
   `
 };
 
@@ -2018,7 +2033,7 @@ export async function syncLowFrequencyCollections() {
   isPullingSyncLow = true;
   let hasChanges = false;
   try {
-    const lowFreq = ['users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 'app_config', 'expenses', 'eja_history', 'daily_submit', 'supplier_due', 'supplier_due_history', 'supplier_payment_ledger', 'delete_history'];
+    const lowFreq = ['users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 'app_config', 'expenses', 'eja_history', 'daily_submit', 'supplier_due', 'supplier_due_history', 'supplier_payment_ledger', 'delete_history', 'owner_employees'];
     incrementReadCounter('lowFrequency', lowFreq.length);
     hasChanges = await traceSyncOperation('syncLowFrequencyCollections', () => syncCollections(lowFreq, 'Low Frequency Sync'));
   } catch (err) {
@@ -2119,7 +2134,7 @@ function fromFirestoreDocument(doc) {
 
 export async function restoreDatabaseFromCloud() {
   // 1. Collections that must always be fully restored
-  const alwaysFull = ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due'];
+  const alwaysFull = ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due', 'owner_employees'];
   
   // 2. Collections that should be restored for the last 31 days on fresh install
   const recentOnly = [
@@ -4518,7 +4533,8 @@ export function inspectDatabaseStats() {
     'delete_history',
     'notifications',
     'app_config',
-    'sync_queue'
+    'sync_queue',
+    'owner_employees'
   ];
   
   const stats = {};
@@ -4872,7 +4888,7 @@ export async function executeManualPush() {
       'users', 'restaurant_tables', 'orders', 'order_items', 'payments', 
       'expenses', 'deliveries', 'daily_submit', 'daily_summary', 
       'due_payments', 'eja_history', 'off_days', 'weather_data', 
-      'supplier_payment_ledger', 'notifications', 'app_config', 'ml_export_history', 'deletions', 'delete_history'
+      'supplier_payment_ledger', 'notifications', 'app_config', 'ml_export_history', 'deletions', 'delete_history', 'owner_employees'
     ];
     
     let countEnqueued = 0;
@@ -5019,6 +5035,69 @@ export function getDailySubmitPriority(businessDate) {
   } catch (err) {
     console.error("getDailySubmitPriority error:", err);
     return null;
+  }
+}
+
+export function saveOwnerEmployee(employee) {
+  try {
+    const now = new Date().toISOString();
+    const id = employee.id || `emp_${Date.now()}`;
+    db.runSync(
+      `INSERT OR REPLACE INTO owner_employees (id, name, phone, designation, monthly_salary, joining_date, status, notes, created_at, updated_at, is_synced)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+      [id, employee.name, employee.phone || '', employee.designation || '', employee.monthly_salary, employee.joining_date || '', employee.status || 'ACTIVE', employee.notes || '', employee.created_at || now, now]
+    );
+    enqueueSync("owner_employees", id, "INSERT");
+    return id;
+  } catch (err) {
+    console.error("[DB] saveOwnerEmployee error:", err);
+    return null;
+  }
+}
+
+export function updateOwnerEmployee(employee) {
+  try {
+    const now = new Date().toISOString();
+    db.runSync(
+      `UPDATE owner_employees SET name = ?, phone = ?, designation = ?, monthly_salary = ?, joining_date = ?, status = ?, notes = ?, updated_at = ?, is_synced = 0
+       WHERE id = ?`,
+      [employee.name, employee.phone || '', employee.designation || '', employee.monthly_salary, employee.joining_date || '', employee.status || 'ACTIVE', employee.notes || '', now, employee.id]
+    );
+    enqueueSync("owner_employees", employee.id, "UPDATE");
+    return true;
+  } catch (err) {
+    console.error("[DB] updateOwnerEmployee error:", err);
+    return false;
+  }
+}
+
+export function getOwnerEmployees() {
+  try {
+    return db.getAllSync("SELECT * FROM owner_employees ORDER BY status ASC, name ASC");
+  } catch (err) {
+    console.error("[DB] getOwnerEmployees error:", err);
+    return [];
+  }
+}
+
+export function getOwnerEmployeeById(id) {
+  try {
+    return db.getFirstSync("SELECT * FROM owner_employees WHERE id = ?", [id]) || null;
+  } catch (err) {
+    console.error("[DB] getOwnerEmployeeById error:", err);
+    return null;
+  }
+}
+
+export function deleteOwnerEmployee(id) {
+  try {
+    logDeleteHistory("owner_employees", id, "Employees");
+    db.runSync("DELETE FROM owner_employees WHERE id = ?", [id]);
+    recordDeletion("owner_employees", id);
+    return true;
+  } catch (err) {
+    console.error("[DB] deleteOwnerEmployee error:", err);
+    return false;
   }
 }
 

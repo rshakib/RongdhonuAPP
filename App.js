@@ -119,6 +119,11 @@ import DatabaseExplorerScreen from './screens/DatabaseExplorerScreen';
 import TableViewerScreen from './screens/TableViewerScreen';
 import RowDetailScreen from './screens/RowDetailScreen';
 
+import OwnerFinanceDashboard from './screens/OwnerFinanceDashboard';
+import EmployeeListScreen from './screens/EmployeeListScreen';
+import AddEmployeeScreen from './screens/AddEmployeeScreen';
+import EmployeeDetailScreen from './screens/EmployeeDetailScreen';
+
 
 // Default Restaurant Menu (56 items)
 const defaultMenu = [
@@ -245,6 +250,7 @@ export default function App() {
   // Navigation State
   const [currentScreen, setCurrentScreen] = useState('DASHBOARD'); // 'DASHBOARD', 'TABLE_DETAIL', 'PAYMENT_SUCCESS', 'DAILY_SUBMIT', 'ADD_ITEM', 'PAYMENT_CHECKOUT'
   const [selectedTableId, setSelectedTableId] = useState(null);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
   const [paymentAmount, setPaymentAmount] = useState(0); // Total due amount
   const [deliveryCharge, setDeliveryCharge] = useState(0); // Optional delivery charge
   const [changeMoneyGiven, setChangeMoneyGiven] = useState(0); // Change money given to rider
@@ -1345,6 +1351,7 @@ export default function App() {
               isDailySubmitted={isDailySubmitted}
               onDeleteActiveOrder={handleDeleteActiveOrder}
               onDeleteDoneOrder={handleDeleteDoneOrder}
+              onNavigateToOwnerFinance={() => setCurrentScreen('OWNER_FINANCE_DASHBOARD')}
             />
           );
         } else {
@@ -1663,6 +1670,65 @@ export default function App() {
         } else {
           return null;
         }
+
+      case 'OWNER_FINANCE_DASHBOARD':
+        return (
+          <OwnerFinanceDashboard
+            userRole={userRole}
+            onBack={() => setCurrentScreen('DASHBOARD')}
+            onNavigateToEmployees={() => setCurrentScreen('EMPLOYEE_LIST')}
+          />
+        );
+
+      case 'EMPLOYEE_LIST':
+        return (
+          <EmployeeListScreen
+            userRole={userRole}
+            onBack={() => setCurrentScreen('OWNER_FINANCE_DASHBOARD')}
+            onAddEmployee={() => {
+              setSelectedEmployeeId(null);
+              setCurrentScreen('ADD_EMPLOYEE');
+            }}
+            onSelectEmployee={(empId) => {
+              setSelectedEmployeeId(empId);
+              setCurrentScreen('EMPLOYEE_DETAIL');
+            }}
+          />
+        );
+
+      case 'ADD_EMPLOYEE':
+        return (
+          <AddEmployeeScreen
+            userRole={userRole}
+            employeeId={selectedEmployeeId}
+            onBack={() => {
+              if (selectedEmployeeId) {
+                setCurrentScreen('EMPLOYEE_DETAIL');
+              } else {
+                setCurrentScreen('EMPLOYEE_LIST');
+              }
+            }}
+            onSaveSuccess={() => {
+              setCurrentScreen('EMPLOYEE_LIST');
+              refreshData();
+            }}
+          />
+        );
+
+      case 'EMPLOYEE_DETAIL':
+        return (
+          <EmployeeDetailScreen
+            userRole={userRole}
+            employeeId={selectedEmployeeId}
+            onBack={() => setCurrentScreen('EMPLOYEE_LIST')}
+            onEditEmployee={() => setCurrentScreen('ADD_EMPLOYEE')}
+            onDeleteSuccess={() => {
+              setSelectedEmployeeId(null);
+              setCurrentScreen('EMPLOYEE_LIST');
+              refreshData();
+            }}
+          />
+        );
 
       default:
         return null;
