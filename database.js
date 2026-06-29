@@ -580,6 +580,27 @@ const TABLE_SCHEMAS = {
       is_synced INTEGER DEFAULT 0,
       FOREIGN KEY (employee_id) REFERENCES owner_employees(id) ON DELETE CASCADE
     );
+  `,
+  owner_expenses: `
+    CREATE TABLE IF NOT EXISTS owner_expenses (
+      id TEXT PRIMARY KEY,
+      category TEXT NOT NULL,
+      amount REAL NOT NULL,
+      expense_date TEXT NOT NULL,
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      is_synced INTEGER DEFAULT 0
+    );
+  `,
+  owner_deposits: `
+    CREATE TABLE IF NOT EXISTS owner_deposits (
+      id TEXT PRIMARY KEY,
+      month TEXT NOT NULL,
+      amount REAL NOT NULL,
+      created_at TEXT NOT NULL,
+      is_synced INTEGER DEFAULT 0
+    );
   `
 };
 
@@ -2046,7 +2067,7 @@ export async function syncLowFrequencyCollections() {
   isPullingSyncLow = true;
   let hasChanges = false;
   try {
-    const lowFreq = ['users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 'app_config', 'expenses', 'eja_history', 'daily_submit', 'supplier_due', 'supplier_due_history', 'supplier_payment_ledger', 'delete_history', 'owner_employees', 'owner_salary_ledger'];
+    const lowFreq = ['users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 'app_config', 'expenses', 'eja_history', 'daily_submit', 'supplier_due', 'supplier_due_history', 'supplier_payment_ledger', 'delete_history', 'owner_employees', 'owner_salary_ledger', 'owner_expenses', 'owner_deposits'];
     incrementReadCounter('lowFrequency', lowFreq.length);
     hasChanges = await traceSyncOperation('syncLowFrequencyCollections', () => syncCollections(lowFreq, 'Low Frequency Sync'));
   } catch (err) {
@@ -2147,13 +2168,13 @@ function fromFirestoreDocument(doc) {
 
 export async function restoreDatabaseFromCloud() {
   // 1. Collections that must always be fully restored
-  const alwaysFull = ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due', 'owner_employees', 'owner_salary_ledger'];
+  const alwaysFull = ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due', 'owner_employees', 'owner_salary_ledger', 'owner_deposits'];
   
   // 2. Collections that should be restored for the last 31 days on fresh install
   const recentOnly = [
     'orders', 'order_items', 'payments', 'expenses', 'deliveries', 
     'daily_submit', 'daily_summary', 'due_payments', 'eja_history', 
-    'off_days', 'weather_data', 'supplier_payment_ledger'
+    'off_days', 'weather_data', 'supplier_payment_ledger', 'owner_expenses'
   ];
 
   console.log("[Restore] Starting Smart History Restoration (31-Day Window)...");
@@ -4545,9 +4566,10 @@ export function inspectDatabaseStats() {
     'supplier_payment_ledger',
     'delete_history',
     'notifications',
-    'sync_queue',
     'owner_employees',
-    'owner_salary_ledger'
+    'owner_salary_ledger',
+    'owner_expenses',
+    'owner_deposits'
   ];
   
   const stats = {};
@@ -4901,7 +4923,7 @@ export async function executeManualPush() {
       'users', 'restaurant_tables', 'orders', 'order_items', 'payments', 
       'expenses', 'deliveries', 'daily_submit', 'daily_summary', 
       'due_payments', 'eja_history', 'off_days', 'weather_data', 
-      'supplier_payment_ledger', 'notifications', 'app_config', 'ml_export_history', 'deletions', 'delete_history', 'owner_employees', 'owner_salary_ledger'
+      'supplier_payment_ledger', 'notifications', 'app_config', 'ml_export_history', 'deletions', 'delete_history', 'owner_employees', 'owner_salary_ledger', 'owner_expenses', 'owner_deposits'
     ];
     
     let countEnqueued = 0;
@@ -5185,6 +5207,160 @@ export function getLastEmployeePayment(employeeId) {
     ) || null;
   } catch (err) {
     console.error("[DB] getLastEmployeePayment error:", err);
+    return null;
+  }
+}
+
+export function saveOwnerExpense(expense) {
+  try {
+    const now = new Date().toISOString();
+    const id = expense.id || `owexp_${Date.now()}`;
+    db.runSync(
+      `INSERT OR REPLACE INTO owner_expenses (id, category, amount, expense_date, notes, created_at, updated_at, is_synced)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
+      [id, expense.category, expense.amount, expense.expense_date, expense.notes || '', expense.created_at || now, now]
+    );
+    enqueueSync("owner_expenses", id, "INSERT");
+    return id;
+  } catch (err) {
+    console.error("[DB] saveOwnerExpense error:", err);
+    return null;
+  }
+}
+
+export function updateOwnerExpense(expense) {
+  try {
+    const now = new Date().toISOString();
+    db.runSync(
+      `UPDATE owner_expenses SET category = ?, amount = ?, expense_date = ?, notes = ?, updated_at = ?, is_synced = 0
+       WHERE id = ?`,
+      [expense.category, expense.amount, expense.expense_date, expense.notes || '', now, expense.id]
+    );
+    enqueueSync("owner_expenses", expense.id, "UPDATE");
+    return true;
+  } catch (err) {
+    console.error("[DB] updateOwnerExpense error:", err);
+    return false;
+  }
+}
+
+export function getOwnerExpenses(month = '') {
+  try {
+    if (month) {
+      return db.getAllSync(
+        "SELECT * FROM owner_expenses WHERE expense_date LIKE ? ORDER BY expense_date DESC, created_at DESC",
+        [`${month}%`]
+      );
+    } else {
+      return db.getAllSync("SELECT * FROM owner_expenses ORDER BY expense_date DESC, created_at DESC");
+    }
+  } catch (err) {
+    console.error("[DB] getOwnerExpenses error:", err);
+    return [];
+  }
+}
+
+export function deleteOwnerExpense(id) {
+  try {
+    logDeleteHistory("owner_expenses", id, "OwnerExpenses");
+    db.runSync("DELETE FROM owner_expenses WHERE id = ?", [id]);
+    recordDeletion("owner_expenses", id);
+    return true;
+  } catch (err) {
+    console.error("[DB] deleteOwnerExpense error:", err);
+    return false;
+  }
+}
+
+export function getOwnerExpenseSummary(month) {
+  try {
+    // 1. Total
+    const totalRow = db.getFirstSync(
+      "SELECT SUM(amount) as total FROM owner_expenses WHERE expense_date LIKE ?",
+      [`${month}%`]
+    );
+    const total = totalRow ? (totalRow.total || 0) : 0;
+
+    // 2. Utilities (Electricity, Gas, Internet)
+    const utilRow = db.getFirstSync(
+      `SELECT SUM(amount) as total FROM owner_expenses 
+       WHERE expense_date LIKE ? 
+         AND category IN ('⚡ বিদ্যুৎ বিল', '🔥 গ্যাস বিল', '🌐 ইন্টারনেট বিল')`,
+      [`${month}%`]
+    );
+    const utilities = utilRow ? (utilRow.total || 0) : 0;
+
+    // 3. Bazar
+    const bazarRow = db.getFirstSync(
+      "SELECT SUM(amount) as total FROM owner_expenses WHERE expense_date LIKE ? AND category = '🛒 বাজার'",
+      [`${month}%`]
+    );
+    const bazar = bazarRow ? (bazarRow.total || 0) : 0;
+
+    // 4. Breakdown (Dynamic Group By)
+    const breakdown = {};
+    const rows = db.getAllSync(
+      "SELECT category, SUM(amount) as total FROM owner_expenses WHERE expense_date LIKE ? GROUP BY category",
+      [`${month}%`]
+    );
+    rows.forEach(r => {
+      breakdown[r.category] = r.total || 0;
+    });
+
+    return { total, utilities, bazar, breakdown };
+  } catch (err) {
+    console.error("[DB] getOwnerExpenseSummary error:", err);
+    return { total: 0, utilities: 0, bazar: 0, breakdown: {} };
+  }
+}
+
+export function getMonthlyTotalSalaryPaid(month) {
+  try {
+    const row = db.getFirstSync(
+      `SELECT SUM(amount) as total_paid FROM owner_salary_ledger 
+       WHERE payment_type IN ('Advance', 'Salary', 'Bonus') 
+         AND payment_date LIKE ?`,
+      [`${month}%`]
+    );
+    return row ? (row.total_paid || 0) : 0;
+  } catch (err) {
+    console.error("[DB] getMonthlyTotalSalaryPaid error:", err);
+    return 0;
+  }
+}
+
+export function saveOwnerDeposit(deposit) {
+  try {
+    const now = new Date().toISOString();
+    const id = deposit.id || `owdep_${Date.now()}`;
+    db.runSync(
+      `INSERT OR REPLACE INTO owner_deposits (id, month, amount, created_at)
+       VALUES (?, ?, ?, ?)`,
+      [id, deposit.month, deposit.amount, now]
+    );
+    enqueueSync("owner_deposits", id, "INSERT");
+    return id;
+  } catch (err) {
+    console.error("[DB] saveOwnerDeposit error:", err);
+    return null;
+  }
+}
+
+export function getTotalOwnerDeposits() {
+  try {
+    const row = db.getFirstSync("SELECT SUM(amount) as total FROM owner_deposits");
+    return row ? (row.total || 0) : 0;
+  } catch (err) {
+    console.error("[DB] getTotalOwnerDeposits error:", err);
+    return 0;
+  }
+}
+
+export function getOwnerDepositByMonth(month) {
+  try {
+    return db.getFirstSync("SELECT * FROM owner_deposits WHERE month = ?", [month]) || null;
+  } catch (err) {
+    console.error("[DB] getOwnerDepositByMonth error:", err);
     return null;
   }
 }

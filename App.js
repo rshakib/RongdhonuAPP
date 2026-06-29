@@ -124,6 +124,7 @@ import EmployeeListScreen from './screens/EmployeeListScreen';
 import AddEmployeeScreen from './screens/AddEmployeeScreen';
 import EmployeeDetailScreen from './screens/EmployeeDetailScreen';
 import AddSalaryPaymentScreen from './screens/AddSalaryPaymentScreen';
+import OwnerExpenseScreen from './screens/OwnerExpenseScreen';
 
 
 // Default Restaurant Menu (56 items)
@@ -1678,6 +1679,16 @@ export default function App() {
             userRole={userRole}
             onBack={() => setCurrentScreen('DASHBOARD')}
             onNavigateToEmployees={() => setCurrentScreen('EMPLOYEE_LIST')}
+            onNavigateToExpenses={() => setCurrentScreen('OWNER_EXPENSE')}
+          />
+        );
+
+      case 'OWNER_EXPENSE':
+        return (
+          <OwnerExpenseScreen
+            userRole={userRole}
+            onBack={() => setCurrentScreen('OWNER_FINANCE_DASHBOARD')}
+            refreshData={refreshData}
           />
         );
 

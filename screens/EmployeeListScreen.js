@@ -44,6 +44,7 @@ export default function EmployeeListScreen({
   const [summaries, setSummaries] = useState({}); // empId -> { paid, due }
   const [expandedEmployees, setExpandedEmployees] = useState({}); // empId -> boolean
   const [ledgers, setLedgers] = useState({}); // empId -> ledgerArray
+  const [isClosed, setIsClosed] = useState(false);
 
   // Pay Modal States
   const [payModalVisible, setPayModalVisible] = useState(false);
@@ -63,7 +64,7 @@ export default function EmployeeListScreen({
   const loadEmployees = () => {
     setLoading(true);
     try {
-      const { getOwnerEmployees, getEmployeeMonthlySummary } = require('../database');
+      const { getOwnerEmployees, getEmployeeMonthlySummary, getOwnerDepositByMonth } = require('../database');
       const list = getOwnerEmployees();
       setEmployees(list);
 
@@ -74,6 +75,10 @@ export default function EmployeeListScreen({
         tempSummaries[emp.id] = getEmployeeMonthlySummary(emp.id, currentMonth);
       });
       setSummaries(tempSummaries);
+
+      // Check if current calendar month is closed
+      const closed = getOwnerDepositByMonth(currentMonth) !== null;
+      setIsClosed(closed);
     } catch (err) {
       console.error("[EmployeeListScreen] Error loading employees:", err);
     } finally {
@@ -101,6 +106,10 @@ export default function EmployeeListScreen({
   };
 
   const handleOpenPayModal = (emp) => {
+    if (isClosed) {
+      Alert.alert("সীমাবদ্ধতা", "এই মাসের হিসাব বন্ধ করা হয়েছে (Read-Only)");
+      return;
+    }
     setSelectedEmp(emp);
     setPayAmount('');
     setPayType('Salary');
@@ -109,6 +118,11 @@ export default function EmployeeListScreen({
   };
 
   const handleSavePayment = () => {
+    if (isClosed) {
+      Alert.alert("সীমাবদ্ধতা", "এই মাসের হিসাব বন্ধ করা হয়েছে (Read-Only)");
+      return;
+    }
+
     const numAmount = parseFloat(payAmount) || 0;
     if (numAmount <= 0) {
       Alert.alert("ইনপুট ত্রুটি", "পরিশোধের পরিমাণ অবশ্যই ০ থেকে বেশি হতে হবে।");
@@ -210,6 +224,11 @@ export default function EmployeeListScreen({
   };
 
   const handleLongPressLedgerItem = (entry, empId) => {
+    if (isClosed) {
+      Alert.alert("সীমাবদ্ধতা", "এই মাসের হিসাব বন্ধ করা হয়েছে (Read-Only)");
+      return;
+    }
+
     Alert.alert(
       "পেমেন্ট এন্ট্রি ডিলিট",
       `আপনি কি নিশ্চিতভাবে ${entry.payment_date} তারিখের ${entry.payment_type} এন্ট্রিটি (৳${entry.amount}) মুছে ফেলতে চান?`,
@@ -262,7 +281,7 @@ export default function EmployeeListScreen({
 
     return (
       <View style={[styles.employeeCard, !isActive && styles.inactiveCardBorder]}>
-        {/* Main Tappable Card Body (Opens detailed profile) */}
+        {/* Main Tappable Card Body */}
         <TouchableOpacity
           style={styles.cardInfoSection}
           onPress={() => handleToggleLedger(item.id)}
@@ -300,7 +319,7 @@ export default function EmployeeListScreen({
               <Text style={styles.summaryValuePaid}>৳{summary.paid.toLocaleString()}</Text>
             </View>
             <View style={styles.summaryCol}>
-              <Text style={styles.summaryLabel}>অবশিষ্ট বকেয়া:</Text>
+              <Text style={styles.summaryLabel}>অবशिष्ट বকেয়া:</Text>
               <Text style={styles.summaryValueDue}>৳{summary.due.toLocaleString()}</Text>
             </View>
           </View>
@@ -308,16 +327,18 @@ export default function EmployeeListScreen({
 
         {/* Card Action Buttons Row */}
         <View style={styles.cardActionsRow}>
-          <TouchableOpacity
-            style={styles.payBtn}
-            onPress={() => handleOpenPayModal(item)}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.payBtnText}>💰 Pay</Text>
-          </TouchableOpacity>
+          {!isClosed && (
+            <TouchableOpacity
+              style={styles.payBtn}
+              onPress={() => handleOpenPayModal(item)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.payBtnText}>💰 Pay</Text>
+            </TouchableOpacity>
+          )}
 
           <TouchableOpacity
-            style={[styles.ledgerBtn, isExpanded && styles.ledgerBtnActive]}
+            style={[styles.ledgerBtn, isExpanded && styles.ledgerBtnActive, isClosed && { borderLeftWidth: 0 }]}
             onPress={() => handleToggleLedger(item.id)}
             activeOpacity={0.8}
           >
@@ -332,7 +353,9 @@ export default function EmployeeListScreen({
           <View style={styles.inlineLedgerSection}>
             <View style={styles.ledgerHeaderRow}>
               <Text style={styles.ledgerSectionTitle}>▼ Salary History (Ledger)</Text>
-              <Text style={styles.ledgerHelperText}>মুছতে লং-প্রেস করে রাখুন</Text>
+              {!isClosed && (
+                <Text style={styles.ledgerHelperText}>মুছতে লং-প্রেস করে রাখুন</Text>
+              )}
             </View>
             {employeeLedger.length === 0 ? (
               <Text style={styles.emptyLedgerText}>কোনো লেনদেনের তথ্য পাওয়া যায়নি।</Text>
@@ -374,9 +397,16 @@ export default function EmployeeListScreen({
           <Text style={styles.backButtonText}>◁ ফিরে যান</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>👥 বেতন ও কর্মচারী</Text>
-        <TouchableOpacity style={styles.addButton} onPress={onAddEmployee}>
-          <Text style={styles.addButtonText}>➕ নতুন</Text>
-        </TouchableOpacity>
+        
+        {!isClosed ? (
+          <TouchableOpacity style={styles.addButton} onPress={onAddEmployee}>
+            <Text style={styles.addButtonText}>➕ নতুন</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.closedHeaderBadge}>
+            <Text style={styles.closedHeaderBadgeText}>🔒 CLOSED</Text>
+          </View>
+        )}
       </View>
 
       {/* Search Input */}
@@ -544,6 +574,19 @@ const styles = StyleSheet.create({
   addButtonText: {
     color: '#000000',
     fontSize: 13,
+    fontWeight: 'bold',
+  },
+  closedHeaderBadge: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#1E1E1E',
+    borderWidth: 1,
+    borderColor: '#EF4444',
+  },
+  closedHeaderBadgeText: {
+    color: '#EF4444',
+    fontSize: 11,
     fontWeight: 'bold',
   },
   searchContainer: {
