@@ -346,11 +346,7 @@ export default function OwnerFinanceDashboard({
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Total Owner Deposit Card */}
-        <View style={styles.depositBox}>
-          <Text style={styles.depositLabel}>🏦 সর্বমোট ওনার ডিপোজিট (Total Owner Deposit)</Text>
-          <Text style={styles.depositValue}>৳{metrics.totalDeposit.toLocaleString()}</Text>
-        </View>
+
 
         {/* Monthly Summary Statistics */}
         <Text style={styles.sectionTitle}>ফাইনান্সিয়াল ওভারভিউ ({getMonthNameBangla(currentMonth)})</Text>
