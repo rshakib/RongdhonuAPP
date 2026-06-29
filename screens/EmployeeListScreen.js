@@ -54,7 +54,7 @@ export default function EmployeeListScreen({
   const [payNotes, setPayNotes] = useState('');
 
   useEffect(() => {
-    if (userRole === 'owner') {
+    if (userRole === 'owner' || userRole === 'admin') {
       loadEmployees();
     } else {
       setLoading(false);
@@ -281,7 +281,7 @@ export default function EmployeeListScreen({
 
     return (
       <View style={[styles.employeeCard, !isActive && styles.inactiveCardBorder]}>
-        {/* Main Tappable Card Body */}
+        {/* Main Tappable Card Body (Compact mode) */}
         <TouchableOpacity
           style={styles.cardInfoSection}
           onPress={() => handleToggleLedger(item.id)}
@@ -297,31 +297,16 @@ export default function EmployeeListScreen({
             </View>
           </View>
 
-          <View style={styles.cardMetaGrid}>
-            <View style={styles.metaCol}>
-              <Text style={styles.metaLabel}>পদবী:</Text>
-              <Text style={styles.metaValue}>{item.designation || 'N/A'}</Text>
-            </View>
-            <View style={styles.metaCol}>
-              <Text style={styles.metaLabel}>মাসিক বেতন:</Text>
-              <Text style={[styles.metaValue, { color: '#FFB703', fontWeight: 'bold' }]}>
-                ৳{item.monthly_salary.toLocaleString()}
-              </Text>
-            </View>
+          <View style={styles.compactRow}>
+            <Text style={styles.designationLabel}>{item.designation || 'পদবী উল্লেখ নেই'}</Text>
+            <Text style={styles.bulletSeparator}>•</Text>
+            <Text style={styles.salaryLabel}>বেতন: ৳{item.monthly_salary.toLocaleString()}</Text>
           </View>
 
-          <View style={styles.divider} />
-
-          {/* Month progress */}
-          <View style={styles.financeSummaryGrid}>
-            <View style={styles.summaryCol}>
-              <Text style={styles.summaryLabel}>এই মাসে পরিশোধ:</Text>
-              <Text style={styles.summaryValuePaid}>৳{summary.paid.toLocaleString()}</Text>
-            </View>
-            <View style={styles.summaryCol}>
-              <Text style={styles.summaryLabel}>অবशिष्ट বকেয়া:</Text>
-              <Text style={styles.summaryValueDue}>৳{summary.due.toLocaleString()}</Text>
-            </View>
+          <View style={[styles.compactRow, { marginTop: 4 }]}>
+            <Text style={styles.paidLabel}>পরিশোধ: ৳{summary.paid.toLocaleString()}</Text>
+            <Text style={styles.bulletSeparator}>•</Text>
+            <Text style={styles.dueLabel}>বকেয়া: ৳{summary.due.toLocaleString()}</Text>
           </View>
         </TouchableOpacity>
 
@@ -605,37 +590,39 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   listContent: {
-    padding: 16,
-    gap: 16,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 24,
+    gap: 12,
   },
   employeeCard: {
     backgroundColor: '#161616',
     borderWidth: 1,
     borderColor: '#262626',
-    borderRadius: 20,
+    borderRadius: 16,
     overflow: 'hidden',
   },
   inactiveCardBorder: {
     borderColor: 'rgba(239, 68, 68, 0.3)',
   },
   cardInfoSection: {
-    padding: 16,
+    padding: 12,
   },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 6,
   },
   employeeName: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 'bold',
   },
   statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
   activeBadge: {
     backgroundColor: 'rgba(16, 185, 129, 0.15)',
@@ -644,7 +631,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(239, 68, 68, 0.15)',
   },
   statusText: {
-    fontSize: 11,
+    fontSize: 9,
     fontWeight: 'bold',
   },
   activeText: {
@@ -653,53 +640,39 @@ const styles = StyleSheet.create({
   inactiveText: {
     color: '#EF4444',
   },
-  cardMetaGrid: {
+  compactRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
+    alignItems: 'center',
+    flexWrap: 'wrap',
   },
-  metaCol: {
-    gap: 4,
+  bulletSeparator: {
+    marginHorizontal: 6,
+    color: '#444',
   },
-  metaLabel: {
-    color: '#888',
-    fontSize: 11,
+  designationLabel: {
+    color: '#AAA',
+    fontSize: 12,
   },
-  metaValue: {
-    color: '#FFFFFF',
-    fontSize: 13,
+  salaryLabel: {
+    color: '#FFB703',
+    fontWeight: '600',
+    fontSize: 12,
   },
-  divider: {
-    height: 1,
-    backgroundColor: '#262626',
-    marginBottom: 12,
-  },
-  financeSummaryGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  summaryCol: {
-    gap: 4,
-  },
-  summaryLabel: {
-    color: '#888',
-    fontSize: 11,
-  },
-  summaryValuePaid: {
+  paidLabel: {
     color: '#10B981',
-    fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '500',
+    fontSize: 11,
   },
-  summaryValueDue: {
+  dueLabel: {
     color: '#EF4444',
-    fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '500',
+    fontSize: 11,
   },
   cardActionsRow: {
     flexDirection: 'row',
     borderTopWidth: 1,
-    borderColor: '#262626',
-    height: 48,
+    borderColor: '#222',
+    height: 38,
   },
   payBtn: {
     flex: 1,
@@ -707,12 +680,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(255, 183, 3, 0.05)',
     borderRightWidth: 1,
-    borderColor: '#262626',
+    borderColor: '#222',
   },
   payBtnText: {
     color: '#FFB703',
     fontWeight: 'bold',
-    fontSize: 14,
+    fontSize: 12,
   },
   ledgerBtn: {
     flex: 1,
@@ -725,7 +698,7 @@ const styles = StyleSheet.create({
   ledgerBtnText: {
     color: '#FFFFFF',
     fontWeight: 'bold',
-    fontSize: 14,
+    fontSize: 12,
   },
   ledgerBtnTextActive: {
     color: '#FFB703',
@@ -733,61 +706,61 @@ const styles = StyleSheet.create({
   inlineLedgerSection: {
     backgroundColor: '#0D0D0D',
     borderTopWidth: 1,
-    borderColor: '#262626',
-    padding: 16,
+    borderColor: '#222',
+    padding: 12,
   },
   ledgerHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   ledgerSectionTitle: {
     color: '#888',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 'bold',
   },
   ledgerHelperText: {
     color: '#444',
-    fontSize: 10,
+    fontSize: 9,
     fontStyle: 'italic',
   },
   emptyLedgerText: {
     color: '#666',
-    fontSize: 12,
+    fontSize: 11,
     fontStyle: 'italic',
     textAlign: 'center',
-    paddingVertical: 12,
+    paddingVertical: 8,
   },
   ledgerList: {
-    gap: 10,
+    gap: 8,
   },
   ledgerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#161616',
-    borderRadius: 10,
-    padding: 12,
+    borderRadius: 8,
+    padding: 10,
     borderWidth: 1,
     borderColor: '#222',
   },
   ledgerRowDate: {
     color: '#888',
-    fontSize: 10,
+    fontSize: 9,
   },
   ledgerRowType: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 'bold',
   },
   ledgerRowNotes: {
     color: '#888',
-    fontSize: 11,
+    fontSize: 10,
     fontStyle: 'italic',
   },
   ledgerRowAmount: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 'bold',
   },
   amountPositive: {

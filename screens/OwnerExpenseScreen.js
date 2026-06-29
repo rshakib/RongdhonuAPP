@@ -328,7 +328,7 @@ export default function OwnerExpenseScreen({
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={onBack}>
-          <Text style={styles.backButtonText}>◁ ওনার ড্যাশবোর্ড</Text>
+          <Text style={styles.backButtonText}>◁ ফিরে যান</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="tail">ওনার খরচ</Text>
         
@@ -360,9 +360,9 @@ export default function OwnerExpenseScreen({
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Monthly Summary Card */}
+        {/* Large monthly summary card on top (Modern UI redesign) */}
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryTitle}>📊 {getMonthNameBangla(currentMonth)} এর বিবরণী</Text>
+          <Text style={styles.summaryTitle}>📊 {getMonthNameBangla(currentMonth)} এর হিসাব বিবরণী</Text>
           <View style={styles.summaryStatsGrid}>
             <View style={styles.summaryStatBox}>
               <Text style={styles.statLabel}>মোট খরচ</Text>
@@ -370,16 +370,16 @@ export default function OwnerExpenseScreen({
             </View>
             <View style={styles.summaryStatBox}>
               <Text style={styles.statLabel}>ইউটিলিটি বিল</Text>
-              <Text style={[styles.statValue, { color: '#34D399' }]}>৳{summary.utilities.toLocaleString()}</Text>
+              <Text style={[styles.statValue, { color: '#60A5FA' }]}>৳{summary.utilities.toLocaleString()}</Text>
             </View>
             <View style={styles.summaryStatBox}>
               <Text style={styles.statLabel}>মোট বাজার</Text>
-              <Text style={[styles.statValue, { color: '#60A5FA' }]}>৳{summary.bazar.toLocaleString()}</Text>
+              <Text style={[styles.statValue, { color: '#34D399' }]}>৳{summary.bazar.toLocaleString()}</Text>
             </View>
           </View>
 
-          {/* Breakdown Thin progress bars */}
-          <Text style={styles.breakdownHeader}>বিভাগ ভিত্তিক খরচ (Category Breakdown)</Text>
+          {/* Breakdown thin progress bars */}
+          <Text style={styles.breakdownHeader}>ক্যাটাগরি ভিত্তিক খরচ</Text>
           <View style={styles.breakdownList}>
             {Object.keys(summary.breakdown).map(catLabel => {
               const amount = summary.breakdown[catLabel] || 0;
@@ -398,7 +398,7 @@ export default function OwnerExpenseScreen({
               );
             })}
             {summary.total === 0 ? (
-              <Text style={styles.noBreakdownText}>এই মাসে কোনো খরচের রেকর্ড নেই।</Text>
+              <Text style={styles.noBreakdownText}>এই মাসে কোনো খরচ এন্ট্রি নেই।</Text>
             ) : null}
           </View>
         </View>
@@ -414,12 +414,13 @@ export default function OwnerExpenseScreen({
           />
         </View>
 
-        {/* Expenses List */}
-        <Text style={styles.sectionTitle}>খরচসমূহের তালিকা (Expenses)</Text>
+        {/* Modern cards list */}
+        <Text style={styles.sectionTitle}>ব্যক্তিগত খরচ তালিকা</Text>
         {loading ? (
           <ActivityIndicator size="large" color="#FFB703" style={{ marginVertical: 20 }} />
         ) : filteredExpenses.length === 0 ? (
           <View style={styles.emptyContainer}>
+            <Text style={styles.emptyEmoji}>📦</Text>
             <Text style={styles.emptyText}>কোনো খরচের এন্ট্রি পাওয়া যায়নি।</Text>
           </View>
         ) : (
@@ -432,7 +433,7 @@ export default function OwnerExpenseScreen({
                       <Text style={styles.iconText}>{getCategoryIcon(item.category)}</Text>
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.categoryName}>{item.category}</Text>
+                      <Text style={styles.categoryName} numberOfLines={1}>{item.category}</Text>
                       <Text style={styles.expenseDate}>{item.expense_date}</Text>
                     </View>
                   </View>
@@ -441,17 +442,17 @@ export default function OwnerExpenseScreen({
 
                 {item.notes ? (
                   <View style={styles.notesContainer}>
-                    <Text style={styles.notesText}>📝 {item.notes}</Text>
+                    <Text style={styles.notesText}>{item.notes}</Text>
                   </View>
                 ) : null}
 
                 {!isClosed ? (
                   <View style={styles.cardActions}>
                     <TouchableOpacity style={styles.editBtn} onPress={() => handleOpenEditModal(item)}>
-                      <Text style={styles.editBtnText}>✏️ এডিট</Text>
+                      <Text style={styles.editBtnText}>✏️ Edit</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.deleteBtn} onPress={() => handleDelete(item)}>
-                      <Text style={styles.deleteBtnText}>🗑️ ডিলিট</Text>
+                      <Text style={styles.deleteBtnText}>🗑️ Delete</Text>
                     </TouchableOpacity>
                   </View>
                 ) : null}
@@ -537,7 +538,7 @@ export default function OwnerExpenseScreen({
                 <Text style={styles.inputLabel}>অতিরিক্ত বিবরণ / নোট</Text>
                 <TextInput
                   style={[styles.modalInput, styles.textArea]}
-                  placeholder="খরচের বিবরণ যেমন: বিল পরিশোধ"
+                  placeholder="খরচের বিবরণ যেমন: বিদ্যুৎ বিল পরিশোধ"
                   placeholderTextColor="#666"
                   value={formNotes}
                   onChangeText={setFormNotes}
@@ -627,22 +628,22 @@ const styles = StyleSheet.create({
   },
   backButton: {
     paddingVertical: 8,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     borderRadius: 8,
     backgroundColor: '#1E1E1E',
   },
   backButtonText: {
     color: '#FFFFFF',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
   },
   headerTitle: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: 'bold',
-    textAlign: 'center',
     flex: 1,
-    marginHorizontal: 8,
+    textAlign: 'center',
+    marginHorizontal: 12,
   },
   addButton: {
     paddingVertical: 8,
@@ -694,58 +695,60 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   scrollContent: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 32,
     gap: 16,
   },
   summaryCard: {
     backgroundColor: '#161616',
     borderWidth: 1,
     borderColor: '#262626',
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: 16,
+    padding: 16,
   },
   summaryTitle: {
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: 'bold',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   summaryStatsGrid: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 10,
-    marginBottom: 20,
+    gap: 8,
+    marginBottom: 16,
   },
   summaryStatBox: {
     flex: 1,
     backgroundColor: '#0D0D0D',
     borderWidth: 1,
     borderColor: '#222',
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 10,
+    padding: 10,
     alignItems: 'center',
   },
   statLabel: {
     color: '#888',
-    fontSize: 10,
+    fontSize: 9,
     marginBottom: 4,
   },
   statValue: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: 'bold',
   },
   breakdownHeader: {
     color: '#888',
     fontSize: 11,
     fontWeight: 'bold',
-    marginBottom: 12,
+    marginBottom: 10,
     textTransform: 'uppercase',
   },
   breakdownList: {
-    gap: 10,
+    gap: 8,
   },
   breakdownRow: {
-    gap: 6,
+    gap: 4,
   },
   breakdownLabelRow: {
     flexDirection: 'row',
@@ -753,62 +756,62 @@ const styles = StyleSheet.create({
   },
   breakdownName: {
     color: '#AAA',
-    fontSize: 12,
+    fontSize: 11,
   },
   breakdownAmt: {
     color: '#FFFFFF',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
   progressTrack: {
-    height: 6,
+    height: 4,
     backgroundColor: '#262626',
-    borderRadius: 3,
+    borderRadius: 2,
     overflow: 'hidden',
   },
   progressBar: {
     height: '100%',
     backgroundColor: '#FFB703',
-    borderRadius: 3,
+    borderRadius: 2,
   },
   noBreakdownText: {
     color: '#666',
-    fontSize: 12,
+    fontSize: 11,
     fontStyle: 'italic',
     textAlign: 'center',
-    paddingVertical: 10,
+    paddingVertical: 6,
   },
   searchContainer: {
-    marginVertical: 4,
+    marginVertical: 2,
   },
   searchInput: {
     backgroundColor: '#161616',
     borderWidth: 1,
     borderColor: '#262626',
     borderRadius: 12,
-    height: 48,
+    height: 46,
     paddingHorizontal: 16,
     color: '#FFFFFF',
     fontSize: 14,
   },
   sectionTitle: {
     color: '#888',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 'bold',
     textTransform: 'uppercase',
     letterSpacing: 1.2,
-    marginBottom: 6,
+    marginBottom: 2,
   },
   expenseList: {
-    gap: 12,
+    gap: 10,
   },
   expenseCard: {
     backgroundColor: '#161616',
     borderWidth: 1,
     borderColor: '#262626',
-    borderRadius: 16,
-    padding: 16,
-    gap: 12,
+    borderRadius: 14,
+    padding: 12,
+    gap: 8,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -818,13 +821,13 @@ const styles = StyleSheet.create({
   cardLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
     flex: 1,
   },
   iconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#1E1E1E',
     justifyContent: 'center',
     alignItems: 'center',
@@ -832,46 +835,47 @@ const styles = StyleSheet.create({
     borderColor: '#333',
   },
   iconText: {
-    fontSize: 18,
+    fontSize: 16,
   },
   categoryName: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: 'bold',
   },
   expenseDate: {
     color: '#666',
-    fontSize: 11,
-    marginTop: 2,
+    fontSize: 10,
+    marginTop: 1,
   },
   expenseAmount: {
     color: '#FFB703',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: 'bold',
   },
   notesContainer: {
     backgroundColor: '#0D0D0D',
     borderWidth: 1,
     borderColor: '#222',
-    padding: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     borderRadius: 8,
   },
   notesText: {
     color: '#AAA',
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 11,
+    lineHeight: 16,
   },
   cardActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    gap: 12,
+    gap: 8,
     borderTopWidth: 1,
-    borderColor: '#262626',
-    paddingTop: 12,
+    borderColor: '#222',
+    paddingTop: 8,
   },
   editBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
     borderRadius: 6,
     backgroundColor: '#1E1E1E',
     borderWidth: 1,
@@ -879,28 +883,32 @@ const styles = StyleSheet.create({
   },
   editBtnText: {
     color: '#FFFFFF',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
   deleteBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
     borderRadius: 6,
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
     borderWidth: 1,
     borderColor: '#EF4444',
   },
   deleteBtnText: {
     color: '#EF4444',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
   emptyContainer: {
-    paddingVertical: 30,
+    paddingVertical: 32,
     alignItems: 'center',
+    gap: 6,
+  },
+  emptyEmoji: {
+    fontSize: 32,
   },
   emptyText: {
-    color: '#888',
+    color: '#666',
     fontSize: 13,
   },
   accessDeniedContainer: {
