@@ -567,6 +567,19 @@ const TABLE_SCHEMAS = {
       updated_at TEXT NOT NULL,
       is_synced INTEGER DEFAULT 0
     );
+  `,
+  owner_salary_ledger: `
+    CREATE TABLE IF NOT EXISTS owner_salary_ledger (
+      id TEXT PRIMARY KEY,
+      employee_id TEXT NOT NULL,
+      amount REAL NOT NULL,
+      payment_type TEXT NOT NULL,
+      payment_date TEXT NOT NULL,
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      is_synced INTEGER DEFAULT 0,
+      FOREIGN KEY (employee_id) REFERENCES owner_employees(id) ON DELETE CASCADE
+    );
   `
 };
 
@@ -2033,7 +2046,7 @@ export async function syncLowFrequencyCollections() {
   isPullingSyncLow = true;
   let hasChanges = false;
   try {
-    const lowFreq = ['users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 'app_config', 'expenses', 'eja_history', 'daily_submit', 'supplier_due', 'supplier_due_history', 'supplier_payment_ledger', 'delete_history', 'owner_employees'];
+    const lowFreq = ['users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 'app_config', 'expenses', 'eja_history', 'daily_submit', 'supplier_due', 'supplier_due_history', 'supplier_payment_ledger', 'delete_history', 'owner_employees', 'owner_salary_ledger'];
     incrementReadCounter('lowFrequency', lowFreq.length);
     hasChanges = await traceSyncOperation('syncLowFrequencyCollections', () => syncCollections(lowFreq, 'Low Frequency Sync'));
   } catch (err) {
@@ -2134,7 +2147,7 @@ function fromFirestoreDocument(doc) {
 
 export async function restoreDatabaseFromCloud() {
   // 1. Collections that must always be fully restored
-  const alwaysFull = ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due', 'owner_employees'];
+  const alwaysFull = ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due', 'owner_employees', 'owner_salary_ledger'];
   
   // 2. Collections that should be restored for the last 31 days on fresh install
   const recentOnly = [
@@ -4532,9 +4545,9 @@ export function inspectDatabaseStats() {
     'supplier_payment_ledger',
     'delete_history',
     'notifications',
-    'app_config',
     'sync_queue',
-    'owner_employees'
+    'owner_employees',
+    'owner_salary_ledger'
   ];
   
   const stats = {};
@@ -4888,7 +4901,7 @@ export async function executeManualPush() {
       'users', 'restaurant_tables', 'orders', 'order_items', 'payments', 
       'expenses', 'deliveries', 'daily_submit', 'daily_summary', 
       'due_payments', 'eja_history', 'off_days', 'weather_data', 
-      'supplier_payment_ledger', 'notifications', 'app_config', 'ml_export_history', 'deletions', 'delete_history', 'owner_employees'
+      'supplier_payment_ledger', 'notifications', 'app_config', 'ml_export_history', 'deletions', 'delete_history', 'owner_employees', 'owner_salary_ledger'
     ];
     
     let countEnqueued = 0;
@@ -5098,6 +5111,81 @@ export function deleteOwnerEmployee(id) {
   } catch (err) {
     console.error("[DB] deleteOwnerEmployee error:", err);
     return false;
+  }
+}
+
+export function saveSalaryLedgerEntry(entry) {
+  try {
+    const now = new Date().toISOString();
+    const id = entry.id || `led_${Date.now()}`;
+    db.runSync(
+      `INSERT OR REPLACE INTO owner_salary_ledger (id, employee_id, amount, payment_type, payment_date, notes, created_at, is_synced)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
+      [id, entry.employee_id, entry.amount, entry.payment_type, entry.payment_date, entry.notes || '', now]
+    );
+    enqueueSync("owner_salary_ledger", id, "INSERT");
+    return id;
+  } catch (err) {
+    console.error("[DB] saveSalaryLedgerEntry error:", err);
+    return null;
+  }
+}
+
+export function getEmployeeSalaryLedger(employeeId) {
+  try {
+    return db.getAllSync(
+      "SELECT * FROM owner_salary_ledger WHERE employee_id = ? ORDER BY payment_date DESC, created_at DESC",
+      [employeeId]
+    );
+  } catch (err) {
+    console.error("[DB] getEmployeeSalaryLedger error:", err);
+    return [];
+  }
+}
+
+export function deleteSalaryLedgerEntry(id) {
+  try {
+    logDeleteHistory("owner_salary_ledger", id, "SalaryLedger");
+    db.runSync("DELETE FROM owner_salary_ledger WHERE id = ?", [id]);
+    recordDeletion("owner_salary_ledger", id);
+    return true;
+  } catch (err) {
+    console.error("[DB] deleteSalaryLedgerEntry error:", err);
+    return false;
+  }
+}
+
+export function getEmployeeMonthlySummary(employeeId, month) {
+  try {
+    const emp = getOwnerEmployeeById(employeeId);
+    if (!emp) return { paid: 0, due: 0 };
+
+    const row = db.getFirstSync(
+      `SELECT SUM(amount) as total_paid FROM owner_salary_ledger 
+       WHERE employee_id = ? 
+         AND payment_type IN ('Advance', 'Salary', 'Bonus') 
+         AND payment_date LIKE ?`,
+      [employeeId, `${month}%`]
+    );
+
+    const paid = row ? (row.total_paid || 0) : 0;
+    const due = Math.max(0, emp.monthly_salary - paid);
+    return { paid, due };
+  } catch (err) {
+    console.error("[DB] getEmployeeMonthlySummary error:", err);
+    return { paid: 0, due: 0 };
+  }
+}
+
+export function getLastEmployeePayment(employeeId) {
+  try {
+    return db.getFirstSync(
+      "SELECT * FROM owner_salary_ledger WHERE employee_id = ? ORDER BY payment_date DESC, created_at DESC LIMIT 1",
+      [employeeId]
+    ) || null;
+  } catch (err) {
+    console.error("[DB] getLastEmployeePayment error:", err);
+    return null;
   }
 }
 

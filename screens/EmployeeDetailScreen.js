@@ -6,7 +6,8 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
-  ActivityIndicator
+  ActivityIndicator,
+  FlatList
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -26,32 +27,55 @@ export default function EmployeeDetailScreen({
   onBack,
   employeeId,
   onEditEmployee,
-  onDeleteSuccess
+  onDeleteSuccess,
+  onAddPayment
 }) {
   const [loading, setLoading] = useState(true);
   const [employee, setEmployee] = useState(null);
+  const [ledger, setLedger] = useState([]);
+  const [summary, setSummary] = useState({ paid: 0, due: 0 });
+  const [lastPaymentDate, setLastPaymentDate] = useState('N/A');
 
   useEffect(() => {
     if (userRole === 'owner' && employeeId) {
-      loadEmployee();
+      loadAllData();
     } else {
       setLoading(false);
     }
   }, [userRole, employeeId]);
 
-  const loadEmployee = () => {
+  const loadAllData = () => {
     setLoading(true);
     try {
-      const { getOwnerEmployeeById } = require('../database');
+      const {
+        getOwnerEmployeeById,
+        getEmployeeSalaryLedger,
+        getEmployeeMonthlySummary,
+        getLastEmployeePayment
+      } = require('../database');
+
       const emp = getOwnerEmployeeById(employeeId);
       if (emp) {
         setEmployee(emp);
+
+        // Load ledger list
+        const ledgerList = getEmployeeSalaryLedger(employeeId);
+        setLedger(ledgerList);
+
+        // Load monthly summary (for current month YYYY-MM)
+        const currentMonth = new Date().toISOString().substring(0, 7);
+        const monthlySum = getEmployeeMonthlySummary(employeeId, currentMonth);
+        setSummary(monthlySum);
+
+        // Load last payment
+        const lastPay = getLastEmployeePayment(employeeId);
+        setLastPaymentDate(lastPay ? lastPay.payment_date : 'N/A');
       } else {
         Alert.alert("ত্রুটি", "কর্মচারীর তথ্য পাওয়া যায়নি।");
         onBack();
       }
     } catch (err) {
-      console.error("[EmployeeDetailScreen] Error loading employee:", err);
+      console.error("[EmployeeDetailScreen] Error loading data:", err);
     } finally {
       setLoading(false);
     }
@@ -61,7 +85,7 @@ export default function EmployeeDetailScreen({
     return <AccessDenied onBack={onBack} />;
   }
 
-  const handleDelete = () => {
+  const handleDeleteEmployee = () => {
     Alert.alert(
       "কর্মচারী অপসারণ",
       `আপনি কি নিশ্চিতভাবে ${employee.name}-কে তালিকা থেকে বাদ দিতে চান?`,
@@ -81,8 +105,37 @@ export default function EmployeeDetailScreen({
                 Alert.alert("ত্রুটি", "অপসারণ করতে ব্যর্থ হয়েছে।");
               }
             } catch (err) {
-              console.error("[EmployeeDetailScreen] Delete error:", err);
+              console.error("[EmployeeDetailScreen] Delete employee error:", err);
               Alert.alert("ত্রুটি", "অপসারণ করতে ব্যর্থ হয়েছে।");
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleLongPressLedger = (entry) => {
+    Alert.alert(
+      "পেমেন্ট এন্ট্রি ডিলিট",
+      `আপনি কি নিশ্চিতভাবে ${entry.payment_date} তারিখের ${entry.payment_type} এন্ট্রিটি (৳${entry.amount}) মুছে ফেলতে চান?`,
+      [
+        { text: "বাতিল", style: "cancel" },
+        {
+          text: "মুছে ফেলুন",
+          style: "destructive",
+          onPress: () => {
+            try {
+              const { deleteSalaryLedgerEntry } = require('../database');
+              const success = deleteSalaryLedgerEntry(entry.id);
+              if (success) {
+                Alert.alert("সফল", "বেতন বিবরণী এন্ট্রিটি সফলভাবে মুছে ফেলা হয়েছে।");
+                loadAllData(); // Reload stats and list
+              } else {
+                Alert.alert("ত্রুটি", "এন্ট্রি মুছে ফেলতে ব্যর্থ হয়েছে।");
+              }
+            } catch (err) {
+              console.error("[EmployeeDetailScreen] Delete ledger entry error:", err);
+              Alert.alert("ত্রুটি", "এন্ট্রি মুছে ফেলতে ব্যর্থ হয়েছে।");
             }
           }
         }
@@ -116,7 +169,7 @@ export default function EmployeeDetailScreen({
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Profile Card */}
+        {/* Profile Details Card */}
         <View style={styles.profileCard}>
           <View style={styles.profileHeader}>
             <View style={styles.avatar}>
@@ -132,13 +185,32 @@ export default function EmployeeDetailScreen({
 
           <View style={styles.divider} />
 
-          {/* Employee Meta details */}
+          {/* Employee stats */}
           <View style={styles.detailsList}>
             <View style={styles.detailRow}>
               <Text style={styles.detailLabel}>বেতন:</Text>
               <Text style={[styles.detailValue, { color: '#FFB703', fontWeight: 'bold' }]}>
-                ৳{(employee.monthly_salary || 0).toLocaleString()} / মাস
+                ৳{(employee.monthly_salary || 0).toLocaleString()}
               </Text>
+            </View>
+
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>এই মাসে পরিশোধ:</Text>
+              <Text style={[styles.detailValue, { color: '#10B981', fontWeight: 'bold' }]}>
+                ৳{summary.paid.toLocaleString()}
+              </Text>
+            </View>
+
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>অবশিষ্ট বকেয়া:</Text>
+              <Text style={[styles.detailValue, { color: '#EF4444', fontWeight: 'bold' }]}>
+                ৳{summary.due.toLocaleString()}
+              </Text>
+            </View>
+
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>সর্বশেষ পরিশোধ:</Text>
+              <Text style={styles.detailValue}>{lastPaymentDate}</Text>
             </View>
 
             <View style={styles.detailRow}>
@@ -172,22 +244,53 @@ export default function EmployeeDetailScreen({
 
           <View style={styles.actionsRow}>
             <TouchableOpacity style={styles.editButton} onPress={onEditEmployee}>
-              <Text style={styles.editButtonText}>📝 তথ্য পরিবর্তন (Edit)</Text>
+              <Text style={styles.editButtonText}>📝 এডিট</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
-              <Text style={styles.deleteButtonText}>🗑️ অপসারণ (Delete)</Text>
+            <TouchableOpacity style={styles.deleteButton} onPress={handleDeleteEmployee}>
+              <Text style={styles.deleteButtonText}>🗑️ ডিলিট</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Phase 2 Salary Ledger section placeholder */}
-        <Text style={styles.sectionTitle}>বেতন পরিশোধের খতিয়ান (Salary Ledger)</Text>
-        <View style={styles.placeholderCard}>
-          <Text style={styles.placeholderEmoji}>🚧</Text>
-          <Text style={styles.placeholderTitle}>বেতন খতিয়ান মডিউল</Text>
-          <Text style={styles.placeholderText}>Coming in Phase 2</Text>
-        </View>
+        {/* Action Button: Add Payment */}
+        <TouchableOpacity style={styles.addPaymentBtn} onPress={onAddPayment}>
+          <Text style={styles.addPaymentBtnText}>💰 বেতন পরিশোধ (Add Payment)</Text>
+        </TouchableOpacity>
+
+        {/* Salary History list */}
+        <Text style={styles.sectionTitle}>বেতন বিবরণীর খতিয়ান (Salary Ledger)</Text>
+        {ledger.length === 0 ? (
+          <View style={styles.emptyLedgerCard}>
+            <Text style={styles.emptyLedgerText}>কোনো লেনদেনের তথ্য পাওয়া যায়নি।</Text>
+          </View>
+        ) : (
+          <View style={styles.ledgerListContainer}>
+            <Text style={styles.helperTip}>💡 মুছতে চাইলে পেমেন্ট রোটির উপর দীর্ঘক্ষণ টিপে (Long Press) ধরে রাখুন।</Text>
+            {ledger.map((item) => {
+              const isDeduction = item.payment_type === 'Deduction';
+              return (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.ledgerItem}
+                  onLongPress={() => handleLongPressLedger(item)}
+                  delayLongPress={800}
+                >
+                  <View style={styles.ledgerLeft}>
+                    <Text style={styles.ledgerDate}>{item.payment_date}</Text>
+                    <Text style={styles.ledgerType}>{item.payment_type}</Text>
+                    {item.notes ? <Text style={styles.ledgerNotes}>{item.notes}</Text> : null}
+                  </View>
+                  <View style={styles.ledgerRight}>
+                    <Text style={[styles.ledgerAmount, isDeduction ? styles.amountDeduction : styles.amountPositive]}>
+                      {isDeduction ? '-' : '+'} ৳{item.amount.toLocaleString()}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -359,6 +462,20 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: 'bold',
   },
+  addPaymentBtn: {
+    backgroundColor: '#1E1E1E',
+    borderWidth: 1,
+    borderColor: '#FFB703',
+    height: 54,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  addPaymentBtnText: {
+    color: '#FFB703',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
   sectionTitle: {
     color: '#888',
     fontSize: 12,
@@ -368,7 +485,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: 6,
   },
-  placeholderCard: {
+  emptyLedgerCard: {
     backgroundColor: '#161616',
     borderWidth: 1,
     borderColor: '#262626',
@@ -377,20 +494,60 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  placeholderEmoji: {
-    fontSize: 32,
-    marginBottom: 12,
+  emptyLedgerText: {
+    color: '#888',
+    fontSize: 13,
   },
-  placeholderTitle: {
+  helperTip: {
+    color: '#888',
+    fontSize: 11,
+    fontStyle: 'italic',
+    marginBottom: 10,
+  },
+  ledgerListContainer: {
+    gap: 12,
+  },
+  ledgerItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#161616',
+    borderWidth: 1,
+    borderColor: '#262626',
+    borderRadius: 14,
+    padding: 16,
+  },
+  ledgerLeft: {
+    flex: 1,
+    gap: 4,
+  },
+  ledgerDate: {
+    color: '#888',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  ledgerType: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  ledgerNotes: {
+    color: '#AAA',
+    fontSize: 12,
+    fontStyle: 'italic',
+  },
+  ledgerRight: {
+    alignItems: 'flex-end',
+  },
+  ledgerAmount: {
     fontSize: 15,
     fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 4,
   },
-  placeholderText: {
-    fontSize: 12,
-    color: '#FFB703',
-    fontWeight: '600',
+  amountPositive: {
+    color: '#10B981',
+  },
+  amountDeduction: {
+    color: '#EF4444',
   },
   accessDeniedContainer: {
     flex: 1,

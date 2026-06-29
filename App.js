@@ -123,6 +123,7 @@ import OwnerFinanceDashboard from './screens/OwnerFinanceDashboard';
 import EmployeeListScreen from './screens/EmployeeListScreen';
 import AddEmployeeScreen from './screens/AddEmployeeScreen';
 import EmployeeDetailScreen from './screens/EmployeeDetailScreen';
+import AddSalaryPaymentScreen from './screens/AddSalaryPaymentScreen';
 
 
 // Default Restaurant Menu (56 items)
@@ -1725,6 +1726,20 @@ export default function App() {
             onDeleteSuccess={() => {
               setSelectedEmployeeId(null);
               setCurrentScreen('EMPLOYEE_LIST');
+              refreshData();
+            }}
+            onAddPayment={() => setCurrentScreen('ADD_SALARY_PAYMENT')}
+          />
+        );
+
+      case 'ADD_SALARY_PAYMENT':
+        return (
+          <AddSalaryPaymentScreen
+            userRole={userRole}
+            employeeId={selectedEmployeeId}
+            onBack={() => setCurrentScreen('EMPLOYEE_DETAIL')}
+            onSaveSuccess={() => {
+              setCurrentScreen('EMPLOYEE_DETAIL');
               refreshData();
             }}
           />
