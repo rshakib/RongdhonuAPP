@@ -1694,6 +1694,7 @@ export default function App() {
               setSelectedEmployeeId(empId);
               setCurrentScreen('EMPLOYEE_DETAIL');
             }}
+            refreshData={refreshData}
           />
         );
 
