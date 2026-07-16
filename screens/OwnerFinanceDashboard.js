@@ -429,12 +429,40 @@ export default function OwnerFinanceDashboard({
         </View>
 
         <View style={styles.actionsBlock}>
-          <TouchableOpacity style={styles.primaryButton} onPress={onNavigateToEmployees}>
-            <Text style={styles.primaryButtonText}>👥 কর্মচারী ও বেতন ব্যবস্থাপনা</Text>
+          {/* Card 1: Employees and Salaries */}
+          <TouchableOpacity 
+            style={styles.premiumCardBtn} 
+            onPress={onNavigateToEmployees}
+            activeOpacity={0.8}
+          >
+            <View style={styles.cardBtnLeft}>
+              <View style={styles.cardBtnIconContainer}>
+                <Text style={styles.cardBtnIcon}>👥</Text>
+              </View>
+              <View style={styles.cardBtnTextCol}>
+                <Text style={styles.cardBtnTitle} numberOfLines={1}>কর্মচারী ও বেতন ব্যবস্থাপনা</Text>
+                <Text style={styles.cardBtnSubtitle} numberOfLines={2}>কর্মচারীদের মাসিক বেতন ও পরিশোধ বিবরণী</Text>
+              </View>
+            </View>
+            <Text style={styles.cardBtnChevron}>❯</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={[styles.primaryButton, styles.expenseBtn]} onPress={onNavigateToExpenses}>
-            <Text style={[styles.primaryButtonText, styles.expenseBtnText]}>💸 ওনার ব্যক্তিগত খরচ ব্যবস্থাপনা</Text>
+          {/* Card 2: Owner Expenses */}
+          <TouchableOpacity 
+            style={[styles.premiumCardBtn, styles.expensePremiumCardBtn]} 
+            onPress={onNavigateToExpenses}
+            activeOpacity={0.8}
+          >
+            <View style={styles.cardBtnLeft}>
+              <View style={[styles.cardBtnIconContainer, styles.expenseIconContainer]}>
+                <Text style={styles.cardBtnIcon}>💸</Text>
+              </View>
+              <View style={styles.cardBtnTextCol}>
+                <Text style={[styles.cardBtnTitle, styles.expenseBtnTitle]} numberOfLines={1}>ওনার ব্যক্তিগত খরচ</Text>
+                <Text style={styles.cardBtnSubtitle} numberOfLines={2}>সকল ব্যক্তিগত ব্যয় ও ইউটিলিটি বিল পরিচালনা</Text>
+              </View>
+            </View>
+            <Text style={[styles.cardBtnChevron, styles.expenseChevron]}>❯</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -749,30 +777,74 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   actionsBlock: {
-    gap: 12,
-    marginTop: 10,
+    gap: 10,
+    marginTop: 8,
   },
-  primaryButton: {
-    backgroundColor: '#1E1E1E',
+  premiumCardBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#161616',
     borderWidth: 1,
     borderColor: '#262626',
-    height: 52,
+    borderRadius: 18,
+    padding: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  expensePremiumCardBtn: {
+    borderColor: '#FFB703',
+    backgroundColor: 'rgba(255, 183, 3, 0.02)',
+  },
+  cardBtnLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+    paddingRight: 8,
+  },
+  cardBtnIconContainer: {
+    width: 44,
+    height: 44,
     borderRadius: 12,
+    backgroundColor: '#1E1E1E',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  primaryButtonText: {
+  expenseIconContainer: {
+    backgroundColor: 'rgba(255, 183, 3, 0.1)',
+  },
+  cardBtnIcon: {
+    fontSize: 20,
+  },
+  cardBtnTextCol: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  cardBtnTitle: {
     color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  expenseBtn: {
-    borderColor: '#FFB703',
-    backgroundColor: 'rgba(255, 183, 3, 0.03)',
-  },
-  expenseBtnText: {
-    color: '#FFB703',
+    fontSize: 14,
     fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  expenseBtnTitle: {
+    color: '#FFB703',
+  },
+  cardBtnSubtitle: {
+    color: '#888888',
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  cardBtnChevron: {
+    color: '#555555',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  expenseChevron: {
+    color: '#FFB703',
   },
   accessDeniedContainer: {
     flex: 1,
