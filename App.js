@@ -898,17 +898,20 @@ export default function App() {
 
     // --- APP PROFILE LOGIN VALIDATION ---
     const userRoleNormalized = String(role || '').toUpperCase().trim();
-    if (userRoleNormalized !== ACTIVE_APP_PROFILE) {
-      let errorMessage = "This application is for Manager accounts only.";
-      if (ACTIVE_APP_PROFILE === 'ADMIN') {
-        errorMessage = "This application is for Administrator accounts only.";
-      } else if (ACTIVE_APP_PROFILE === 'OWNER') {
-        errorMessage = "This application is for Owner accounts only.";
-      }
 
+    if (ACTIVE_APP_PROFILE === 'MANAGER' && userRoleNormalized !== 'MANAGER') {
       Alert.alert(
         "অ্যাক্সেস সংরক্ষিত (Access Restricted)",
-        errorMessage,
+        "This application is for Manager accounts only.",
+        [{ text: "ঠিক আছে (OK)" }]
+      );
+      return;
+    }
+
+    if (ACTIVE_APP_PROFILE === 'OWNER' && userRoleNormalized !== 'OWNER') {
+      Alert.alert(
+        "অ্যাক্সেস সংরক্ষিত (Access Restricted)",
+        "This application is for Owner accounts only.",
         [{ text: "ঠিক আছে (OK)" }]
       );
       return;
