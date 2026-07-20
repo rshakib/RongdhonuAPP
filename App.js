@@ -92,7 +92,8 @@ import {
   recordAutoSyncEvent,
   getSyncRuntimeDiagnostics,
   executeInspectorQuery,
-  formatDisplayDate
+  formatDisplayDate,
+  ACTIVE_APP_PROFILE
 } from './database';
 
 // Import all 9 high-fidelity screens
@@ -1443,7 +1444,7 @@ export default function App() {
 
     switch (currentScreen) {
       case 'DASHBOARD':
-        if (userRole === 'admin') {
+        if (ACTIVE_APP_PROFILE === 'ADMIN') {
           return (
             <AdminDB
               onLogout={handleLogout}
@@ -1483,7 +1484,7 @@ export default function App() {
               onResetIjara={handleResetIjara}
             />
           );
-        } else if (userRole === 'owner') {
+        } else if (ACTIVE_APP_PROFILE === 'OWNER') {
           return (
             <OwnerDashboard
               onLogout={handleLogout}
@@ -1726,7 +1727,7 @@ export default function App() {
         );
 
       case 'DELETE_HISTORY':
-        if (userRole === 'admin') {
+        if (ACTIVE_APP_PROFILE === 'ADMIN') {
           return (
             <DeleteHistoryScreen
               onBack={() => setCurrentScreen('DASHBOARD')}
@@ -1737,7 +1738,7 @@ export default function App() {
         }
 
       case 'DEVICE_MANAGEMENT':
-        if (userRole === 'admin') {
+        if (ACTIVE_APP_PROFILE === 'ADMIN') {
           return (
             <DeviceManagementScreen
               onBack={() => setCurrentScreen('DASHBOARD')}
@@ -1749,7 +1750,7 @@ export default function App() {
         }
 
       case 'SYSTEM_TOOLS':
-        if (userRole === 'admin') {
+        if (ACTIVE_APP_PROFILE === 'ADMIN') {
           return (
             <SystemToolsScreen
               onBack={() => setCurrentScreen('DASHBOARD')}
@@ -1761,7 +1762,7 @@ export default function App() {
         }
 
       case 'DB_HEALTH':
-        if (userRole === 'admin') {
+        if (ACTIVE_APP_PROFILE === 'ADMIN') {
           return (
             <DatabaseHealthScreen
               onBack={() => setCurrentScreen('SYSTEM_TOOLS')}
@@ -1772,7 +1773,7 @@ export default function App() {
         }
 
       case 'SYNC_STATUS':
-        if (userRole === 'admin') {
+        if (ACTIVE_APP_PROFILE === 'ADMIN') {
           return (
             <SyncStatusScreen
               onBack={() => setCurrentScreen('SYSTEM_TOOLS')}
@@ -1783,7 +1784,7 @@ export default function App() {
         }
 
       case 'DB_STATS':
-        if (userRole === 'admin') {
+        if (ACTIVE_APP_PROFILE === 'ADMIN') {
           return (
             <DatabaseStatsScreen
               onBack={() => setCurrentScreen('SYSTEM_TOOLS')}
@@ -1794,7 +1795,7 @@ export default function App() {
         }
 
       case 'SYSTEM_INFO':
-        if (userRole === 'admin') {
+        if (ACTIVE_APP_PROFILE === 'ADMIN') {
           return (
             <SystemInfoScreen
               onBack={() => setCurrentScreen('SYSTEM_TOOLS')}
@@ -1805,7 +1806,7 @@ export default function App() {
         }
 
       case 'DB_EXPLORER':
-        if (userRole === 'admin') {
+        if (ACTIVE_APP_PROFILE === 'ADMIN') {
           return (
             <DatabaseExplorerScreen
               onBack={() => setCurrentScreen('SYSTEM_TOOLS')}
@@ -1820,7 +1821,7 @@ export default function App() {
         }
 
       case 'TABLE_VIEWER':
-        if (userRole === 'admin') {
+        if (ACTIVE_APP_PROFILE === 'ADMIN') {
           return (
             <TableViewerScreen
               tableName={selectedDBTable}
@@ -1836,7 +1837,7 @@ export default function App() {
         }
 
       case 'ROW_DETAIL':
-        if (userRole === 'admin') {
+        if (ACTIVE_APP_PROFILE === 'ADMIN') {
           return (
             <RowDetailScreen
               rowData={selectedDBRow}
