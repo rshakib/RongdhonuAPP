@@ -7,12 +7,29 @@
       "developmentClient": true,
       "distribution": "internal"
     },
-    "preview": {
+    "admin": {
+      "env": {
+        "EXPO_PUBLIC_APP_PROFILE": "ADMIN"
+      },
+      "channel": "admin",
       "android": {
         "buildType": "apk"
       }
     },
-    "previe": {
+    "owner": {
+      "env": {
+        "EXPO_PUBLIC_APP_PROFILE": "OWNER"
+      },
+      "channel": "owner",
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "manager": {
+      "env": {
+        "EXPO_PUBLIC_APP_PROFILE": "MANAGER"
+      },
+      "channel": "manager",
       "android": {
         "buildType": "apk"
       }

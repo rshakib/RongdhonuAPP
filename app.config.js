@@ -1,0 +1,106 @@
+const fs = require('fs');
+const path = require('path');
+
+module.exports = ({ config }) => {
+  const rawProfile = process.env.EXPO_PUBLIC_APP_PROFILE || 'ADMIN';
+  const profile = String(rawProfile).toUpperCase().trim();
+
+  const VALID_PROFILES = ['ADMIN', 'OWNER', 'MANAGER'];
+  if (!VALID_PROFILES.includes(profile)) {
+    throw new Error(
+      `[Build Configuration Error] Invalid EXPO_PUBLIC_APP_PROFILE value '${rawProfile}'. ` +
+      `Supported profiles are: ${VALID_PROFILES.join(', ')}.`
+    );
+  }
+
+  // Profile-specific metadata configurations
+  const PROFILE_CONFIGS = {
+    ADMIN: {
+      name: 'রংধনু এডমিন',
+      slug: 'rongdhonu-admin',
+      package: 'com.riajulshakib.rongdhonu.admin',
+      bundleIdentifier: 'com.riajulshakib.rongdhonu.admin',
+      channel: 'admin',
+      icon: './assets/icons/admin_icon.png',
+      splash: './assets/splash/admin_splash.png'
+    },
+    OWNER: {
+      name: 'রংধনু ওনার',
+      slug: 'rongdhonu-owner',
+      package: 'com.riajulshakib.rongdhonu.owner',
+      bundleIdentifier: 'com.riajulshakib.rongdhonu.owner',
+      channel: 'owner',
+      icon: './assets/icons/owner_icon.png',
+      splash: './assets/splash/owner_splash.png'
+    },
+    MANAGER: {
+      name: 'রংধনু ম্যানেজার',
+      slug: 'rongdhonu-manager',
+      package: 'com.riajulshakib.rongdhonu.manager',
+      bundleIdentifier: 'com.riajulshakib.rongdhonu.manager',
+      channel: 'manager',
+      icon: './assets/icons/manager_icon.png',
+      splash: './assets/splash/manager_splash.png'
+    }
+  };
+
+  const pConfig = PROFILE_CONFIGS[profile];
+
+  // Asset fallback check
+  const fallbackAsset = './image/mylogo.png';
+  const iconPath = fs.existsSync(path.resolve(__dirname, pConfig.icon)) ? pConfig.icon : fallbackAsset;
+  const splashPath = fs.existsSync(path.resolve(__dirname, pConfig.splash)) ? pConfig.splash : fallbackAsset;
+
+  console.log(`[Expo Build Config] Building for APP_PROFILE: '${profile}' (${pConfig.name}) | Package: ${pConfig.package}`);
+
+  return {
+    ...config,
+    name: pConfig.name,
+    slug: pConfig.slug,
+    version: '1.0.0',
+    runtimeVersion: {
+      policy: 'appVersion'
+    },
+    orientation: 'portrait',
+    icon: iconPath,
+    userInterfaceStyle: 'light',
+    updates: {
+      url: 'https://u.expo.dev/c0ef37bc-f64e-4a5d-8f68-8296556b722a',
+      channel: pConfig.channel
+    },
+    plugins: [
+      [
+        'expo-splash-screen',
+        {
+          image: splashPath,
+          resizeMode: 'contain',
+          backgroundColor: '#ffffff'
+        }
+      ],
+      'expo-sharing',
+      'expo-sqlite'
+    ],
+    ios: {
+      supportsTablet: true,
+      bundleIdentifier: pConfig.bundleIdentifier
+    },
+    android: {
+      adaptiveIcon: {
+        backgroundColor: '#ffffff',
+        foregroundImage: iconPath
+      },
+      package: pConfig.package,
+      versionCode: 2
+    },
+    web: {
+      favicon: iconPath
+    },
+    owner: 'riajulshakib',
+    extra: {
+      eas: {
+        projectId: 'c0ef37bc-f64e-4a5d-8f68-8296556b722a'
+      },
+      appProfile: profile
+    }
+  };
+};
