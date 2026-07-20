@@ -4254,6 +4254,7 @@ export function submitDailySheet(summary, submittedBy, submissionType = 'MANUAL'
 }
 
 export function checkAndApplyIjaraRollover() {
+  console.log("[ROLLOVER] ENTERED checkAndApplyIjaraRollover");
   try {
     const amountRow = db.getFirstSync("SELECT value FROM app_config WHERE key = 'pending_ijara_amount'");
     const dateRow = db.getFirstSync("SELECT value FROM app_config WHERE key = 'pending_ijara_date'");
@@ -4262,6 +4263,10 @@ export function checkAndApplyIjaraRollover() {
       const pendingAmount = parseFloat(amountRow.value);
       const pendingDateStr = dateRow.value;
       const todayStr = getBusinessDate();
+
+      console.log("[ROLLOVER] todayStr =", todayStr);
+      console.log("[ROLLOVER] pendingDateStr =", pendingDateStr);
+      console.log("[ROLLOVER] comparison =", todayStr >= pendingDateStr);
 
       if (todayStr >= pendingDateStr) {
         const targetDate = pendingDateStr;
@@ -4277,6 +4282,7 @@ export function checkAndApplyIjaraRollover() {
           const stableExpId = `exp_${targetDate}_ijara`;
 
           try {
+            console.log("[ROLLOVER] ABOUT TO INSERT EXPENSE");
             db.runSync(
               "INSERT OR REPLACE INTO expenses (id, category, amount, note, is_due, given_amount, used_amount, returned_amount, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, ?, 0)",
               [stableExpId, 'ijara', pendingAmount, 'Auto Carry Forward', targetIso, targetIso]
@@ -4299,6 +4305,7 @@ export function checkAndApplyIjaraRollover() {
           const ejaId = `eja_${targetDate}`;
 
           try {
+            console.log("[ROLLOVER] ABOUT TO INSERT EJA");
             db.runSync(
               "INSERT OR REPLACE INTO eja_history (id, date, eja_amount, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, 0)",
               [ejaId, targetDate, pendingAmount, targetIso, targetIso]
