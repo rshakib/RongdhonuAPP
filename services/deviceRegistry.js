@@ -4,13 +4,14 @@ import { Platform } from 'react-native';
 import { getDb, enqueueSync, setAppConfig } from '../database';
 
 /**
- * Device Access Control Layer — Phase 1, 2, 3, 4, 5 & Phase 5 Patch
+ * Device Access Control Layer — Phase 1, 2, 3, 4, 5 & Phase 6
  * 
  * Phase 1: Device Registration & Telemetry
  * Phase 2: Device Approval & Blocking Access Control
  * Phase 3: Manager Approval Workflow & PENDING/BLOCKED Screens
  * Phase 4: Admin Device Lock (Stolen Device Protection)
- * Phase 5 & Phase 5 Patch: Device-Based Remote Force Logout for ALL Roles (ADMIN, OWNER, MANAGER)
+ * Phase 5: Remote Force Logout & Invalidation of Saved Sessions
+ * Phase 6: Administrator Controlled Offline Permission (allow_offline)
  */
 
 /**
@@ -313,6 +314,60 @@ export function updateDeviceStatus(deviceId, newStatus, adminUsername = 'admin')
 }
 
 /**
+ * Phase 6: Update device offline permission (Admin action).
+ * Updates allow_offline column in device_registry and enqueues cloud sync.
+ * @param {string} deviceId 
+ * @param {boolean} allowOffline 
+ * @param {string} adminUsername 
+ * @returns {boolean} True on success
+ */
+export function updateDeviceOfflinePermission(deviceId, allowOffline, adminUsername = 'admin') {
+  try {
+    const db = getDb();
+    const allowVal = allowOffline ? 1 : 0;
+    const now = new Date().toISOString();
+
+    const record = db.getFirstSync("SELECT * FROM device_registry WHERE device_id = ?", [deviceId]);
+    if (!record) {
+      throw new Error(`Device record not found for device_id: ${deviceId}`);
+    }
+
+    db.runSync(`
+      UPDATE device_registry
+      SET allow_offline = ?, registered_by = ?, updated_at = ?
+      WHERE device_id = ?
+    `, [allowVal, adminUsername, now, deviceId]);
+
+    enqueueSync("device_registry", record.id, "UPDATE");
+    console.log(`[DeviceRegistry] Admin '${adminUsername}' set allow_offline=${allowVal} for device '${deviceId}'`);
+    return true;
+  } catch (err) {
+    console.error("[DeviceRegistry] Error updating offline permission:", err);
+    return false;
+  }
+}
+
+/**
+ * Phase 6: Check whether current device has offline permission enabled.
+ * Rule:
+ * - Admin behavior remains unchanged (always allowed).
+ * - Owner & Manager: Allowed ONLY IF allow_offline == 1 in device_registry.
+ * @param {string} userRole 
+ * @returns {boolean} True if offline mode ('hybrid') is allowed on this device
+ */
+export function checkDeviceOfflinePermission(userRole) {
+  const roleUpper = String(userRole || '').toUpperCase().trim();
+  if (roleUpper === 'ADMIN') {
+    return true; // Admin behavior remains unchanged
+  }
+
+  const deviceRecord = getCurrentDeviceRecord();
+  if (!deviceRecord) return false;
+
+  return Number(deviceRecord.allow_offline || 0) === 1;
+}
+
+/**
  * Phase 4: Set or remove Admin Lock for a device (Stolen Device Protection).
  * @param {string} deviceId 
  * @param {boolean} enableLock 
@@ -388,11 +443,6 @@ export function triggerForceLogout(deviceId, adminUsername = 'admin') {
  * Phase 5 Patch: Check whether force_logout is flagged on the current device.
  * THIS IS STRICTLY DEVICE BASED — NO ROLE CHECKS.
  * Applies identically to ADMIN, OWNER, and MANAGER.
- * 
- * If force_logout == 1:
- *   1. Destroys all local session data in app_config (remembered user, saved PIN, active session).
- *   2. Resets force_logout = 0 in device_registry and queues Firestore sync.
- *   3. Returns { triggered: true, message: '...' }.
  * @returns {object} { triggered: boolean, message?: string }
  */
 export function checkAndExecuteForceLogout() {

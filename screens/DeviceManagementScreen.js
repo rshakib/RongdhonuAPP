@@ -12,7 +12,13 @@ import {
   StatusBar as RNStatusBar
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getAllRegisteredDevices, updateDeviceStatus, setAdminDeviceLock, triggerForceLogout } from '../services/deviceRegistry';
+import {
+  getAllRegisteredDevices,
+  updateDeviceStatus,
+  setAdminDeviceLock,
+  triggerForceLogout,
+  updateDeviceOfflinePermission
+} from '../services/deviceRegistry';
 import { verifyPinCode } from '../database';
 
 export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
@@ -62,6 +68,33 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
               loadDevices();
             } else {
               Alert.alert('ত্রুটি', 'স্ট্যাটাস পরিবর্তন ব্যর্থ হয়েছে।');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Phase 6: Handle Offline Permission Toggle (allow_offline)
+  const handleToggleOfflinePermission = (device) => {
+    const currentAllowed = Number(device.allow_offline || 0) === 1;
+    const nextAllowed = !currentAllowed;
+    const actionText = nextAllowed ? 'ON (অনুমোদিত)' : 'OFF (নিষ্ক্রিয়)';
+
+    Alert.alert(
+      'অফলাইন পারমিশন পরিবর্তন',
+      `আপনি কি '${device.device_name || device.device_id}' ডিভাইসটির জন্য Offline Mode ${actionText} করতে চান?`,
+      [
+        { text: 'বাতিল (Cancel)', style: 'cancel' },
+        {
+          text: 'হ্যাঁ (Confirm)',
+          onPress: () => {
+            const success = updateDeviceOfflinePermission(device.device_id, nextAllowed, 'admin');
+            if (success) {
+              Alert.alert('সফল', `ডিভাইসটির Offline Permission ${actionText} করা হয়েছে।`);
+              loadDevices();
+            } else {
+              Alert.alert('ত্রুটি', 'Offline Permission পরিবর্তন ব্যর্থ হয়েছে।');
             }
           }
         }
@@ -214,9 +247,9 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
 
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.infoBanner}>
-          <Text style={styles.infoBannerTitle}>🛡️ Remote Access & Telemetry</Text>
+          <Text style={styles.infoBannerTitle}>🛡️ Device Registry & Policy Control</Text>
           <Text style={styles.infoBannerText}>
-            এডমিন যে কোনো ডিভাইস সাইন-আউট করতে 'Force Logout' ব্যবহার করতে পারেন। পরবর্তী লগইনের জন্য ইউজারনেম এবং পিন আবশ্যক হবে।
+            এডমিন যে কোনো ডিভাইসের অনুমোদন, ব্লক, স্টোলেন লক, ফোর্স সাইন-আউট এবং অফলাইন এক্সেস (Offline Permission) নিয়ন্ত্রণ করতে পারেন।
           </Text>
         </View>
 
@@ -236,6 +269,7 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
             const st = String(item.status || 'PENDING').toUpperCase().trim();
             const isLocked = Number(item.admin_lock || 0) === 1;
             const forceLogoutPending = Number(item.force_logout || 0) === 1;
+            const isOfflineAllowed = Number(item.allow_offline || 0) === 1;
 
             return (
               <View key={item.id || item.device_id} style={styles.deviceCard}>
@@ -272,6 +306,27 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
                     </Text>
                   </View>
                 </View>
+
+                {/* Phase 6: Admin Offline Permission Switch Row */}
+                {isAdmin && (
+                  <View style={styles.permissionBox}>
+                    <View style={styles.permissionTextGroup}>
+                      <Text style={styles.permissionLabel}>⚡ Offline Mode Permission:</Text>
+                      <Text style={styles.permissionSublabel}>
+                        {isOfflineAllowed ? 'অফলাইন মোড চালুর অনুমতি দেওয়া আছে' : 'অফলাইন মোড নিষ্ক্রিয় করা আছে'}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={[styles.toggleSwitchBtn, isOfflineAllowed ? styles.toggleSwitchOn : styles.toggleSwitchOff]}
+                      onPress={() => handleToggleOfflinePermission(item)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.toggleSwitchText}>
+                        {isOfflineAllowed ? 'ON' : 'OFF'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
 
                 {/* Admin Action Buttons */}
                 {isAdmin && (
@@ -604,6 +659,50 @@ const styles = StyleSheet.create({
     color: '#d4d4d8',
     fontSize: 11,
     fontWeight: '600',
+  },
+  permissionBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#09090b',
+    borderWidth: 1,
+    borderColor: '#27272a',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 12,
+  },
+  permissionTextGroup: {
+    flex: 1,
+    marginRight: 10,
+  },
+  permissionLabel: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  permissionSublabel: {
+    color: '#71717a',
+    fontSize: 10,
+    marginTop: 2,
+  },
+  toggleSwitchBtn: {
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  toggleSwitchOn: {
+    backgroundColor: '#15803d',
+  },
+  toggleSwitchOff: {
+    backgroundColor: '#3f3f46',
+  },
+  toggleSwitchText: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+    fontSize: 11,
   },
   actionRowContainer: {
     marginTop: 14,

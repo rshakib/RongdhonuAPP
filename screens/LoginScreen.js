@@ -56,6 +56,32 @@ export default function LoginScreen({ onLoginSuccess }) {
 
   const handleModeChange = (newMode) => {
     if (newMode === syncMode) return;
+
+    if (newMode === 'hybrid') {
+      try {
+        const { checkDeviceOfflinePermission } = require('../services/deviceRegistry');
+        const cleanUser = username ? username.trim().toLowerCase() : '';
+        let role = '';
+        if (cleanUser) {
+          const userObj = checkUserExists(cleanUser);
+          if (userObj) role = userObj.role;
+        }
+
+        const isAllowed = checkDeviceOfflinePermission(role);
+        if (!isAllowed) {
+          Alert.alert(
+            "Offline Mode Disabled",
+            "Offline Mode has been disabled by Administrator.\n\nPlease use Online Mode.",
+            [{ text: "ঠিক আছে (OK)" }]
+          );
+          setSyncMode('online_only');
+          setAppConfig('sync_mode', 'online_only');
+          return;
+        }
+      } catch (err) {
+        console.error("[LoginScreen] Error checking offline permission:", err);
+      }
+    }
     
     const pendingCount = getPendingSyncCount();
     if (pendingCount > 0) {
@@ -137,6 +163,23 @@ export default function LoginScreen({ onLoginSuccess }) {
 
     const user = verifyUserLogin(cleanUsername, cleanPin);
     if (user) {
+      if (syncMode === 'hybrid') {
+        try {
+          const { checkDeviceOfflinePermission } = require('../services/deviceRegistry');
+          const isAllowed = checkDeviceOfflinePermission(user.role);
+          if (!isAllowed) {
+            Alert.alert(
+              "Offline Mode Disabled",
+              "Offline Mode has been disabled by Administrator.\n\nPlease use Online Mode.",
+              [{ text: "ঠিক আছে (OK)", onPress: () => setPin('') }]
+            );
+            setSyncMode('online_only');
+            setAppConfig('sync_mode', 'online_only');
+            return;
+          }
+        } catch (e) {}
+      }
+
       try {
         // Save locally for auto-remember
         setAppConfig('remembered_username', cleanUsername);
