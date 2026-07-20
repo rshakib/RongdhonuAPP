@@ -896,6 +896,24 @@ export default function App() {
       console.error("[App] Device login permission check error:", devErr);
     }
 
+    // --- APP PROFILE LOGIN VALIDATION ---
+    const userRoleNormalized = String(role || '').toUpperCase().trim();
+    if (userRoleNormalized !== ACTIVE_APP_PROFILE) {
+      let errorMessage = "This application is for Manager accounts only.";
+      if (ACTIVE_APP_PROFILE === 'ADMIN') {
+        errorMessage = "This application is for Administrator accounts only.";
+      } else if (ACTIVE_APP_PROFILE === 'OWNER') {
+        errorMessage = "This application is for Owner accounts only.";
+      }
+
+      Alert.alert(
+        "অ্যাক্সেস সংরক্ষিত (Access Restricted)",
+        errorMessage,
+        [{ text: "ঠিক আছে (OK)" }]
+      );
+      return;
+    }
+
     setUserRole(role);
     setUserDisplayName(displayName);
     setIsOnlineOnlyMode(mode === 'online_only');
