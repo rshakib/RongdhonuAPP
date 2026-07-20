@@ -4276,18 +4276,46 @@ export function checkAndApplyIjaraRollover() {
         if (!existingIjara) {
           const stableExpId = `exp_${targetDate}_ijara`;
 
-          db.runSync(
-            "INSERT OR REPLACE INTO expenses (id, category, amount, note, is_due, given_amount, used_amount, returned_amount, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, ?, 0)",
-            [stableExpId, 'ijara', pendingAmount, 'Auto Carry Forward', targetIso, targetIso]
-          );
+          try {
+            db.runSync(
+              "INSERT OR REPLACE INTO expenses (id, category, amount, note, is_due, given_amount, used_amount, returned_amount, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, ?, 0)",
+              [stableExpId, 'ijara', pendingAmount, 'Auto Carry Forward', targetIso, targetIso]
+            );
+          } catch (expInsertErr) {
+            console.error("[RUNTIME VERIFICATION EXCEPTION] INSERT INTO expenses THREW EXCEPTION:", expInsertErr.stack || expInsertErr);
+            throw expInsertErr;
+          }
+
+          const expRow = db.getFirstSync("SELECT * FROM expenses WHERE id = ?", [stableExpId]);
+          console.log("[RUNTIME VERIFICATION] SELECT * FROM expenses WHERE id =", stableExpId, "=> RESULT:", expRow ? JSON.stringify(expRow) : "NO ROW FOUND");
+
+          if (!expRow) {
+            console.error("[RUNTIME VERIFICATION] STOP: NO ROW FOUND in expenses for ID:", stableExpId);
+            return false;
+          }
+
           enqueueSync("expenses", stableExpId, "INSERT");
 
           const ejaId = `eja_${targetDate}`;
 
-          db.runSync(
-            "INSERT OR REPLACE INTO eja_history (id, date, eja_amount, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, 0)",
-            [ejaId, targetDate, pendingAmount, targetIso, targetIso]
-          );
+          try {
+            db.runSync(
+              "INSERT OR REPLACE INTO eja_history (id, date, eja_amount, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, 0)",
+              [ejaId, targetDate, pendingAmount, targetIso, targetIso]
+            );
+          } catch (ejaInsertErr) {
+            console.error("[RUNTIME VERIFICATION EXCEPTION] INSERT INTO eja_history THREW EXCEPTION:", ejaInsertErr.stack || ejaInsertErr);
+            throw ejaInsertErr;
+          }
+
+          const ejaRow = db.getFirstSync("SELECT * FROM eja_history WHERE id = ?", [ejaId]);
+          console.log("[RUNTIME VERIFICATION] SELECT * FROM eja_history WHERE id =", ejaId, "=> RESULT:", ejaRow ? JSON.stringify(ejaRow) : "NO ROW FOUND");
+
+          if (!ejaRow) {
+            console.error("[RUNTIME VERIFICATION] STOP: NO ROW FOUND in eja_history for ID:", ejaId);
+            return false;
+          }
+
           enqueueSync("eja_history", ejaId, "INSERT");
 
           console.log("[Auto Ijara] SQLite insert completed for targetDate:", targetDate);
@@ -4306,7 +4334,7 @@ export function checkAndApplyIjaraRollover() {
     }
     return false;
   } catch (err) {
-    console.error("[Auto Ijara] Error in checkAndApplyIjaraRollover:", err.stack || err);
+    console.error("[RUNTIME VERIFICATION EXCEPTION] Error in checkAndApplyIjaraRollover:", err.stack || err);
     return false;
   }
 }
