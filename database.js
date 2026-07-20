@@ -4254,7 +4254,6 @@ export function submitDailySheet(summary, submittedBy, submissionType = 'MANUAL'
 }
 
 export function checkAndApplyIjaraRollover() {
-  console.log("[ROLLOVER] ENTERED checkAndApplyIjaraRollover");
   try {
     const amountRow = db.getFirstSync("SELECT value FROM app_config WHERE key = 'pending_ijara_amount'");
     const dateRow = db.getFirstSync("SELECT value FROM app_config WHERE key = 'pending_ijara_date'");
@@ -4264,85 +4263,62 @@ export function checkAndApplyIjaraRollover() {
       const pendingDateStr = dateRow.value;
       const todayStr = getBusinessDate();
 
-      console.log("[ROLLOVER] todayStr =", todayStr);
-      console.log("[ROLLOVER] pendingDateStr =", pendingDateStr);
-      console.log("[ROLLOVER] comparison =", todayStr >= pendingDateStr);
-
       if (todayStr >= pendingDateStr) {
         const targetDate = pendingDateStr;
         console.log(`[Auto Ijara] Applying Opening Ijara ৳${pendingAmount} for target date ${targetDate}`);
         const targetIso = `${targetDate}T00:00:00.000Z`;
 
-        const ijaraQuery = "SELECT * FROM expenses WHERE (id = ? OR date(created_at, 'localtime') = ?) AND category = 'ijara'";
-        const ijaraQueryParams = [`exp_${targetDate}_ijara`, targetDate];
-        console.log("[ROLLOVER] Querying existing expense SQL:", ijaraQuery);
-        console.log("[ROLLOVER] Query Params:", JSON.stringify(ijaraQueryParams));
+        // 1. Process expenses table (idempotent: INSERT, UPDATE, or SKIP)
+        const stableExpId = `exp_${targetDate}_ijara`;
+        const existingExp = db.getFirstSync(
+          "SELECT * FROM expenses WHERE id = ? OR (category = 'ijara' AND date(created_at, 'localtime') = ?)",
+          [stableExpId, targetDate]
+        );
 
-        const existingIjara = db.getFirstSync(ijaraQuery, ijaraQueryParams);
-        console.log("[ROLLOVER] existingExpense FULL =", JSON.stringify(existingIjara, null, 2));
-
-        if (existingIjara) {
-          console.log("[ROLLOVER] Existing Expense Columns:");
-          console.log("[ROLLOVER] - id:", existingIjara.id);
-          console.log("[ROLLOVER] - category:", existingIjara.category);
-          console.log("[ROLLOVER] - amount:", existingIjara.amount);
-          console.log("[ROLLOVER] - created_at:", existingIjara.created_at);
-          console.log("[ROLLOVER] - updated_at:", existingIjara.updated_at);
-          console.log("[ROLLOVER] - note:", existingIjara.note);
-        }
-
-        if (!existingIjara) {
-          const stableExpId = `exp_${targetDate}_ijara`;
-
-          try {
-            console.log("[ROLLOVER] ABOUT TO INSERT EXPENSE");
-            db.runSync(
-              "INSERT OR REPLACE INTO expenses (id, category, amount, note, is_due, given_amount, used_amount, returned_amount, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, ?, 0)",
-              [stableExpId, 'ijara', pendingAmount, 'Auto Carry Forward', targetIso, targetIso]
-            );
-          } catch (expInsertErr) {
-            console.error("[RUNTIME VERIFICATION EXCEPTION] INSERT INTO expenses THREW EXCEPTION:", expInsertErr.stack || expInsertErr);
-            throw expInsertErr;
-          }
-
-          const expRow = db.getFirstSync("SELECT * FROM expenses WHERE id = ?", [stableExpId]);
-          console.log("[RUNTIME VERIFICATION] SELECT * FROM expenses WHERE id =", stableExpId, "=> RESULT:", expRow ? JSON.stringify(expRow) : "NO ROW FOUND");
-
-          if (!expRow) {
-            console.error("[RUNTIME VERIFICATION] STOP: NO ROW FOUND in expenses for ID:", stableExpId);
-            return false;
-          }
-
+        if (!existingExp) {
+          console.log(`[Auto Ijara] Expense record missing. Inserting new expense ৳${pendingAmount} for ${targetDate}`);
+          db.runSync(
+            "INSERT OR REPLACE INTO expenses (id, category, amount, note, is_due, given_amount, used_amount, returned_amount, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, ?, 0)",
+            [stableExpId, 'ijara', pendingAmount, 'Auto Carry Forward', targetIso, targetIso]
+          );
           enqueueSync("expenses", stableExpId, "INSERT");
-
-          const ejaId = `eja_${targetDate}`;
-
-          try {
-            console.log("[ROLLOVER] ABOUT TO INSERT EJA");
-            db.runSync(
-              "INSERT OR REPLACE INTO eja_history (id, date, eja_amount, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, 0)",
-              [ejaId, targetDate, pendingAmount, targetIso, targetIso]
-            );
-          } catch (ejaInsertErr) {
-            console.error("[RUNTIME VERIFICATION EXCEPTION] INSERT INTO eja_history THREW EXCEPTION:", ejaInsertErr.stack || ejaInsertErr);
-            throw ejaInsertErr;
-          }
-
-          const ejaRow = db.getFirstSync("SELECT * FROM eja_history WHERE id = ?", [ejaId]);
-          console.log("[RUNTIME VERIFICATION] SELECT * FROM eja_history WHERE id =", ejaId, "=> RESULT:", ejaRow ? JSON.stringify(ejaRow) : "NO ROW FOUND");
-
-          if (!ejaRow) {
-            console.error("[RUNTIME VERIFICATION] STOP: NO ROW FOUND in eja_history for ID:", ejaId);
-            return false;
-          }
-
-          enqueueSync("eja_history", ejaId, "INSERT");
-
-          console.log("[Auto Ijara] SQLite insert completed for targetDate:", targetDate);
+        } else if (Number(existingExp.amount) !== pendingAmount) {
+          console.log(`[Auto Ijara] Expense amount mismatch (existing: ৳${existingExp.amount}, pending: ৳${pendingAmount}). Updating expense ID ${existingExp.id}`);
+          db.runSync(
+            "UPDATE expenses SET amount = ?, updated_at = ?, is_synced = 0 WHERE id = ?",
+            [pendingAmount, targetIso, existingExp.id]
+          );
+          enqueueSync("expenses", existingExp.id, "UPDATE");
         } else {
-          console.log(`[Auto Ijara] Target date ${targetDate} ijara expense already exists (value: ${existingIjara.amount}). Skipping insertion.`);
+          console.log(`[Auto Ijara] Expense record already matches pending amount ৳${pendingAmount}. Skipping expense write.`);
         }
 
+        // 2. Process eja_history table (idempotent: INSERT, UPDATE, or SKIP)
+        const ejaId = `eja_${targetDate}`;
+        const existingEja = db.getFirstSync(
+          "SELECT * FROM eja_history WHERE id = ? OR date = ?",
+          [ejaId, targetDate]
+        );
+
+        if (!existingEja) {
+          console.log(`[Auto Ijara] EJA record missing. Inserting new eja_history ৳${pendingAmount} for ${targetDate}`);
+          db.runSync(
+            "INSERT OR REPLACE INTO eja_history (id, date, eja_amount, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, 0)",
+            [ejaId, targetDate, pendingAmount, targetIso, targetIso]
+          );
+          enqueueSync("eja_history", ejaId, "INSERT");
+        } else if (Number(existingEja.eja_amount) !== pendingAmount) {
+          console.log(`[Auto Ijara] EJA amount mismatch (existing: ৳${existingEja.eja_amount}, pending: ৳${pendingAmount}). Updating eja_history ID ${existingEja.id}`);
+          db.runSync(
+            "UPDATE eja_history SET eja_amount = ?, updated_at = ?, is_synced = 0 WHERE id = ?",
+            [pendingAmount, targetIso, existingEja.id]
+          );
+          enqueueSync("eja_history", existingEja.id, "UPDATE");
+        } else {
+          console.log(`[Auto Ijara] EJA record already matches pending amount ৳${pendingAmount}. Skipping EJA write.`);
+        }
+
+        // 3. Clear staged pending values from app_config
         db.runSync("DELETE FROM app_config WHERE key = 'pending_ijara_amount'");
         db.runSync("DELETE FROM app_config WHERE key = 'pending_ijara_date'");
         
@@ -4354,7 +4330,7 @@ export function checkAndApplyIjaraRollover() {
     }
     return false;
   } catch (err) {
-    console.error("[RUNTIME VERIFICATION EXCEPTION] Error in checkAndApplyIjaraRollover:", err.stack || err);
+    console.error("[Auto Ijara] Error in checkAndApplyIjaraRollover:", err.stack || err);
     return false;
   }
 }
