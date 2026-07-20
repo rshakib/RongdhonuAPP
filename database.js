@@ -9,7 +9,7 @@ let firestoreWritesToday = 0;
 let firestoreDeletesToday = 0;
 let syncUploadsToday = 0;
 let syncDownloadsToday = 0;
-function getDb() {
+export function getDb() {
   if (!dbInstance) {
     try {
       dbInstance = SQLite.openDatabaseSync('rongdhonu.db', { useNewConnection: true });
@@ -2067,7 +2067,7 @@ export async function syncLowFrequencyCollections() {
   isPullingSyncLow = true;
   let hasChanges = false;
   try {
-    const lowFreq = ['users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 'app_config', 'expenses', 'eja_history', 'daily_submit', 'supplier_due', 'supplier_due_history', 'supplier_payment_ledger', 'delete_history', 'owner_employees', 'owner_salary_ledger', 'owner_expenses', 'owner_deposits'];
+    const lowFreq = ['users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 'app_config', 'expenses', 'eja_history', 'daily_submit', 'supplier_due', 'supplier_due_history', 'supplier_payment_ledger', 'delete_history', 'owner_employees', 'owner_salary_ledger', 'owner_expenses', 'owner_deposits', 'device_registry'];
     incrementReadCounter('lowFrequency', lowFreq.length);
     hasChanges = await traceSyncOperation('syncLowFrequencyCollections', () => syncCollections(lowFreq, 'Low Frequency Sync'));
   } catch (err) {
@@ -2168,7 +2168,7 @@ function fromFirestoreDocument(doc) {
 
 export async function restoreDatabaseFromCloud() {
   // 1. Collections that must always be fully restored
-  const alwaysFull = ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due', 'owner_employees', 'owner_salary_ledger', 'owner_deposits'];
+  const alwaysFull = ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due', 'owner_employees', 'owner_salary_ledger', 'owner_deposits', 'device_registry'];
   
   // 2. Collections that should be restored for the last 31 days on fresh install
   const recentOnly = [

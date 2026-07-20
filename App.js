@@ -319,6 +319,14 @@ export default function App() {
         // 1. Just create schemas (no seeding yet)
         initDatabase(true);
 
+        // Device Registration Check (Phase 1 Access Control)
+        try {
+          const { registerDeviceIfNeeded } = require('./services/deviceRegistry');
+          await registerDeviceIfNeeded();
+        } catch (devErr) {
+          console.error("[App] Device registration check failed:", devErr);
+        }
+
         // Fetch current online status and mode preference
         try {
           const netState = await NetInfo.fetch();
