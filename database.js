@@ -2070,7 +2070,7 @@ export async function syncLowFrequencyCollections() {
   isPullingSyncLow = true;
   let hasChanges = false;
   try {
-    const lowFreq = ['users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 'app_config', 'expenses', 'eja_history', 'daily_submit', 'supplier_due', 'supplier_due_history', 'supplier_payment_ledger', 'delete_history', 'owner_employees', 'owner_salary_ledger', 'owner_expenses', 'owner_deposits', 'device_registry'];
+    const lowFreq = ['users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 'app_config', 'expenses', 'eja_history', 'daily_submit', 'supplier_due', 'supplier_due_history', 'supplier_payment_ledger', 'delete_history', 'owner_employees', 'owner_salary_ledger', 'owner_expenses', 'owner_deposits'];
     incrementReadCounter('lowFrequency', lowFreq.length);
     hasChanges = await traceSyncOperation('syncLowFrequencyCollections', () => syncCollections(lowFreq, 'Low Frequency Sync'));
   } catch (err) {
@@ -2080,6 +2080,10 @@ export async function syncLowFrequencyCollections() {
     isPullingSyncLow = false;
   }
   return hasChanges;
+}
+
+export async function syncDeviceRegistry() {
+  return await syncCollections(['device_registry'], 'Device Registry Sync');
 }
 
 export function clearDeadQueueItems() {

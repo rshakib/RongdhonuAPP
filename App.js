@@ -506,6 +506,47 @@ export default function App() {
     };
   }, [isLoggedIn]);
 
+  // --- DEDICATED DEVICE REGISTRY SYNC TIMERS (Phase 6 Optimization) ---
+  // Steps 5, 6, 7 & 9: Dedicated device_registry sync schedule (30s for Manager/Owner, 60s for Admin)
+  // + 5-minute batched last_seen flush. Active ONLY in foreground.
+  useEffect(() => {
+    const isRoleAdmin = String(userRole || '').toUpperCase().trim() === 'ADMIN';
+    const registryIntervalMs = isRoleAdmin ? 60000 : 30000; // 60s for Admin, 30s for Manager/Owner
+
+    console.log(`[DeviceRegistry Sync] Starting dedicated timer. Role: ${userRole || 'Guest'}, Interval: ${registryIntervalMs / 1000}s`);
+
+    // Immediate pull on start/login
+    try {
+      const { syncDeviceRegistry } = require('./database');
+      syncDeviceRegistry();
+    } catch (e) {}
+
+    // Dedicated Device Registry Delta Pull Timer (Foreground Only)
+    const registryTimer = setInterval(async () => {
+      if (AppState.currentState === 'active') {
+        try {
+          const { syncDeviceRegistry } = require('./database');
+          await syncDeviceRegistry();
+        } catch (e) {}
+      }
+    }, registryIntervalMs);
+
+    // Step 7: 5-Minute Batched last_seen Flush Timer (Foreground Only)
+    const lastSeenTimer = setInterval(() => {
+      if (AppState.currentState === 'active') {
+        try {
+          const { checkAndFlushLastSeen } = require('./services/deviceRegistry');
+          checkAndFlushLastSeen();
+        } catch (e) {}
+      }
+    }, 300000); // 5 minutes (300s)
+
+    return () => {
+      clearInterval(registryTimer);
+      clearInterval(lastSeenTimer);
+    };
+  }, [userRole, isLoggedIn]);
+
   // --- FOREGROUND RECOVERY ---
   // React Native may suspend JS timers in background; run one pull immediately when app returns active.
   useEffect(() => {
@@ -518,11 +559,14 @@ export default function App() {
       recordAutoSyncEvent('app-state', 'appstate', nextState);
       if (previousState !== 'active' && nextState === 'active') {
         console.log("[AppState Sync] Device woke up in Foreground! Triggering immediate recovery pull...");
-        const { incrementForegroundRecoveryCount } = require('./database');
+        const { incrementForegroundRecoveryCount, syncDeviceRegistry } = require('./database');
+        const { checkAndFlushLastSeen } = require('./services/deviceRegistry');
         incrementForegroundRecoveryCount();
         await runAutoPull('foreground-tables-pull', syncTablesOnly, refreshData);
         await runAutoPull('foreground-high-frequency-pull', syncHighFrequencyCollections, refreshData);
         await runAutoPull('foreground-low-frequency-pull', syncLowFrequencyCollections, refreshData);
+        await syncDeviceRegistry();
+        checkAndFlushLastSeen();
       }
       previousState = nextState;
     });
@@ -573,10 +617,12 @@ export default function App() {
           console.log("[Network Recovery] 3/4: Running Low Frequency pull sync...");
           await syncLowFrequencyCollections();
 
-          // 4. Tables & Deletions
-          console.log("[Network Recovery] 4/4: Running Tables and Deletions sync...");
+          // 4. Tables, Deletions & Device Registry
+          console.log("[Network Recovery] 4/4: Running Tables, Deletions and Device Registry sync...");
           await syncTablesOnly();
           await syncDeletionsOnly();
+          const { syncDeviceRegistry } = require('./database');
+          await syncDeviceRegistry();
 
           console.log("[Network Recovery] Instant recovery cycle COMPLETED successfully.");
           

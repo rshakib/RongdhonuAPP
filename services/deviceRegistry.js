@@ -1,18 +1,34 @@
 import * as Device from 'expo-device';
 import * as Application from 'expo-application';
 import { Platform } from 'react-native';
-import { getDb, enqueueSync, setAppConfig } from '../database';
+import { getDb, enqueueSync, setAppConfig, syncRecordImmediately } from '../database';
 
 /**
- * Device Access Control Layer — Phase 1, 2, 3, 4, 5 & Phase 6
- * 
- * Phase 1: Device Registration & Telemetry
- * Phase 2: Device Approval & Blocking Access Control
- * Phase 3: Manager Approval Workflow & PENDING/BLOCKED Screens
- * Phase 4: Admin Device Lock (Stolen Device Protection)
- * Phase 5: Remote Force Logout & Invalidation of Saved Sessions
- * Phase 6: Administrator Controlled Offline Permission (allow_offline)
+ * Device Access Control Layer — Phase 1, 2, 3, 4, 5 & Phase 6 + Dedicated Sync Optimization
  */
+
+let lastFlushedLastSeen = null;
+
+/**
+ * Step 7: Flush last_seen update to sync_queue if changed (5-minute batch).
+ */
+export function checkAndFlushLastSeen() {
+  try {
+    const record = getCurrentDeviceRecord();
+    if (!record) return false;
+
+    const currentLastSeen = record.last_seen || record.updated_at;
+    if (currentLastSeen && currentLastSeen !== lastFlushedLastSeen) {
+      lastFlushedLastSeen = currentLastSeen;
+      enqueueSync("device_registry", record.id, "UPDATE");
+      console.log(`[DeviceRegistry] Batched last_seen flushed for device '${record.device_id}': ${currentLastSeen}`);
+      return true;
+    }
+  } catch (err) {
+    console.error("[DeviceRegistry] Error in checkAndFlushLastSeen:", err);
+  }
+  return false;
+}
 
 /**
  * Generates or retrieves a stable, persistent device ID.
@@ -137,6 +153,8 @@ export async function registerDeviceIfNeeded() {
     ]);
 
     enqueueSync("device_registry", recordId, "INSERT");
+    syncRecordImmediately("device_registry", recordId);
+    lastFlushedLastSeen = now;
     console.log(`[DeviceRegistry] Successfully registered new device: ${deviceId} (status: PENDING)`);
   } else {
     db.runSync(`
@@ -145,8 +163,7 @@ export async function registerDeviceIfNeeded() {
       WHERE device_id = ?
     `, [now, appVersion, androidVersion, now, deviceId]);
 
-    enqueueSync("device_registry", existingRecord.id, "UPDATE");
-    console.log(`[DeviceRegistry] Updated device last_seen timestamp for: ${deviceId}`);
+    console.log(`[DeviceRegistry] Updated device last_seen locally for: ${deviceId}`);
   }
 }
 
@@ -273,11 +290,7 @@ export function getAllRegisteredDevices() {
 }
 
 /**
- * Update a device's approval status (Admin action).
- * @param {string} deviceId 
- * @param {string} newStatus 'ACTIVE' | 'BLOCKED' | 'PENDING'
- * @param {string} adminUsername 
- * @returns {boolean} True on success
+ * Step 8: Update a device's approval status (Admin action - Immediate Push).
  */
 export function updateDeviceStatus(deviceId, newStatus, adminUsername = 'admin') {
   try {
@@ -304,8 +317,10 @@ export function updateDeviceStatus(deviceId, newStatus, adminUsername = 'admin')
 
     db.runSync(sql, params);
 
+    // Immediate Enqueue & Immediate Sync Push for Security Policy Action
     enqueueSync("device_registry", record.id, "UPDATE");
-    console.log(`[DeviceRegistry] Admin '${adminUsername}' updated device '${deviceId}' status to '${cleanStatus}'`);
+    syncRecordImmediately("device_registry", record.id);
+    console.log(`[DeviceRegistry] Admin '${adminUsername}' updated device '${deviceId}' status to '${cleanStatus}' (Immediate Push)`);
     return true;
   } catch (err) {
     console.error("[DeviceRegistry] Error updating device status:", err);
@@ -314,12 +329,7 @@ export function updateDeviceStatus(deviceId, newStatus, adminUsername = 'admin')
 }
 
 /**
- * Phase 6: Update device offline permission (Admin action).
- * Updates allow_offline column in device_registry and enqueues cloud sync.
- * @param {string} deviceId 
- * @param {boolean} allowOffline 
- * @param {string} adminUsername 
- * @returns {boolean} True on success
+ * Step 8: Update device offline permission (Admin action - Immediate Push).
  */
 export function updateDeviceOfflinePermission(deviceId, allowOffline, adminUsername = 'admin') {
   try {
@@ -338,8 +348,10 @@ export function updateDeviceOfflinePermission(deviceId, allowOffline, adminUsern
       WHERE device_id = ?
     `, [allowVal, adminUsername, now, deviceId]);
 
+    // Immediate Enqueue & Immediate Sync Push for Security Policy Action
     enqueueSync("device_registry", record.id, "UPDATE");
-    console.log(`[DeviceRegistry] Admin '${adminUsername}' set allow_offline=${allowVal} for device '${deviceId}'`);
+    syncRecordImmediately("device_registry", record.id);
+    console.log(`[DeviceRegistry] Admin '${adminUsername}' set allow_offline=${allowVal} for device '${deviceId}' (Immediate Push)`);
     return true;
   } catch (err) {
     console.error("[DeviceRegistry] Error updating offline permission:", err);
@@ -348,17 +360,12 @@ export function updateDeviceOfflinePermission(deviceId, allowOffline, adminUsern
 }
 
 /**
- * Phase 6: Check whether current device has offline permission enabled.
- * Rule:
- * - Admin behavior remains unchanged (always allowed).
- * - Owner & Manager: Allowed ONLY IF allow_offline == 1 in device_registry.
- * @param {string} userRole 
- * @returns {boolean} True if offline mode ('hybrid') is allowed on this device
+ * Check whether current device has offline permission enabled.
  */
 export function checkDeviceOfflinePermission(userRole) {
   const roleUpper = String(userRole || '').toUpperCase().trim();
   if (roleUpper === 'ADMIN') {
-    return true; // Admin behavior remains unchanged
+    return true;
   }
 
   const deviceRecord = getCurrentDeviceRecord();
@@ -368,11 +375,7 @@ export function checkDeviceOfflinePermission(userRole) {
 }
 
 /**
- * Phase 4: Set or remove Admin Lock for a device (Stolen Device Protection).
- * @param {string} deviceId 
- * @param {boolean} enableLock 
- * @param {string} adminUsername 
- * @returns {boolean} True on success
+ * Step 8: Set or remove Admin Lock for a device (Immediate Push).
  */
 export function setAdminDeviceLock(deviceId, enableLock, adminUsername = 'admin') {
   try {
@@ -398,8 +401,10 @@ export function setAdminDeviceLock(deviceId, enableLock, adminUsername = 'admin'
       `, [adminUsername, now, deviceId]);
     }
 
+    // Immediate Enqueue & Immediate Sync Push for Security Policy Action
     enqueueSync("device_registry", record.id, "UPDATE");
-    console.log(`[DeviceRegistry] setAdminDeviceLock deviceId='${deviceId}' enableLock=${enableLock} by '${adminUsername}'`);
+    syncRecordImmediately("device_registry", record.id);
+    console.log(`[DeviceRegistry] setAdminDeviceLock deviceId='${deviceId}' enableLock=${enableLock} by '${adminUsername}' (Immediate Push)`);
     return true;
   } catch (err) {
     console.error("[DeviceRegistry] Error setting admin device lock:", err);
@@ -408,11 +413,7 @@ export function setAdminDeviceLock(deviceId, enableLock, adminUsername = 'admin'
 }
 
 /**
- * Phase 5 & Patch: Trigger Remote Force Logout for a target device (Admin action).
- * Sets force_logout = 1 on the target device row in device_registry and queues Firestore sync.
- * @param {string} deviceId 
- * @param {string} adminUsername 
- * @returns {boolean} True on success
+ * Step 8: Trigger Remote Force Logout for a target device (Immediate Push).
  */
 export function triggerForceLogout(deviceId, adminUsername = 'admin') {
   try {
@@ -430,8 +431,10 @@ export function triggerForceLogout(deviceId, adminUsername = 'admin') {
       WHERE device_id = ?
     `, [now, deviceId]);
 
+    // Immediate Enqueue & Immediate Sync Push for Security Policy Action
     enqueueSync("device_registry", record.id, "UPDATE");
-    console.log(`[DeviceRegistry] Remote force_logout triggered for deviceId='${deviceId}' by '${adminUsername}'`);
+    syncRecordImmediately("device_registry", record.id);
+    console.log(`[DeviceRegistry] Remote force_logout triggered for deviceId='${deviceId}' by '${adminUsername}' (Immediate Push)`);
     return true;
   } catch (err) {
     console.error("[DeviceRegistry] Error triggering force logout:", err);
@@ -440,10 +443,7 @@ export function triggerForceLogout(deviceId, adminUsername = 'admin') {
 }
 
 /**
- * Phase 5 Patch: Check whether force_logout is flagged on the current device.
- * THIS IS STRICTLY DEVICE BASED — NO ROLE CHECKS.
- * Applies identically to ADMIN, OWNER, and MANAGER.
- * @returns {object} { triggered: boolean, message?: string }
+ * Phase 5 Patch: Check whether force_logout is flagged on current device.
  */
 export function checkAndExecuteForceLogout() {
   try {
@@ -456,9 +456,8 @@ export function checkAndExecuteForceLogout() {
       return { triggered: false };
     }
 
-    console.log("[DeviceRegistry] FORCE LOGOUT FLAGGED FOR DEVICE! Destroying all sessions regardless of role (ADMIN/OWNER/MANAGER)...");
+    console.log("[DeviceRegistry] FORCE LOGOUT FLAGGED FOR DEVICE! Destroying all sessions...");
 
-    // 1. Purge all saved session, username, and PIN keys from app_config
     setAppConfig('remembered_username', '');
     setAppConfig('login_session_user', '');
     setAppConfig('login_session_role', '');
@@ -469,7 +468,6 @@ export function checkAndExecuteForceLogout() {
       db.runSync("DELETE FROM app_config WHERE key LIKE 'remember_%' OR key LIKE 'session_%' OR key LIKE '%user%' OR key LIKE '%pin%' OR key = 'login_session_user' OR key = 'login_session_role'");
     } catch (e) {}
 
-    // 2. Reset force_logout = 0 on current device in SQLite
     const now = new Date().toISOString();
     db.runSync(`
       UPDATE device_registry
@@ -477,8 +475,8 @@ export function checkAndExecuteForceLogout() {
       WHERE device_id = ?
     `, [now, deviceRecord.device_id]);
 
-    // 3. Queue Firestore sync for force_logout reset
     enqueueSync("device_registry", deviceRecord.id, "UPDATE");
+    syncRecordImmediately("device_registry", deviceRecord.id);
 
     console.log(`[DeviceRegistry] Successfully executed Force Logout session purge for device '${deviceRecord.device_id}'`);
     return {
