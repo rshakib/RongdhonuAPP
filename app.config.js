@@ -14,12 +14,14 @@ module.exports = ({ config }) => {
   }
 
   // Profile-specific metadata configurations
+  // NOTE: ADMIN profile MUST preserve original package name 'com.riajulshakib.rongdhonu'
+  // so existing production Admin installs update seamlessly without needing re-install.
   const PROFILE_CONFIGS = {
     ADMIN: {
       name: 'রংধনু এডমিন',
       slug: 'rongdhonu-admin',
-      package: 'com.riajulshakib.rongdhonu.admin',
-      bundleIdentifier: 'com.riajulshakib.rongdhonu.admin',
+      package: 'com.riajulshakib.rongdhonu',
+      bundleIdentifier: 'com.riajulshakib.rongdhonu',
       channel: 'admin',
       icon: './assets/icons/admin_icon.png',
       splash: './assets/splash/admin_splash.png'
