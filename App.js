@@ -288,6 +288,7 @@ export default function App() {
 
   // Track if daily sheet is submitted
   const [isDailySubmitted, setIsDailySubmitted] = useState(false);
+  const [isMandatorySubmit, setIsMandatorySubmit] = useState(false);
 
   // Mandatory Previous Day Submit states
   const [showMandatoryPreviousSubmitModal, setShowMandatoryPreviousSubmitModal] = useState(false);
@@ -1479,7 +1480,7 @@ export default function App() {
               onCreateDelivery={handleCreateDelivery}
               onUpdateTableName={handleUpdateTableName}
               onNavigateToExpenses={() => setCurrentScreen('EXPENSES')}
-              onNavigateToSubmit={() => setCurrentScreen('DAILY_SUBMIT')}
+              onNavigateToSubmit={(mandatory = false) => { setIsMandatorySubmit(mandatory); setCurrentScreen('DAILY_SUBMIT'); }}
               onNavigateToEditMenu={() => setCurrentScreen('EDIT_MENU')}
               onNavigateToSupplierDue={() => setCurrentScreen('SUPPLIER_DUE')}
               onNavigateToItemSalesReport={() => setCurrentScreen('ITEM_SALES_REPORT')}
@@ -1519,7 +1520,7 @@ export default function App() {
               onCreateDelivery={handleCreateDelivery}
               onUpdateTableName={handleUpdateTableName}
               onNavigateToExpenses={() => setCurrentScreen('EXPENSES')}
-              onNavigateToSubmit={() => setCurrentScreen('DAILY_SUBMIT')}
+              onNavigateToSubmit={(mandatory = false) => { setIsMandatorySubmit(mandatory); setCurrentScreen('DAILY_SUBMIT'); }}
               onNavigateToEditMenu={() => setCurrentScreen('EDIT_MENU')}
               onNavigateToSupplierDue={() => setCurrentScreen('SUPPLIER_DUE')}
               onNavigateToItemSalesReport={() => setCurrentScreen('ITEM_SALES_REPORT')}
@@ -1552,7 +1553,7 @@ export default function App() {
               fullCountdown={fullCountdown}
               onTableSelect={handleTableSelect}
               onCreateDelivery={handleCreateDelivery}
-              onNavigateToSubmit={() => setCurrentScreen('DAILY_SUBMIT')}
+              onNavigateToSubmit={(mandatory = false) => { setIsMandatorySubmit(mandatory); setCurrentScreen('DAILY_SUBMIT'); }}
               submissionHistory={submissionHistory}
               onSavePastAccount={handleSavePastAccount}
               onDeletePastAccount={handleDeletePastAccount}
@@ -1692,6 +1693,7 @@ export default function App() {
             submissionHistory={submissionHistory}
             onUpdateExpenses={handleUpdateExpenses}
             isDailySubmitted={isDailySubmitted}
+            isMandatory={isMandatorySubmit}
             userRole={userRole}
             onBack={() => setCurrentScreen('DASHBOARD')}
             onSubmit={async (summary) => {
@@ -1707,6 +1709,7 @@ export default function App() {
                 const success = await syncRecordImmediately('daily_submit', todayStr);
                 showToast(success ? "✅ ডাটা সেভ হয়েছে" : "📱 অফলাইনে সেভ হয়েছে", success ? 'online' : 'offline');
               }
+              setIsMandatorySubmit(false);
               setCurrentScreen("DASHBOARD");
               Alert.alert("সফল", "আজকের হিসাব সফলভাবে সাবমিট করা হয়েছে এবং দিনটি ক্লোজ করা হয়েছে।");
             }}

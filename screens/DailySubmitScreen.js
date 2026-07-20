@@ -16,7 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { exportDepositReportPDF } from '../pdfHelper';
 
-export default function DailySubmitScreen({ dailyExpenses, completedOrders = [], submissionHistory = [], onUpdateExpenses, isDailySubmitted, userRole, onBack, onSubmit }) {
+export default function DailySubmitScreen({ dailyExpenses, completedOrders = [], submissionHistory = [], onUpdateExpenses, isDailySubmitted, isMandatory = false, userRole, onBack, onSubmit }) {
   const [depositAmount, setDepositAmount] = useState('0');
   const businessDateObj = new Date(Date.now() - 3600000);
   const [selectedMonth, setSelectedMonth] = useState(businessDateObj.getMonth());
@@ -77,7 +77,12 @@ export default function DailySubmitScreen({ dailyExpenses, completedOrders = [],
       if (historyModalVisible) { setHistoryModalVisible(false); return true; }
       if (monthPickerVisible) { setMonthPickerVisible(false); return true; }
       if (yearPickerVisible) { setYearPickerVisible(false); return true; }
-      return false; // Let App.js handle screen back
+
+      if (isMandatory) {
+        // Mandatory Mode (Flow 1): Block leaving screen completely until submit succeeds
+        return true;
+      }
+      return false; // Normal Mode (Flow 2): Allow returning to Dashboard
     };
 
     const backHandler = BackHandler.addEventListener(
@@ -86,7 +91,7 @@ export default function DailySubmitScreen({ dailyExpenses, completedOrders = [],
     );
 
     return () => backHandler.remove();
-  }, [submitModalVisible, historyModalVisible, monthPickerVisible, yearPickerVisible]);
+  }, [submitModalVisible, historyModalVisible, monthPickerVisible, yearPickerVisible, isMandatory]);
 
   const numDudu = parseFloat(duduMiah) || 0;
   const numAkash = parseFloat(akashChicken) || 0;
@@ -212,9 +217,11 @@ export default function DailySubmitScreen({ dailyExpenses, completedOrders = [],
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <TouchableOpacity style={styles.backButton} onPress={onBack}>
-            <Text style={styles.backArrow}>⬅</Text>
-          </TouchableOpacity>
+          {!isMandatory && (
+            <TouchableOpacity style={styles.backButton} onPress={onBack}>
+              <Text style={styles.backArrow}>⬅</Text>
+            </TouchableOpacity>
+          )}
           <View>
             <Text style={styles.headerTitle}>দৈনিক সাবমিট শীট</Text>
             <Text style={styles.headerSub}>রংধনু ক্যাফে এন্ড রেস্টুরেন্ট</Text>
