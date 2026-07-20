@@ -4121,54 +4121,43 @@ export function checkAndApplyIjaraRollover() {
 
       // If today is the pending date (or we missed it and it's in the past)
       if (todayStr >= pendingDateStr) {
-        // Check today's business activity: orders count > 0
-        const ordersCountRow = db.getFirstSync(
-          "SELECT COUNT(*) as count FROM orders WHERE date(created_at, 'localtime') = ?",
+        console.log(`[Auto Ijara] Midnight Rollover: Applying ৳${pendingAmount} for ${todayStr}`);
+        const now = new Date().toISOString();
+
+        // Check today's ijara expense does not already exist
+        const existingIjara = db.getFirstSync(
+          "SELECT amount FROM expenses WHERE date(created_at, 'localtime') = ? AND category = 'ijara'",
           [todayStr]
         );
-        const ordersCount = ordersCountRow ? ordersCountRow.count : 0;
 
-        if (ordersCount > 0) {
-          console.log(`[Auto Ijara] Midnight Rollover: Applying ৳${pendingAmount} for ${todayStr} as orders count is ${ordersCount}`);
-          const now = new Date().toISOString();
-
-          // Check today's ijara expense does not already exist
-          const existingIjara = db.getFirstSync(
-            "SELECT amount FROM expenses WHERE date(created_at, 'localtime') = ? AND category = 'ijara'",
-            [todayStr]
+        if (!existingIjara) {
+          // 1. Set as Current Ijara in expenses
+          const stableExpId = `exp_${todayStr}_ijara`;
+          db.runSync(
+            "INSERT OR REPLACE INTO expenses (id, category, amount, note, is_due, given_amount, used_amount, returned_amount, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, ?, 0)",
+            [stableExpId, 'ijara', pendingAmount, 'Auto Carry Forward', now, now]
           );
+          enqueueSync("expenses", stableExpId, "INSERT");
 
-          if (!existingIjara) {
-            // 1. Set as Current Ijara in expenses
-            const stableExpId = `exp_${todayStr}_ijara`;
-            db.runSync(
-              "INSERT OR REPLACE INTO expenses (id, category, amount, note, is_due, given_amount, used_amount, returned_amount, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, ?, 0)",
-              [stableExpId, 'ijara', pendingAmount, 'Auto Carry Forward', now, now]
-            );
-            enqueueSync("expenses", stableExpId, "INSERT");
-
-            // 2. Set as Current Ijara in eja_history
-            const ejaId = `eja_${todayStr}`;
-            db.runSync(
-              "INSERT OR REPLACE INTO eja_history (id, date, eja_amount, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, 0)",
-              [ejaId, todayStr, pendingAmount, now, now]
-            );
-            enqueueSync("eja_history", ejaId, "INSERT");
-          } else {
-            console.log(`[Auto Ijara] Today's ijara expense already exists (value: ${existingIjara.amount}). Skipping insertion.`);
-          }
-
-          // Clear pending states
-          db.runSync("DELETE FROM app_config WHERE key = 'pending_ijara_amount'");
-          db.runSync("DELETE FROM app_config WHERE key = 'pending_ijara_date'");
-          
-          enqueueSync("app_config", "pending_ijara_amount", "DELETE");
-          enqueueSync("app_config", "pending_ijara_date", "DELETE");
-          
-          return true;
+          // 2. Set as Current Ijara in eja_history
+          const ejaId = `eja_${todayStr}`;
+          db.runSync(
+            "INSERT OR REPLACE INTO eja_history (id, date, eja_amount, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, 0)",
+            [ejaId, todayStr, pendingAmount, now, now]
+          );
+          enqueueSync("eja_history", ejaId, "INSERT");
         } else {
-          console.log(`[Auto Ijara] Rollover check: pending Eja exists but no orders created today (${todayStr}). Config preserved.`);
+          console.log(`[Auto Ijara] Today's ijara expense already exists (value: ${existingIjara.amount}). Skipping insertion.`);
         }
+
+        // Clear pending states
+        db.runSync("DELETE FROM app_config WHERE key = 'pending_ijara_amount'");
+        db.runSync("DELETE FROM app_config WHERE key = 'pending_ijara_date'");
+        
+        enqueueSync("app_config", "pending_ijara_amount", "DELETE");
+        enqueueSync("app_config", "pending_ijara_date", "DELETE");
+        
+        return true;
       }
     }
     return false;
