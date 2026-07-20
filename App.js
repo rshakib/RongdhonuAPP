@@ -108,6 +108,9 @@ import PaymentCheckoutScreen from './screens/PaymentCheckoutScreen';
 import ExpensesScreen from './screens/ExpensesScreen';
 import SupplierDueScreen from './screens/SupplierDueScreen';
 import DailyItemSalesReport from './screens/DailyItemSalesReport';
+import DeviceManagementScreen from './screens/DeviceManagementScreen';
+import DevicePendingScreen from './screens/DevicePendingScreen';
+import DeviceBlockedScreen from './screens/DeviceBlockedScreen';
 import SyncDiagnosticsScreen from './screens/SyncDiagnosticsScreen';
 import DeleteHistoryScreen from './screens/DeleteHistoryScreen';
 import SystemToolsScreen from './screens/SystemToolsScreen';
@@ -195,6 +198,8 @@ const NotificationToast = ({ visible, message, type }) => {
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [pendingDeviceId, setPendingDeviceId] = useState('');
+  const [pendingLoginInfo, setPendingLoginInfo] = useState(null);
 
   // Toast State
   const [toastVisible, setToastVisible] = useState(false);
@@ -778,6 +783,26 @@ export default function App() {
   };
 
   const handleLoginSuccess = async (role, displayName, mode = 'online_only') => {
+    // --- DEVICE ACCESS CONTROL (PHASE 3) ---
+    try {
+      const { checkDeviceLoginPermission } = require('./services/deviceRegistry');
+      const devPerm = checkDeviceLoginPermission(role);
+      if (!devPerm.allowed) {
+        setPendingDeviceId(devPerm.deviceId || '');
+        setPendingLoginInfo({ role, displayName, mode });
+        setIsLoggedIn(false);
+
+        if (devPerm.status === 'BLOCKED') {
+          setCurrentScreen('DEVICE_BLOCKED');
+        } else {
+          setCurrentScreen('DEVICE_PENDING');
+        }
+        return;
+      }
+    } catch (devErr) {
+      console.error("[App] Device login permission check error:", devErr);
+    }
+
     setUserRole(role);
     setUserDisplayName(displayName);
     setIsOnlineOnlyMode(mode === 'online_only');
@@ -1285,6 +1310,41 @@ export default function App() {
   // Renders screen content based on custom router state
   const renderScreen = () => {
     if (!isLoggedIn) {
+      if (currentScreen === 'DEVICE_PENDING') {
+        return (
+          <DevicePendingScreen
+            deviceId={pendingDeviceId}
+            onApproved={() => {
+              if (pendingLoginInfo) {
+                const { role, displayName, mode } = pendingLoginInfo;
+                handleLoginSuccess(role, displayName, mode);
+              } else {
+                setIsLoggedIn(true);
+                setCurrentScreen('DASHBOARD');
+              }
+            }}
+            onExit={() => {
+              setIsLoggedIn(false);
+              setPendingLoginInfo(null);
+              setCurrentScreen('LOGIN');
+            }}
+          />
+        );
+      }
+
+      if (currentScreen === 'DEVICE_BLOCKED') {
+        return (
+          <DeviceBlockedScreen
+            deviceId={pendingDeviceId}
+            onExit={() => {
+              setIsLoggedIn(false);
+              setPendingLoginInfo(null);
+              setCurrentScreen('LOGIN');
+            }}
+          />
+        );
+      }
+
       return <LoginScreen onLoginSuccess={(role, name, mode) => handleLoginSuccess(role, name, mode)} />;
     }
 
@@ -1311,6 +1371,7 @@ export default function App() {
               onNavigateToSyncDiagnostics={() => setCurrentScreen('SYNC_DIAGNOSTICS')}
               onNavigateToDeleteHistory={() => setCurrentScreen('DELETE_HISTORY')}
               onNavigateToSystemTools={() => setCurrentScreen('SYSTEM_TOOLS')}
+              onNavigateToDeviceManagement={() => setCurrentScreen('DEVICE_MANAGEMENT')}
               onCloudRestore={handleCloudRestore}
               onMenuRecovery={handleMenuRecovery}
               onResetHistoryLimits={handleResetHistoryLimits}
@@ -1576,6 +1637,18 @@ export default function App() {
           return (
             <DeleteHistoryScreen
               onBack={() => setCurrentScreen('DASHBOARD')}
+            />
+          );
+        } else {
+          return null;
+        }
+
+      case 'DEVICE_MANAGEMENT':
+        if (userRole === 'admin') {
+          return (
+            <DeviceManagementScreen
+              onBack={() => setCurrentScreen('DASHBOARD')}
+              userRole={userRole}
             />
           );
         } else {

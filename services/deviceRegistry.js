@@ -4,11 +4,11 @@ import { Platform } from 'react-native';
 import { getDb, enqueueSync } from '../database';
 
 /**
- * Device Access Control Layer — Phase 1: Device Registration
+ * Device Access Control Layer — Phase 1, Phase 2 & Phase 3
  * 
- * Automatically registers the device on first app launch or updates
- * device runtime telemetry (last_seen, app_version) on subsequent launches.
- * Does NOT restrict app login or block devices in Phase 1.
+ * Phase 1: Device Registration & Telemetry
+ * Phase 2: Device Approval & Blocking Access Control
+ * Phase 3: Full Manager & Owner Approval Workflows & Custom Screen Navigation
  */
 
 /**
@@ -18,7 +18,6 @@ import { getDb, enqueueSync } from '../database';
  * @returns {Promise<string>} Unique persistent device ID
  */
 async function getPersistentDeviceId(db) {
-  // Try native Android ID first
   try {
     let androidId = null;
     if (typeof Application.getAndroidIdAsync === 'function') {
@@ -31,14 +30,12 @@ async function getPersistentDeviceId(db) {
     }
   } catch (e) {}
 
-  // Fallback: Check app_config for stored persistent device ID
   try {
     const storedRow = db.getFirstSync("SELECT value FROM app_config WHERE key = 'persistent_device_id'");
     if (storedRow && storedRow.value) {
       return storedRow.value;
     }
 
-    // Generate new fallback UUID and save to app_config
     const newDeviceId = `dev_uuid_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
     const now = new Date().toISOString();
     db.runSync(
@@ -53,12 +50,11 @@ async function getPersistentDeviceId(db) {
 }
 
 /**
- * Ensures the `device_registry` table exists and performs device registration / update.
+ * Ensures `device_registry` table exists and registers / updates current device telemetry.
  */
 export async function registerDeviceIfNeeded() {
   const db = getDb();
 
-  // 1. Create `device_registry` table if not exists
   db.runSync(`
     CREATE TABLE IF NOT EXISTS device_registry (
       id TEXT PRIMARY KEY,
@@ -77,11 +73,19 @@ export async function registerDeviceIfNeeded() {
       registered_by TEXT,
       notes TEXT,
       created_at TEXT,
-      updated_at TEXT
+      updated_at TEXT,
+      is_synced INTEGER DEFAULT 0
     );
   `);
 
-  // 2. Gather device hardware & OS telemetry
+  // Ensure is_synced column exists on legacy device_registry table
+  try {
+    const cols = db.getAllSync("PRAGMA table_info('device_registry')").map(c => c.name);
+    if (!cols.includes('is_synced')) {
+      db.runSync("ALTER TABLE device_registry ADD COLUMN is_synced INTEGER DEFAULT 0;");
+    }
+  } catch (e) {}
+
   const deviceId = await getPersistentDeviceId(db);
   const deviceName = Device.deviceName || Device.modelName || 'Android Device';
   const manufacturer = Device.manufacturer || 'Android';
@@ -92,14 +96,12 @@ export async function registerDeviceIfNeeded() {
 
   const now = new Date().toISOString();
 
-  // 3. Check if this device is already registered
   const existingRecord = db.getFirstSync(
     "SELECT * FROM device_registry WHERE device_id = ?",
     [deviceId]
   );
 
   if (!existingRecord) {
-    // FRESH INSTALL: Register new device with status = PENDING
     const recordId = `dreg_${deviceId.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 24)}_${Date.now()}`;
 
     db.runSync(`
@@ -118,24 +120,21 @@ export async function registerDeviceIfNeeded() {
       model,
       androidVersion,
       appVersion,
-      now, // first_install_time
-      now, // last_seen
-      now, // created_at
-      now  // updated_at
+      now,
+      now,
+      now,
+      now
     ]);
 
-    // Enqueue cloud synchronization for device registration
     enqueueSync("device_registry", recordId, "INSERT");
     console.log(`[DeviceRegistry] Successfully registered new device: ${deviceId} (status: PENDING)`);
   } else {
-    // EXISTING DEVICE: Update last_seen, app_version, android_version
     db.runSync(`
       UPDATE device_registry
       SET last_seen = ?, app_version = ?, android_version = ?, updated_at = ?
       WHERE device_id = ?
     `, [now, appVersion, androidVersion, now, deviceId]);
 
-    // Enqueue cloud synchronization for telemetry update
     enqueueSync("device_registry", existingRecord.id, "UPDATE");
     console.log(`[DeviceRegistry] Updated device last_seen timestamp for: ${deviceId}`);
   }
@@ -143,15 +142,166 @@ export async function registerDeviceIfNeeded() {
 
 /**
  * Get device registry record for the current device.
- * @returns {Promise<object|null>}
+ * @returns {object|null}
  */
-export async function getCurrentDeviceRecord() {
+export function getCurrentDeviceRecord() {
   try {
     const db = getDb();
-    const deviceId = await getPersistentDeviceId(db);
-    return db.getFirstSync("SELECT * FROM device_registry WHERE device_id = ?", [deviceId]);
+    const storedRow = db.getFirstSync("SELECT value FROM app_config WHERE key = 'persistent_device_id'");
+    if (!storedRow || !storedRow.value) {
+      return db.getFirstSync("SELECT * FROM device_registry ORDER BY created_at DESC LIMIT 1");
+    }
+    return db.getFirstSync("SELECT * FROM device_registry WHERE device_id = ?", [storedRow.value]);
   } catch (err) {
     console.error("[DeviceRegistry] Error fetching current device record:", err);
     return null;
+  }
+}
+
+/**
+ * Phase 3: Check whether a user with `userRole` is allowed to log in on this device.
+ * 
+ * Rules:
+ * - ADMIN: Login allowed from any device immediately.
+ * - OWNER: Login allowed unless device status is BLOCKED.
+ * - MANAGER (and others):
+ *     - PENDING  => Login denied (navigate to DevicePendingScreen).
+ *     - BLOCKED  => Login denied (navigate to DeviceBlockedScreen).
+ *     - ACTIVE   => Login allowed.
+ * 
+ * @param {string} userRole 
+ * @returns {object} { allowed: boolean, status: string, deviceId?: string, message?: string }
+ */
+export function checkDeviceLoginPermission(userRole) {
+  const roleUpper = String(userRole || '').toUpperCase().trim();
+  const deviceRecord = getCurrentDeviceRecord();
+  const deviceId = deviceRecord ? deviceRecord.device_id : 'Unknown';
+  const status = deviceRecord ? String(deviceRecord.status || 'PENDING').toUpperCase().trim() : 'PENDING';
+
+  // 1. ADMIN always bypasses device status checks
+  if (roleUpper === 'ADMIN') {
+    return {
+      allowed: true,
+      status: 'BYPASS',
+      deviceId,
+      message: 'Admin bypass allowed'
+    };
+  }
+
+  // 2. OWNER can login immediately unless status is BLOCKED
+  if (roleUpper === 'OWNER') {
+    if (status === 'BLOCKED') {
+      return {
+        allowed: false,
+        status: 'BLOCKED',
+        deviceId,
+        message: 'এই ডিভাইসটি Administrator ব্লক করেছেন। এই ডিভাইস থেকে Login করা যাবে না।'
+      };
+    }
+    return {
+      allowed: true,
+      status: 'BYPASS',
+      deviceId,
+      message: 'Owner bypass allowed'
+    };
+  }
+
+  // 3. MANAGER (and all other roles) require ACTIVE approval
+  if (status === 'PENDING') {
+    return {
+      allowed: false,
+      status: 'PENDING',
+      deviceId,
+      message: 'এই ডিভাইসটি এখনো Administrator কর্তৃক অনুমোদিত হয়নি।'
+    };
+  }
+
+  if (status === 'BLOCKED') {
+    return {
+      allowed: false,
+      status: 'BLOCKED',
+      deviceId,
+      message: 'এই ডিভাইসটি Administrator ব্লক করেছেন। এই ডিভাইস থেকে Login করা যাবে না।'
+    };
+  }
+
+  if (status === 'ACTIVE') {
+    return {
+      allowed: true,
+      status: 'ACTIVE',
+      deviceId,
+      message: 'Device approved'
+    };
+  }
+
+  return {
+    allowed: false,
+    status: status,
+    deviceId,
+    message: 'ডিভাইস এক্সেস যাচাই করা সম্ভব হয়নি।'
+  };
+}
+
+/**
+ * Get all registered devices from device_registry table (for Admin panel).
+ * @returns {Array} Array of device records
+ */
+export function getAllRegisteredDevices() {
+  try {
+    const db = getDb();
+    return db.getAllSync("SELECT * FROM device_registry ORDER BY created_at DESC");
+  } catch (err) {
+    console.error("[DeviceRegistry] Error fetching all registered devices:", err);
+    return [];
+  }
+}
+
+/**
+ * Update a device's approval status (Admin action).
+ * @param {string} deviceId 
+ * @param {string} newStatus 'ACTIVE' | 'BLOCKED' | 'PENDING'
+ * @param {string} adminUsername 
+ * @returns {boolean} True on success
+ */
+export function updateDeviceStatus(deviceId, newStatus, adminUsername = 'admin') {
+  try {
+    const db = getDb();
+    const cleanStatus = String(newStatus || '').toUpperCase().trim();
+    if (!['ACTIVE', 'BLOCKED', 'PENDING'].includes(cleanStatus)) {
+      throw new Error(`Invalid status: ${newStatus}`);
+    }
+
+    console.log("[DeviceRegistry] updateDeviceStatus called");
+    console.log("[DeviceRegistry] Target deviceId:", deviceId);
+    console.log("[DeviceRegistry] Target newStatus:", cleanStatus);
+
+    const record = db.getFirstSync("SELECT * FROM device_registry WHERE device_id = ?", [deviceId]);
+    if (!record) {
+      throw new Error(`Device record not found for device_id: ${deviceId}`);
+    }
+
+    const allowLogin = cleanStatus === 'ACTIVE' ? 1 : 0;
+    const now = new Date().toISOString();
+
+    const sql = `
+      UPDATE device_registry
+      SET status = ?, allow_login = ?, registered_by = ?, updated_at = ?
+      WHERE device_id = ?
+    `;
+    const params = [cleanStatus, allowLogin, adminUsername, now, deviceId];
+
+    db.runSync(sql, params);
+
+    // Verification check
+    const updatedRow = db.getFirstSync("SELECT status, allow_login, updated_at FROM device_registry WHERE device_id = ?", [deviceId]);
+    console.log("[DeviceRegistry] Verification Query Result:", JSON.stringify(updatedRow));
+
+    // Enqueue cloud sync update
+    enqueueSync("device_registry", record.id, "UPDATE");
+    console.log(`[DeviceRegistry] Admin '${adminUsername}' updated device '${deviceId}' status to '${cleanStatus}'`);
+    return true;
+  } catch (err) {
+    console.error("[DeviceRegistry] Error updating device status:", err);
+    return false;
   }
 }

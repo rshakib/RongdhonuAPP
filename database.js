@@ -1934,8 +1934,11 @@ async function syncCollections(collectionsList, cycleName = 'Unnamed Cycle') {
           const keys = Object.keys(filteredRow);
           if (keys.length === 0) continue;
 
+          const hasIsSynced = validColumns.includes('is_synced');
           const placeholders = keys.map(() => '?').join(', ');
-          const sql = `INSERT OR REPLACE INTO ${table} (${keys.join(', ')}, is_synced) VALUES (${placeholders}, 1)`;
+          const sql = hasIsSynced
+            ? `INSERT OR REPLACE INTO ${table} (${keys.join(', ')}, is_synced) VALUES (${placeholders}, 1)`
+            : `INSERT OR REPLACE INTO ${table} (${keys.join(', ')}) VALUES (${placeholders})`;
           const values = keys.map(k => filteredRow[k]);
           
           try {
