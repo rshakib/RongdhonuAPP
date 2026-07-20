@@ -1988,7 +1988,7 @@ export default function App() {
           </View>
         </Modal>
 
-        {/* MANDATORY PREVIOUS DAY SUBMIT BLOCKING OVERLAY */}
+        {/* MANDATORY PREVIOUS DAY SUBMIT WARNING OVERLAY */}
         <Modal
           visible={showMandatoryPreviousSubmitModal}
           transparent={true}
@@ -1996,180 +1996,201 @@ export default function App() {
           onRequestClose={() => {}}
         >
           <View style={styles.blockOverlay}>
-            <View style={[styles.blockContent, { width: '95%', maxWidth: 450, padding: 16, borderColor: '#D90429' }]}>
-              <Text style={styles.blockIcon}>🚨</Text>
-              <Text style={styles.blockTitle}>পূর্ববর্তী দিনের হিসাব বকেয়া!</Text>
-              <Text style={[styles.blockSubtitle, { color: '#D90429', marginBottom: 8 }]}>তারিখ: {missingSubmitDate ? formatDisplayDate(missingSubmitDate) : ''}</Text>
-              
-              <Text style={[styles.blockMessage, { marginBottom: 12 }]}>
-                পূর্ববর্তী ব্যবসায়িক দিনের হিসাব সাবমিট করা বাধ্যতামূলক। অনুগ্রহ করে নিচের হিসাবটি মিলিয়ে সাবমিট করুন।
+            <View style={[styles.blockContent, { width: '95%', maxWidth: 480, padding: 20, borderColor: '#FFB703', borderRadius: 16 }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                <Text style={{ fontSize: 24, marginRight: 8 }}>🚨</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#FFB703', fontSize: 16, fontWeight: 'bold' }}>পূর্ববর্তী দিনের হিসাব বকেয়া!</Text>
+                  <Text style={{ color: '#A1A1AA', fontSize: 12 }}>ব্যবসায়িক তারিখ: {missingSubmitDate ? formatDisplayDate(missingSubmitDate) : ''}</Text>
+                </View>
+              </View>
+
+              <Text style={{ color: '#E4E4E7', fontSize: 12, marginBottom: 14, lineHeight: 18 }}>
+                এই দিনের হিসাব সাবমিট না করা পর্যন্ত ড্যাশবোর্ড লক থাকবে। হিসাব পরীক্ষা করে এগিয়ে যান।
               </Text>
 
               {missingSubmitSummary && (
-                <ScrollView style={{ width: '100%', maxHeight: 220, marginBottom: 12 }}>
-                  <View style={{ backgroundColor: '#1A1A1A', borderRadius: 10, padding: 10 }}>
+                <ScrollView style={{ width: '100%', maxHeight: 320, marginBottom: 16 }} showsVerticalScrollIndicator={false}>
+                  <View style={{ backgroundColor: '#18181B', borderRadius: 12, padding: 14, borderWidth: 1, borderColor: '#27272A', gap: 10 }}>
                     
-                    {/* Sales Summary Card */}
-                    <Text style={{ color: '#FFB703', fontWeight: 'bold', fontSize: 11, marginBottom: 6 }}>📊 বিক্রয় ও খরচ হিসাব:</Text>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2, borderBottomWidth: 0.5, borderColor: '#333' }}>
-                      <Text style={{ color: '#CCC', fontSize: 10 }}>ক্যাশ বিক্রয়:</Text>
-                      <Text style={{ color: '#FFF', fontSize: 10, fontWeight: 'bold' }}>৳{Number(missingSubmitSummary.breakdown.cash).toLocaleString()}</Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2, borderBottomWidth: 0.5, borderColor: '#333' }}>
-                      <Text style={{ color: '#CCC', fontSize: 10 }}>বিকাশ বিক্রয়:</Text>
-                      <Text style={{ color: '#FFF', fontSize: 10, fontWeight: 'bold' }}>৳{Number(missingSubmitSummary.breakdown.bkash).toLocaleString()}</Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2, borderBottomWidth: 0.5, borderColor: '#333' }}>
-                      <Text style={{ color: '#CCC', fontSize: 10 }}>নগদ বিক্রয়:</Text>
-                      <Text style={{ color: '#FFF', fontSize: 10, fontWeight: 'bold' }}>৳{Number(missingSubmitSummary.breakdown.nagad).toLocaleString()}</Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2, borderBottomWidth: 0.5, borderColor: '#333' }}>
-                      <Text style={{ color: '#CCC', fontSize: 10 }}>রকেট বিক্রয়:</Text>
-                      <Text style={{ color: '#FFF', fontSize: 10, fontWeight: 'bold' }}>৳{Number(missingSubmitSummary.breakdown.rocket || 0).toLocaleString()}</Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2, borderBottomWidth: 0.5, borderColor: '#333' }}>
-                      <Text style={{ color: '#CCC', fontSize: 10 }}>ডেলিভারি সেল:</Text>
-                      <Text style={{ color: '#FFF', fontSize: 10, fontWeight: 'bold' }}>৳{Number(missingSubmitSummary.breakdown.delivery_sell || 0).toLocaleString()}</Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2, borderBottomWidth: 0.5, borderColor: '#333' }}>
-                      <Text style={{ color: '#CCC', fontSize: 10 }}>ডেলিভারি চার্জ:</Text>
-                      <Text style={{ color: '#FFF', fontSize: 10, fontWeight: 'bold' }}>৳{Number(missingSubmitSummary.breakdown.delivery_charge || 0).toLocaleString()}</Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2, borderBottomWidth: 0.5, borderColor: '#333', marginTop: 4 }}>
-                      <Text style={{ color: '#FFF', fontSize: 10, fontWeight: 'bold' }}>মোট বিক্রয়:</Text>
-                      <Text style={{ color: '#34D399', fontSize: 10, fontWeight: 'bold' }}>৳{missingSubmitSummary.sell.toLocaleString()}</Text>
+                    {/* 1. Total Cash Card */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 8, borderBottomWidth: 1, borderColor: '#27272A' }}>
+                      <Text style={{ color: '#A1A1AA', fontSize: 12, fontWeight: 'bold' }}>💰 মোট ক্যাশ (Total Cash):</Text>
+                      <Text style={{ color: '#34D399', fontSize: 16, fontWeight: 'bold' }}>৳{Number(missingSubmitSummary.breakdown?.cash || 0).toLocaleString()}</Text>
                     </View>
 
-                    {/* Expenses Summary Card */}
-                    <Text style={{ color: '#FFB703', fontWeight: 'bold', fontSize: 11, marginTop: 10, marginBottom: 6 }}>💸 খরচ বিবরণী:</Text>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2, borderBottomWidth: 0.5, borderColor: '#333' }}>
-                      <Text style={{ color: '#CCC', fontSize: 10 }}>ইজা খরচ:</Text>
-                      <Text style={{ color: '#FFF', fontSize: 10 }}>৳{Number(missingSubmitSummary.breakdown.ijara).toLocaleString()}</Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2, borderBottomWidth: 0.5, borderColor: '#333' }}>
-                      <Text style={{ color: '#CCC', fontSize: 10 }}>দুদু স্টোর:</Text>
-                      <Text style={{ color: '#FFF', fontSize: 10 }}>৳{Number(missingSubmitSummary.breakdown.dudu).toLocaleString()}</Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2, borderBottomWidth: 0.5, borderColor: '#333' }}>
-                      <Text style={{ color: '#CCC', fontSize: 10 }}>আকাশ মুরগী:</Text>
-                      <Text style={{ color: '#FFF', fontSize: 10 }}>৳{Number(missingSubmitSummary.breakdown.akash).toLocaleString()}</Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2, borderBottomWidth: 0.5, borderColor: '#333' }}>
-                      <Text style={{ color: '#CCC', fontSize: 10 }}>বার্গার বান:</Text>
-                      <Text style={{ color: '#FFF', fontSize: 10 }}>৳{Number(missingSubmitSummary.breakdown.burger).toLocaleString()}</Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2, borderBottomWidth: 0.5, borderColor: '#333' }}>
-                      <Text style={{ color: '#CCC', fontSize: 10 }}>বাজার:</Text>
-                      <Text style={{ color: '#FFF', fontSize: 10 }}>৳{Number(missingSubmitSummary.breakdown.bazar).toLocaleString()}</Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2, borderBottomWidth: 0.5, borderColor: '#333' }}>
-                      <Text style={{ color: '#CCC', fontSize: 10 }}>অন্যান্য:</Text>
-                      <Text style={{ color: '#FFF', fontSize: 10 }}>৳{Number(missingSubmitSummary.breakdown.others).toLocaleString()}</Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2, borderBottomWidth: 0.5, borderColor: '#333', marginTop: 4 }}>
-                      <Text style={{ color: '#FFF', fontSize: 10, fontWeight: 'bold' }}>মোট খরচ:</Text>
-                      <Text style={{ color: '#EF4444', fontSize: 10, fontWeight: 'bold' }}>৳{missingSubmitSummary.expense.toLocaleString()}</Text>
+                    {/* 2. Expense Breakdown (Editable Inputs) */}
+                    <Text style={{ color: '#FFB703', fontSize: 12, fontWeight: 'bold', marginTop: 4 }}>📉 খরচ বিবরণী (Expense Breakdown):</Text>
+                    
+                    {/* Dudu Store */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ color: '#D4D4D8', fontSize: 11 }}>🛍️ দুদু মিয়া খরচ:</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#09090B', borderWidth: 1, borderColor: '#3F3F46', borderRadius: 6, paddingHorizontal: 8, height: 32, width: 110 }}>
+                        <Text style={{ color: '#FFB703', fontSize: 11, fontWeight: 'bold', marginRight: 4 }}>৳</Text>
+                        <TextInput
+                          style={{ flex: 1, color: '#FFF', fontSize: 11, fontWeight: 'bold', padding: 0 }}
+                          keyboardType="numeric"
+                          value={String(missingSubmitSummary.breakdown?.dudu || 0)}
+                          onChangeText={(text) => {
+                            const val = parseFloat(text) || 0;
+                            setMissingSubmitSummary(prev => {
+                              const newDudu = val;
+                              const newExp = newDudu + (prev.breakdown.akash||0) + (prev.breakdown.burger||0) + (prev.breakdown.bazar||0) + (prev.breakdown.others||0);
+                              return {
+                                ...prev,
+                                expense: newExp,
+                                breakdown: { ...prev.breakdown, dudu: newDudu }
+                              };
+                            });
+                          }}
+                        />
+                      </View>
                     </View>
 
-                    {/* Net Cash */}
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, borderTopWidth: 1, borderColor: '#444', marginTop: 6 }}>
-                      <Text style={{ color: '#FFF', fontSize: 11, fontWeight: 'bold' }}>নেট ক্যাশ হাতঃ</Text>
-                      <Text style={{ color: '#FFB703', fontSize: 11, fontWeight: 'bold' }}>৳{missingSubmitSummary.net_cash.toLocaleString()}</Text>
+                    {/* Akash Chicken */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ color: '#D4D4D8', fontSize: 11 }}>🐔 আকাশ মুরগী খরচ:</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#09090B', borderWidth: 1, borderColor: '#3F3F46', borderRadius: 6, paddingHorizontal: 8, height: 32, width: 110 }}>
+                        <Text style={{ color: '#FFB703', fontSize: 11, fontWeight: 'bold', marginRight: 4 }}>৳</Text>
+                        <TextInput
+                          style={{ flex: 1, color: '#FFF', fontSize: 11, fontWeight: 'bold', padding: 0 }}
+                          keyboardType="numeric"
+                          value={String(missingSubmitSummary.breakdown?.akash || 0)}
+                          onChangeText={(text) => {
+                            const val = parseFloat(text) || 0;
+                            setMissingSubmitSummary(prev => {
+                              const newAkash = val;
+                              const newExp = (prev.breakdown.dudu||0) + newAkash + (prev.breakdown.burger||0) + (prev.breakdown.bazar||0) + (prev.breakdown.others||0);
+                              return {
+                                ...prev,
+                                expense: newExp,
+                                breakdown: { ...prev.breakdown, akash: newAkash }
+                              };
+                            });
+                          }}
+                        />
+                      </View>
+                    </View>
+
+                    {/* Burger Bun */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ color: '#D4D4D8', fontSize: 11 }}>🍔 বার্গার বান খরচ:</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#09090B', borderWidth: 1, borderColor: '#3F3F46', borderRadius: 6, paddingHorizontal: 8, height: 32, width: 110 }}>
+                        <Text style={{ color: '#FFB703', fontSize: 11, fontWeight: 'bold', marginRight: 4 }}>৳</Text>
+                        <TextInput
+                          style={{ flex: 1, color: '#FFF', fontSize: 11, fontWeight: 'bold', padding: 0 }}
+                          keyboardType="numeric"
+                          value={String(missingSubmitSummary.breakdown?.burger || 0)}
+                          onChangeText={(text) => {
+                            const val = parseFloat(text) || 0;
+                            setMissingSubmitSummary(prev => {
+                              const newBurger = val;
+                              const newExp = (prev.breakdown.dudu||0) + (prev.breakdown.akash||0) + newBurger + (prev.breakdown.bazar||0) + (prev.breakdown.others||0);
+                              return {
+                                ...prev,
+                                expense: newExp,
+                                breakdown: { ...prev.breakdown, burger: newBurger }
+                              };
+                            });
+                          }}
+                        />
+                      </View>
+                    </View>
+
+                    {/* Bazar */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ color: '#D4D4D8', fontSize: 11 }}>🛒 বাজার খরচ:</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#09090B', borderWidth: 1, borderColor: '#3F3F46', borderRadius: 6, paddingHorizontal: 8, height: 32, width: 110 }}>
+                        <Text style={{ color: '#FFB703', fontSize: 11, fontWeight: 'bold', marginRight: 4 }}>৳</Text>
+                        <TextInput
+                          style={{ flex: 1, color: '#FFF', fontSize: 11, fontWeight: 'bold', padding: 0 }}
+                          keyboardType="numeric"
+                          value={String(missingSubmitSummary.breakdown?.bazar || 0)}
+                          onChangeText={(text) => {
+                            const val = parseFloat(text) || 0;
+                            setMissingSubmitSummary(prev => {
+                              const newBazar = val;
+                              const newExp = (prev.breakdown.dudu||0) + (prev.breakdown.akash||0) + (prev.breakdown.burger||0) + newBazar + (prev.breakdown.others||0);
+                              return {
+                                ...prev,
+                                expense: newExp,
+                                breakdown: { ...prev.breakdown, bazar: newBazar }
+                              };
+                            });
+                          }}
+                        />
+                      </View>
+                    </View>
+
+                    {/* Others */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ color: '#D4D4D8', fontSize: 11 }}>📦 অন্যান্য খরচ:</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#09090B', borderWidth: 1, borderColor: '#3F3F46', borderRadius: 6, paddingHorizontal: 8, height: 32, width: 110 }}>
+                        <Text style={{ color: '#FFB703', fontSize: 11, fontWeight: 'bold', marginRight: 4 }}>৳</Text>
+                        <TextInput
+                          style={{ flex: 1, color: '#FFF', fontSize: 11, fontWeight: 'bold', padding: 0 }}
+                          keyboardType="numeric"
+                          value={String(missingSubmitSummary.breakdown?.others || 0)}
+                          onChangeText={(text) => {
+                            const val = parseFloat(text) || 0;
+                            setMissingSubmitSummary(prev => {
+                              const newOthers = val;
+                              const newExp = (prev.breakdown.dudu||0) + (prev.breakdown.akash||0) + (prev.breakdown.burger||0) + (prev.breakdown.bazar||0) + newOthers;
+                              return {
+                                ...prev,
+                                expense: newExp,
+                                breakdown: { ...prev.breakdown, others: newOthers }
+                              };
+                            });
+                          }}
+                        />
+                      </View>
+                    </View>
+
+                    {/* 3. Owner Deposit (Editable Input) */}
+                    <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderColor: '#27272A' }}>
+                      <Text style={{ color: '#A1A1AA', fontSize: 11, fontWeight: 'bold', marginBottom: 4 }}>🏦 মালিকের জমা (Owner Deposit):</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#09090B', borderWidth: 1, borderColor: '#3B82F6', borderRadius: 8, paddingHorizontal: 10, height: 38 }}>
+                        <Text style={{ color: '#3B82F6', fontSize: 14, fontWeight: 'bold', marginRight: 6 }}>৳</Text>
+                        <TextInput
+                          style={{ flex: 1, color: '#FFF', fontSize: 14, fontWeight: 'bold', padding: 0 }}
+                          keyboardType="numeric"
+                          placeholder="0"
+                          placeholderTextColor="#666"
+                          value={String(missingSubmitSummary.deposit || '')}
+                          onChangeText={(text) => {
+                            setMissingSubmitSummary(prev => ({
+                              ...prev,
+                              deposit: text
+                            }));
+                          }}
+                        />
+                      </View>
+                    </View>
+
+                    {/* 4. Live Next Day Opening Ija (Read-Only Display) */}
+                    <View style={{ backgroundColor: '#09090B', borderRadius: 8, padding: 10, borderWidth: 1, borderColor: 'rgba(255, 183, 3, 0.25)', marginTop: 4 }}>
+                      <Text style={{ color: '#FFB703', fontSize: 11, fontWeight: 'bold' }}>✨ পরবর্তী দিনের প্রারম্ভিক ইজা (Next Day Opening Ija):</Text>
+                      <Text style={{ color: '#FFB703', fontSize: 20, fontWeight: '900', marginVertical: 2 }}>
+                        ৳ {Math.max(0, (Number(missingSubmitSummary.breakdown?.cash || 0) + Number(missingSubmitSummary.breakdown?.ijara || 0) - (missingSubmitSummary.expense || 0)) - (parseFloat(missingSubmitSummary.deposit) || 0)).toLocaleString()}
+                      </Text>
                     </View>
 
                   </View>
                 </ScrollView>
               )}
 
-              {/* Editable Fields */}
-              <View style={{ width: '100%', marginBottom: 12 }}>
-                <Text style={{ color: '#FFF', fontSize: 10, fontWeight: 'bold', marginBottom: 4 }}>মালিকের জমা টাকা (Owner Deposit) *</Text>
-                <TextInput
-                  style={{ backgroundColor: '#1A1A1A', color: '#FFF', borderWidth: 1, borderColor: '#444', borderRadius: 8, padding: 8, fontSize: 11 }}
-                  placeholder="জমা টাকার পরিমাণ লিখুন"
-                  placeholderTextColor="#666"
-                  keyboardType="numeric"
-                  value={missingSubmitSummary ? String(missingSubmitSummary.deposit || '') : ''}
-                  onChangeText={(text) => {
-                    setMissingSubmitSummary(prev => ({
-                      ...prev,
-                      deposit: text
-                    }));
-                  }}
-                />
-                
-                <Text style={{ color: '#FFF', fontSize: 10, fontWeight: 'bold', marginTop: 8, marginBottom: 4 }}>অন্যান্য খরচ বা জমা নোট (ঐচ্ছিক)</Text>
-                <TextInput
-                  style={{ backgroundColor: '#1A1A1A', color: '#FFF', borderWidth: 1, borderColor: '#444', borderRadius: 8, padding: 8, fontSize: 11 }}
-                  placeholder="নোট লিখুন"
-                  placeholderTextColor="#666"
-                  value={missingSubmitSummary ? missingSubmitSummary.notes : ''}
-                  onChangeText={(text) => {
-                    setMissingSubmitSummary(prev => ({
-                      ...prev,
-                      notes: text
-                    }));
-                  }}
-                />
-              </View>
-
-              {/* Submit Action Button */}
+              {/* Continue Action Button */}
               <TouchableOpacity
-                style={{ backgroundColor: '#D90429', width: '100%', padding: 12, borderRadius: 10, alignItems: 'center' }}
-                onPress={async () => {
-                  if (!missingSubmitSummary || !missingSubmitSummary.deposit) {
-                    Alert.alert("ত্রুটি", "মালিকের জমা টাকার পরিমাণ আবশ্যিক!");
-                    return;
-                  }
-                  const enteredDeposit = parseFloat(missingSubmitSummary.deposit) || 0;
-                  const maxAllowedDeposit = (missingSubmitSummary.breakdown.ijara || 0) + missingSubmitSummary.net_cash;
-
-                  if (enteredDeposit > maxAllowedDeposit) {
-                    Alert.alert(
-                      "ভুল জমা পরিমাণ",
-                      `আপনি ইজা + নেট ক্যাশ (৳${maxAllowedDeposit.toLocaleString()}) এর বেশি টাকা জমা দিতে পারবেন না।`
-                    );
-                    return;
-                  }
-
-                  const summary = {
-                    bizDate: missingSubmitDate,
-                    sell: missingSubmitSummary.sell,
-                    expense: missingSubmitSummary.expense,
-                    deposit: enteredDeposit,
-                    net_cash: missingSubmitSummary.net_cash,
-                    notes: missingSubmitSummary.notes || '',
-                    breakdown: {
-                      cash: missingSubmitSummary.breakdown.cash,
-                      bkash: missingSubmitSummary.breakdown.bkash,
-                      nagad: missingSubmitSummary.breakdown.nagad,
-                      rocket: missingSubmitSummary.breakdown.rocket,
-                      delivery_sell: missingSubmitSummary.breakdown.delivery_sell,
-                      delivery_charge: missingSubmitSummary.breakdown.delivery_charge,
-                      ijara: missingSubmitSummary.breakdown.ijara,
-                      dudu: missingSubmitSummary.breakdown.dudu,
-                      akash: missingSubmitSummary.breakdown.akash,
-                      burger: missingSubmitSummary.breakdown.burger,
-                      bazar: missingSubmitSummary.breakdown.bazar,
-                      others: missingSubmitSummary.breakdown.others
-                    }
-                  };
-
-                  const saved = submitDailySheet(summary, userDisplayName);
-                  if (saved) {
-                    refreshData();
-                    const success = await syncRecordImmediately('daily_submit', missingSubmitDate);
-                    showToast(success ? "✅ পূর্ববর্তী দিনের ডাটা সেভ হয়েছে" : "📱 অফলাইনে সেভ হয়েছে", success ? 'online' : 'offline');
-                    setShowMandatoryPreviousSubmitModal(false);
-                    Alert.alert("সফল", "পূর্ববর্তী দিনের হিসাব সফলভাবে সাবমিট করা হয়েছে।");
-                  } else {
-                    Alert.alert("ত্রুটি", "ডাটাবেস সেভ করতে সমস্যা হয়েছে!");
-                  }
+                style={{ backgroundColor: '#FFB703', width: '100%', paddingVertical: 14, borderRadius: 10, alignItems: 'center' }}
+                onPress={() => {
+                  setIsMandatorySubmit(true);
+                  setShowMandatoryPreviousSubmitModal(false);
+                  setCurrentScreen('DAILY_SUBMIT');
                 }}
               >
-                <Text style={{ color: '#FFF', fontSize: 12, fontWeight: 'bold' }}>Submit Previous Day Account</Text>
+                <Text style={{ color: '#000', fontWeight: 'bold', fontSize: 14 }}>এগিয়ে যান (Daily Submit Sheet) ➔</Text>
               </TouchableOpacity>
-
             </View>
           </View>
         </Modal>
