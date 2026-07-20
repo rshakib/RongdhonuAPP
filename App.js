@@ -250,6 +250,24 @@ export default function App() {
       setDelCountdown(prev => (prev <= 1 ? 90 : prev - 1));
       setTabCountdown(prev => (prev <= 1 ? 15 : prev - 1));
       setFullCountdown(prev => (prev <= 1 ? 30 : prev - 1));
+
+      // Periodic Device Force Logout Check (DEVICE BASED — ALL ROLES: ADMIN, OWNER, MANAGER)
+      try {
+        const { checkAndExecuteForceLogout } = require('./services/deviceRegistry');
+        const forceRes = checkAndExecuteForceLogout();
+        if (forceRes && forceRes.triggered) {
+          setIsLoggedIn(false);
+          setUserRole('');
+          setUserDisplayName('');
+          setPendingLoginInfo(null);
+          setCurrentScreen('LOGIN');
+          Alert.alert(
+            'অ্যাডমিন সাইন-আউট (Administrator Signed You Out)',
+            forceRes.message || 'Administrator has signed you out.\nPlease login again using your Username and PIN.',
+            [{ text: 'ঠিক আছে (OK)' }]
+          );
+        }
+      } catch (e) {}
     }, 1000);
     return () => clearInterval(t);
   }, []);

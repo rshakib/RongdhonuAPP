@@ -4,13 +4,13 @@ import { Platform } from 'react-native';
 import { getDb, enqueueSync, setAppConfig } from '../database';
 
 /**
- * Device Access Control Layer — Phase 1, 2, 3, 4 & 5
+ * Device Access Control Layer — Phase 1, 2, 3, 4, 5 & Phase 5 Patch
  * 
  * Phase 1: Device Registration & Telemetry
  * Phase 2: Device Approval & Blocking Access Control
  * Phase 3: Manager Approval Workflow & PENDING/BLOCKED Screens
  * Phase 4: Admin Device Lock (Stolen Device Protection)
- * Phase 5: Remote Force Logout & Invalidation of Saved Sessions
+ * Phase 5 & Phase 5 Patch: Device-Based Remote Force Logout for ALL Roles (ADMIN, OWNER, MANAGER)
  */
 
 /**
@@ -353,7 +353,7 @@ export function setAdminDeviceLock(deviceId, enableLock, adminUsername = 'admin'
 }
 
 /**
- * Phase 5: Trigger Remote Force Logout for a target device (Admin action).
+ * Phase 5 & Patch: Trigger Remote Force Logout for a target device (Admin action).
  * Sets force_logout = 1 on the target device row in device_registry and queues Firestore sync.
  * @param {string} deviceId 
  * @param {string} adminUsername 
@@ -385,9 +385,12 @@ export function triggerForceLogout(deviceId, adminUsername = 'admin') {
 }
 
 /**
- * Phase 5: Check whether force_logout is flagged on the current device.
+ * Phase 5 Patch: Check whether force_logout is flagged on the current device.
+ * THIS IS STRICTLY DEVICE BASED — NO ROLE CHECKS.
+ * Applies identically to ADMIN, OWNER, and MANAGER.
+ * 
  * If force_logout == 1:
- *   1. Clears every saved session, remembered user, and PIN session in app_config.
+ *   1. Destroys all local session data in app_config (remembered user, saved PIN, active session).
  *   2. Resets force_logout = 0 in device_registry and queues Firestore sync.
  *   3. Returns { triggered: true, message: '...' }.
  * @returns {object} { triggered: boolean, message?: string }
@@ -403,16 +406,17 @@ export function checkAndExecuteForceLogout() {
       return { triggered: false };
     }
 
-    console.log("[DeviceRegistry] FORCE LOGOUT FLAGGED! Executing session invalidation...");
+    console.log("[DeviceRegistry] FORCE LOGOUT FLAGGED FOR DEVICE! Destroying all sessions regardless of role (ADMIN/OWNER/MANAGER)...");
 
-    // 1. Clear saved session keys from app_config (remembered_username, login_session_user, etc.)
+    // 1. Purge all saved session, username, and PIN keys from app_config
     setAppConfig('remembered_username', '');
     setAppConfig('login_session_user', '');
     setAppConfig('login_session_role', '');
     setAppConfig('remember_me_pin', '');
+    setAppConfig('active_user_pin', '');
     
     try {
-      db.runSync("DELETE FROM app_config WHERE key LIKE 'remember_%' OR key LIKE 'session_%' OR key = 'login_session_user'");
+      db.runSync("DELETE FROM app_config WHERE key LIKE 'remember_%' OR key LIKE 'session_%' OR key LIKE '%user%' OR key LIKE '%pin%' OR key = 'login_session_user' OR key = 'login_session_role'");
     } catch (e) {}
 
     // 2. Reset force_logout = 0 on current device in SQLite
@@ -426,7 +430,7 @@ export function checkAndExecuteForceLogout() {
     // 3. Queue Firestore sync for force_logout reset
     enqueueSync("device_registry", deviceRecord.id, "UPDATE");
 
-    console.log(`[DeviceRegistry] Successfully executed Force Logout cleanup for device '${deviceRecord.device_id}'`);
+    console.log(`[DeviceRegistry] Successfully executed Force Logout session purge for device '${deviceRecord.device_id}'`);
     return {
       triggered: true,
       message: 'Administrator has signed you out.\nPlease login again using your Username and PIN.'
