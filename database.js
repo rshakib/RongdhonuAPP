@@ -2023,6 +2023,73 @@ export async function syncMenuOnly() {
   }
 }
 
+// --- APP PROFILE & CENTRALIZED SYNC COLLECTION REGISTRY ---
+export const ACTIVE_APP_PROFILE = String(process.env.EXPO_PUBLIC_APP_PROFILE || 'ADMIN').toUpperCase().trim();
+
+export const APP_PROFILES = {
+  ADMIN: {
+    name: 'ADMIN',
+    alwaysFull: ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due', 'owner_employees', 'owner_salary_ledger', 'owner_deposits', 'device_registry'],
+    recentOnly: [
+      'orders', 'order_items', 'payments', 'expenses', 'deliveries', 
+      'daily_submit', 'daily_summary', 'due_payments', 'eja_history', 
+      'off_days', 'weather_data', 'supplier_payment_ledger', 'owner_expenses'
+    ],
+    tablesOnly: ['restaurant_tables'],
+    highFreq: ['orders', 'order_items', 'payments', 'deliveries'],
+    lowFreq: [
+      'users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 
+      'app_config', 'expenses', 'eja_history', 'daily_submit', 'supplier_due', 
+      'supplier_due_history', 'supplier_payment_ledger', 'delete_history', 
+      'owner_employees', 'owner_salary_ledger', 'owner_expenses', 'owner_deposits'
+    ],
+    deviceRegistry: ['device_registry'],
+    skipRestoreMarkers: ['deletions', 'delete_history', 'supplier_due_history']
+  },
+  OWNER: {
+    name: 'OWNER',
+    alwaysFull: ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due', 'owner_employees', 'owner_salary_ledger', 'owner_deposits', 'device_registry'],
+    recentOnly: [
+      'orders', 'order_items', 'payments', 'expenses', 'deliveries', 
+      'daily_submit', 'daily_summary', 'due_payments', 'eja_history', 
+      'off_days', 'weather_data', 'supplier_payment_ledger', 'owner_expenses'
+    ],
+    tablesOnly: ['restaurant_tables'],
+    highFreq: ['orders', 'order_items', 'payments', 'deliveries'],
+    lowFreq: [
+      'users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 
+      'app_config', 'expenses', 'eja_history', 'daily_submit', 'supplier_due', 
+      'supplier_due_history', 'supplier_payment_ledger', 
+      'owner_employees', 'owner_salary_ledger', 'owner_expenses', 'owner_deposits'
+    ],
+    deviceRegistry: ['device_registry'],
+    skipRestoreMarkers: ['deletions', 'delete_history', 'supplier_due_history']
+  },
+  MANAGER: {
+    name: 'MANAGER',
+    alwaysFull: ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due', 'device_registry'],
+    recentOnly: [
+      'orders', 'order_items', 'payments', 'expenses', 'deliveries', 
+      'daily_submit', 'daily_summary'
+    ],
+    tablesOnly: ['restaurant_tables'],
+    highFreq: ['orders', 'order_items', 'payments', 'deliveries'],
+    lowFreq: [
+      'users', 'daily_summary', 'app_config', 'expenses', 'daily_submit', 'supplier_due'
+    ],
+    deviceRegistry: ['device_registry'],
+    skipRestoreMarkers: [
+      'deletions', 'delete_history', 'supplier_due_history', 'due_payments', 
+      'eja_history', 'off_days', 'weather_data', 'supplier_payment_ledger', 
+      'owner_employees', 'owner_salary_ledger', 'owner_expenses', 'owner_deposits'
+    ]
+  }
+};
+
+export function getActiveProfileConfig() {
+  return APP_PROFILES[ACTIVE_APP_PROFILE] || APP_PROFILES.ADMIN;
+}
+
 let isPullingSyncTables = false;
 
 export async function syncTablesOnly() {
@@ -2032,8 +2099,10 @@ export async function syncTablesOnly() {
   }
   isPullingSyncTables = true;
   try {
-    incrementReadCounter('tables', 1);
-    return await traceSyncOperation('syncTablesOnly', () => syncCollections(['restaurant_tables'], 'Table Sync'));
+    const profile = getActiveProfileConfig();
+    const tables = profile.tablesOnly;
+    incrementReadCounter('tables', tables.length);
+    return await traceSyncOperation('syncTablesOnly', () => syncCollections(tables, 'Table Sync'));
   } catch (err) {
     recordAutoSyncEvent('syncTablesOnly', 'failure', err.message);
     return false;
@@ -2050,7 +2119,8 @@ export async function syncHighFrequencyCollections() {
   isPullingSyncHigh = true;
   let hasChanges = false;
   try {
-    const highFreq = ['orders', 'order_items', 'payments', 'deliveries'];
+    const profile = getActiveProfileConfig();
+    const highFreq = profile.highFreq;
     incrementReadCounter('highFrequency', highFreq.length);
     hasChanges = await traceSyncOperation('syncHighFrequencyCollections', () => syncCollections(highFreq, 'High Frequency Sync'));
   } catch (err) {
@@ -2070,7 +2140,8 @@ export async function syncLowFrequencyCollections() {
   isPullingSyncLow = true;
   let hasChanges = false;
   try {
-    const lowFreq = ['users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 'app_config', 'expenses', 'eja_history', 'daily_submit', 'supplier_due', 'supplier_due_history', 'supplier_payment_ledger', 'delete_history', 'owner_employees', 'owner_salary_ledger', 'owner_expenses', 'owner_deposits'];
+    const profile = getActiveProfileConfig();
+    const lowFreq = profile.lowFreq;
     incrementReadCounter('lowFrequency', lowFreq.length);
     hasChanges = await traceSyncOperation('syncLowFrequencyCollections', () => syncCollections(lowFreq, 'Low Frequency Sync'));
   } catch (err) {
@@ -2083,7 +2154,9 @@ export async function syncLowFrequencyCollections() {
 }
 
 export async function syncDeviceRegistry() {
-  return await syncCollections(['device_registry'], 'Device Registry Sync');
+  const profile = getActiveProfileConfig();
+  const regList = profile.deviceRegistry;
+  return await syncCollections(regList, 'Device Registry Sync');
 }
 
 export function clearDeadQueueItems() {
@@ -2174,17 +2247,12 @@ function fromFirestoreDocument(doc) {
 }
 
 export async function restoreDatabaseFromCloud() {
-  // 1. Collections that must always be fully restored
-  const alwaysFull = ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due', 'owner_employees', 'owner_salary_ledger', 'owner_deposits', 'device_registry'];
-  
-  // 2. Collections that should be restored for the last 31 days on fresh install
-  const recentOnly = [
-    'orders', 'order_items', 'payments', 'expenses', 'deliveries', 
-    'daily_submit', 'daily_summary', 'due_payments', 'eja_history', 
-    'off_days', 'weather_data', 'supplier_payment_ledger', 'owner_expenses'
-  ];
+  const profile = getActiveProfileConfig();
+  const alwaysFull = profile.alwaysFull;
+  const recentOnly = profile.recentOnly;
+  const skipRestoreMarkers = profile.skipRestoreMarkers || ['deletions', 'delete_history', 'supplier_due_history'];
 
-  console.log("[Restore] Starting Smart History Restoration (31-Day Window)...");
+  console.log(`[Restore] Starting Smart History Restoration (31-Day Window) for profile '${profile.name}'...`);
   console.log(`[Restore] Targeting: Full=[${alwaysFull.join(',')}] Recent=[${recentOnly.join(',')}]`);
 
   const processDocs = async (table, docs) => {
@@ -2243,12 +2311,10 @@ export async function restoreDatabaseFromCloud() {
     }
   }
 
-  // EMERGENCY FIX: Initialize markers for tables that are not explicitly restored 
-  // but exist in sync cycles to prevent background full-fetch loop.
-  const backgroundOnlyTables = ['deletions', 'delete_history', 'supplier_due_history'];
-  for (const table of backgroundOnlyTables) {
+  // Initialize markers for tables skipped in this profile to prevent background full-fetch loop
+  for (const table of skipRestoreMarkers) {
     db.runSync("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)", [`last_sync_time_${table}`, restoreStartTime]);
-    console.log(`[Restore Emergency Fix] Initialized marker for background table: ${table}`);
+    console.log(`[Restore Profile Marker] Initialized marker for skipped table: ${table}`);
   }
 
   // 2. Process Recent Only (Last 31 Days)
@@ -2269,7 +2335,7 @@ export async function restoreDatabaseFromCloud() {
     }
   }
   
-  console.log("[Restore] Smart History Restoration completed.");
+  console.log(`[Restore] Smart History Restoration completed for profile '${profile.name}'.`);
   return true;
 }
 
