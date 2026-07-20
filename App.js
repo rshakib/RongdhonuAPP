@@ -290,9 +290,6 @@ export default function App() {
   const [isDailySubmitted, setIsDailySubmitted] = useState(false);
   const [isMandatorySubmit, setIsMandatorySubmit] = useState(false);
 
-  // Temporary success info shown on Dashboard after Daily Submit (in-memory only, clears on dismiss/refresh)
-  const [dailySubmitSuccessInfo, setDailySubmitSuccessInfo] = useState(null);
-  // { ijaraDate: '2026-07-27', ijaraAmount: 4000 }
 
   // Mandatory Previous Day Submit states
   const [showMandatoryPreviousSubmitModal, setShowMandatoryPreviousSubmitModal] = useState(false);
@@ -408,12 +405,12 @@ export default function App() {
         startSyncService();
 
         // Check if there are any pending midnight rollovers to apply
-        const didRollover = await checkAndApplyIjaraRollover();
+        const didRollover = checkAndApplyIjaraRollover();
         if (didRollover) refreshData();
 
         // Set interval to check for midnight rollovers every minute
-        setInterval(async () => {
-          const rollover = await checkAndApplyIjaraRollover();
+        setInterval(() => {
+          const rollover = checkAndApplyIjaraRollover();
           if (rollover) refreshData();
         }, 60000);
 
@@ -1709,21 +1706,6 @@ export default function App() {
                 submitDailySheet(summary, userDisplayName);
                 refreshData();
 
-                // Show success card with Opening Ija info (reads from SQLite, no recalculation)
-                try {
-                  const { getBusinessDate: _gbd, db: sqliteDb } = require('./database');
-                  const _todayStr = _gbd();
-                  const [bY, bM, bD] = _todayStr.split('-').map(Number);
-                  const nextD = new Date(bY, bM - 1, bD); nextD.setDate(nextD.getDate() + 1);
-                  const nextDateStr = `${nextD.getFullYear()}-${String(nextD.getMonth()+1).padStart(2,'0')}-${String(nextD.getDate()).padStart(2,'0')}`;
-                  const ejaRow = sqliteDb.getFirstSync(
-                    "SELECT eja_amount FROM eja_history WHERE id = ?",
-                    [`eja_${nextDateStr}`]
-                  );
-                  if (ejaRow) {
-                    setDailySubmitSuccessInfo({ ijaraDate: nextDateStr, ijaraAmount: ejaRow.eja_amount });
-                  }
-                } catch (_e) {}
                 
                 const todayStr = getBusinessDate();
                 const success = await syncRecordImmediately('daily_submit', todayStr);
@@ -1989,41 +1971,7 @@ export default function App() {
         <StatusBar style="light" translucent={true} backgroundColor="transparent" />
         {renderScreen()}
 
-        {/* DAILY SUBMIT SUCCESS CARD — temporary, in-memory only */}
-        {dailySubmitSuccessInfo && currentScreen === 'DASHBOARD' && (
-          <View style={styles.submitSuccessOverlay} pointerEvents="box-none">
-            <View style={styles.submitSuccessCard}>
-              <View style={styles.submitSuccessHeader}>
-                <Text style={styles.submitSuccessIcon}>✅</Text>
-                <Text style={styles.submitSuccessTitle}>Daily Submit সম্পন্ন</Text>
-                <TouchableOpacity
-                  onPress={() => setDailySubmitSuccessInfo(null)}
-                  style={styles.submitSuccessDismiss}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                >
-                  <Text style={styles.submitSuccessDismissText}>✕</Text>
-                </TouchableOpacity>
-              </View>
-              <View style={styles.submitSuccessDivider} />
-              <Text style={styles.submitSuccessLabel}>Opening Ija তৈরি হয়েছে</Text>
-              <Text style={styles.submitSuccessDate}>
-                {(() => {
-                  try {
-                    const [y, m, d] = dailySubmitSuccessInfo.ijaraDate.split('-');
-                    const months = ['জানুয়ারি','ফেব্রুয়ারি','মার্চ','এপ্রিল','মে','জুন','জুলাই','আগস্ট','সেপ্টেম্বর','অক্টোবর','নভেম্বর','ডিসেম্বর'];
-                    return `${parseInt(d, 10)} ${months[parseInt(m, 10) - 1]}`;
-                  } catch { return dailySubmitSuccessInfo.ijaraDate; }
-                })()}
-              </Text>
-              <Text style={styles.submitSuccessAmount}>
-                ৳{Number(dailySubmitSuccessInfo.ijaraAmount).toLocaleString('en-IN')}
-              </Text>
-              <Text style={styles.submitSuccessSubtitle}>
-                পরবর্তী ব্যবসায়িক দিনের শুরুর ইজারা হিসেবে সংরক্ষিত।
-              </Text>
-            </View>
-          </View>
-        )}
+
 
         {/* RUNTIME ONLINE ONLY BLOCKING OVERLAY */}
         <Modal 
@@ -2420,83 +2368,5 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: 'center',
   },
-  // ─── Daily Submit Success Card ───────────────────────────────────────────
-  submitSuccessOverlay: {
-    position: 'absolute',
-    bottom: 24,
-    left: 16,
-    right: 16,
-    zIndex: 9000,
-    elevation: 20,
-    alignItems: 'center',
-  },
-  submitSuccessCard: {
-    width: '100%',
-    backgroundColor: '#0F2417',
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: '#22C55E',
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-    shadowColor: '#22C55E',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-  },
-  submitSuccessHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  submitSuccessIcon: {
-    fontSize: 20,
-    marginRight: 8,
-  },
-  submitSuccessTitle: {
-    flex: 1,
-    color: '#22C55E',
-    fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
-  submitSuccessDismiss: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  submitSuccessDismissText: {
-    color: '#6B7280',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  submitSuccessDivider: {
-    height: 1,
-    backgroundColor: '#1A3A24',
-    marginBottom: 12,
-  },
-  submitSuccessLabel: {
-    color: '#A1A1AA',
-    fontSize: 12,
-    fontWeight: '500',
-    marginBottom: 4,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  submitSuccessDate: {
-    color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '800',
-    marginBottom: 4,
-  },
-  submitSuccessAmount: {
-    color: '#22C55E',
-    fontSize: 28,
-    fontWeight: '900',
-    marginBottom: 8,
-    letterSpacing: 0.5,
-  },
-  submitSuccessSubtitle: {
-    color: '#6B7280',
-    fontSize: 11,
-    lineHeight: 16,
-  },
+
 });
