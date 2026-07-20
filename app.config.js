@@ -14,12 +14,12 @@ module.exports = ({ config }) => {
   }
 
   // Profile-specific metadata configurations
-  // NOTE: ADMIN profile MUST preserve original package name 'com.riajulshakib.rongdhonu'
-  // so existing production Admin installs update seamlessly without needing re-install.
+  // NOTE: slug MUST match the registered Expo server slug ('temp-expo') linked to extra.eas.projectId ('c0ef37bc-f64e-4a5d-8f68-8296556b722a').
+  // NOTE: ADMIN profile MUST preserve original package name 'com.riajulshakib.rongdhonu' so existing production installs update seamlessly.
   const PROFILE_CONFIGS = {
     ADMIN: {
       name: 'রংধনু এডমিন',
-      slug: 'rongdhonu-admin',
+      slug: 'temp-expo',
       package: 'com.riajulshakib.rongdhonu',
       bundleIdentifier: 'com.riajulshakib.rongdhonu',
       channel: 'admin',
@@ -28,7 +28,7 @@ module.exports = ({ config }) => {
     },
     OWNER: {
       name: 'রংধনু ওনার',
-      slug: 'rongdhonu-owner',
+      slug: 'temp-expo',
       package: 'com.riajulshakib.rongdhonu.owner',
       bundleIdentifier: 'com.riajulshakib.rongdhonu.owner',
       channel: 'owner',
@@ -37,7 +37,7 @@ module.exports = ({ config }) => {
     },
     MANAGER: {
       name: 'রংধনু ম্যানেজার',
-      slug: 'rongdhonu-manager',
+      slug: 'temp-expo',
       package: 'com.riajulshakib.rongdhonu.manager',
       bundleIdentifier: 'com.riajulshakib.rongdhonu.manager',
       channel: 'manager',
@@ -53,7 +53,7 @@ module.exports = ({ config }) => {
   const iconPath = fs.existsSync(path.resolve(__dirname, pConfig.icon)) ? pConfig.icon : fallbackAsset;
   const splashPath = fs.existsSync(path.resolve(__dirname, pConfig.splash)) ? pConfig.splash : fallbackAsset;
 
-  console.log(`[Expo Build Config] Building for APP_PROFILE: '${profile}' (${pConfig.name}) | Package: ${pConfig.package}`);
+  console.log(`[Expo Build Config] Building for APP_PROFILE: '${profile}' (${pConfig.name}) | Package: ${pConfig.package} | Slug: ${pConfig.slug}`);
 
   return {
     ...config,
