@@ -2070,17 +2070,17 @@ export const APP_PROFILES = {
     alwaysFull: ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due', 'device_registry'],
     recentOnly: [
       'orders', 'order_items', 'payments', 'expenses', 'deliveries', 
-      'daily_submit', 'daily_summary'
+      'daily_submit', 'daily_summary', 'eja_history'
     ],
     tablesOnly: ['restaurant_tables'],
     highFreq: ['orders', 'order_items', 'payments', 'deliveries'],
     lowFreq: [
-      'users', 'daily_summary', 'app_config', 'expenses', 'daily_submit', 'supplier_due'
+      'users', 'daily_summary', 'app_config', 'expenses', 'daily_submit', 'supplier_due', 'eja_history'
     ],
     deviceRegistry: ['device_registry'],
     skipRestoreMarkers: [
       'deletions', 'delete_history', 'supplier_due_history', 'due_payments', 
-      'eja_history', 'off_days', 'weather_data', 'supplier_payment_ledger', 
+      'off_days', 'weather_data', 'supplier_payment_ledger', 
       'owner_employees', 'owner_salary_ledger', 'owner_expenses', 'owner_deposits'
     ]
   }
@@ -4152,28 +4152,35 @@ export function submitDailySheet(summary, submittedBy, submissionType = 'MANUAL'
     enqueueDailyMLExports(todayStr);
 
     // --- PENDING NEXT-DAY IJARA ---
+    // Business Formula: Cash Sales + Previous Ija - Total Expense - Owner Deposit
+    const cashSales = summary.breakdown?.cash || 0;
     const currentIjara = summary.breakdown?.ijara || 0;
-    const nextDayIjara = (summary.sell + currentIjara - summary.expense) - summary.deposit;
+    const totalExpense = summary.expense || 0;
+    const ownerDeposit = summary.deposit || 0;
 
-    if (nextDayIjara > 0) {
-      // Calculate next business date string (Tomorrow)
-      const nextD = new Date(Date.now() + 86400000);
-      const nY = nextD.getFullYear();
-      const nM = String(nextD.getMonth() + 1).padStart(2, '0');
-      const nDay = String(nextD.getDate()).padStart(2, '0');
-      const nextBizDateStr = `${nY}-${nM}-${nDay}`;
+    const calculatedIjara = (cashSales + currentIjara - totalExpense) - ownerDeposit;
+    const nextDayIjara = Math.max(0, calculatedIjara);
 
-      db.runSync("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)", ['pending_ijara_amount', nextDayIjara.toString()]);
-      db.runSync("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)", ['pending_ijara_date', nextBizDateStr]);
-      
-      // We do not enqueue these because it's purely a local staging table waiting for midnight.
-      // Or we CAN enqueue them if we want other devices to know about the pending state, but 
-      // since rollover happens locally on whichever device is active, we just enqueue the final result.
-      // To ensure multi-device consistency, syncing the app_config state is safe.
-      enqueueSync("app_config", "pending_ijara_amount", "UPDATE");
-      enqueueSync("app_config", "pending_ijara_date", "UPDATE");
-      console.log(`[Auto Ijara] Calculated next_day_ijara = ৳${nextDayIjara} pending for ${nextBizDateStr}`);
-    }
+    // Calculate Next Business Date from Submitted Business Date (todayStr + 1 day)
+    // NEVER use Date.now() or device current timestamp!
+    const [bY, bM, bD] = todayStr.split('-').map(Number);
+    const submittedDateObj = new Date(bY, bM - 1, bD);
+    submittedDateObj.setDate(submittedDateObj.getDate() + 1);
+
+    const nY = submittedDateObj.getFullYear();
+    const nM = String(submittedDateObj.getMonth() + 1).padStart(2, '0');
+    const nDay = String(submittedDateObj.getDate()).padStart(2, '0');
+    const nextBizDateStr = `${nY}-${nM}-${nDay}`;
+
+    db.runSync("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)", ['pending_ijara_amount', nextDayIjara.toString()]);
+    db.runSync("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)", ['pending_ijara_date', nextBizDateStr]);
+    
+    enqueueSync("app_config", "pending_ijara_amount", "UPDATE");
+    enqueueSync("app_config", "pending_ijara_date", "UPDATE");
+    console.log(`[Auto Ijara] Calculated next_day_ijara = ৳${nextDayIjara} pending for ${nextBizDateStr} (Submitted Biz Date: ${todayStr})`);
+
+    // Immediately trigger rollover check in case submitted date + 1 <= current business date
+    checkAndApplyIjaraRollover();
 
     return true;
   } catch (err) {
