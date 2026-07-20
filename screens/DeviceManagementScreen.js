@@ -12,7 +12,7 @@ import {
   StatusBar as RNStatusBar
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getAllRegisteredDevices, updateDeviceStatus, setAdminDeviceLock } from '../services/deviceRegistry';
+import { getAllRegisteredDevices, updateDeviceStatus, setAdminDeviceLock, triggerForceLogout } from '../services/deviceRegistry';
 import { verifyPinCode } from '../database';
 
 export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
@@ -97,7 +97,6 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
       return;
     }
 
-    // Verify PIN against Admin users
     const isValidPin = verifyPinCode(pinInput.trim(), 'admin');
     if (!isValidPin) {
       setPinError('ভুল পিন কোড! পুনরায় চেষ্টা করুন (Invalid Admin PIN)');
@@ -142,7 +141,31 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
     );
   };
 
-  const renderStatusBadge = (status, adminLock) => {
+  // Phase 5: Handle Remote Force Logout Action
+  const handleForceLogoutPrompt = (device) => {
+    Alert.alert(
+      'Force Logout',
+      `You are about to sign this device ('${device.device_name || device.device_id}') out remotely.\n\nThe current user will immediately lose access.\n\nThe next login will require Username and PIN again.\n\nContinue?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Force Logout',
+          style: 'destructive',
+          onPress: () => {
+            const success = triggerForceLogout(device.device_id, 'admin');
+            if (success) {
+              Alert.alert('সফল', 'ডিভাইসটিতে রিমোট Force Logout নির্দেশ পাঠানো হয়েছে।');
+              loadDevices();
+            } else {
+              Alert.alert('ত্রুটি', 'Force Logout নির্দেশ ব্যর্থ হয়েছে।');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const renderStatusBadge = (status, adminLock, forceLogout) => {
     const st = String(status || 'PENDING').toUpperCase().trim();
     if (adminLock === 1) {
       return (
@@ -154,7 +177,9 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
     if (st === 'ACTIVE') {
       return (
         <View style={[styles.badge, styles.badgeActive]}>
-          <Text style={styles.badgeTextActive}>● ACTIVE (অনুমোদিত)</Text>
+          <Text style={styles.badgeTextActive}>
+            {forceLogout === 1 ? '🔄 ACTIVE (Force Logout Scheduled)' : '● ACTIVE (অনুমোদিত)'}
+          </Text>
         </View>
       );
     }
@@ -189,9 +214,9 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
 
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.infoBanner}>
-          <Text style={styles.infoBannerTitle}>🛡️ Stolen Device Protection</Text>
+          <Text style={styles.infoBannerTitle}>🛡️ Remote Access & Telemetry</Text>
           <Text style={styles.infoBannerText}>
-            হারিয়ে যাওয়া/চুরি হওয়া ডিভাইসে 'Block Admin Access' ব্যবহার করলে ওই ডিভাইস থেকে অ্যাডমিন, ওনার ও ম্যানেজার কোনো এক্সেস থাকবে না।
+            এডমিন যে কোনো ডিভাইস সাইন-আউট করতে 'Force Logout' ব্যবহার করতে পারেন। পরবর্তী লগইনের জন্য ইউজারনেম এবং পিন আবশ্যক হবে।
           </Text>
         </View>
 
@@ -210,6 +235,7 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
           devices.map((item) => {
             const st = String(item.status || 'PENDING').toUpperCase().trim();
             const isLocked = Number(item.admin_lock || 0) === 1;
+            const forceLogoutPending = Number(item.force_logout || 0) === 1;
 
             return (
               <View key={item.id || item.device_id} style={styles.deviceCard}>
@@ -221,7 +247,7 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
                       <Text style={styles.deviceIdText}>ID: {item.device_id}</Text>
                     </View>
                   </View>
-                  {renderStatusBadge(st, isLocked)}
+                  {renderStatusBadge(st, isLocked, forceLogoutPending)}
                 </View>
 
                 <View style={styles.divider} />
@@ -269,7 +295,7 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
                       </View>
                     )}
 
-                    {/* ACTIVE State: Show [Block] */}
+                    {/* ACTIVE State: Show [Block] and [Force Logout] */}
                     {st === 'ACTIVE' && !isLocked && (
                       <View style={styles.actionRow}>
                         <TouchableOpacity
@@ -278,6 +304,13 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
                         >
                           <Text style={styles.btnBlockText}>🚫 ব্লক করুন (Block)</Text>
                         </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={[styles.btnAction, styles.btnForceLogout]}
+                          onPress={() => handleForceLogoutPrompt(item)}
+                        >
+                          <Text style={styles.btnForceLogoutText}>🔄 Force Logout</Text>
+                        </TouchableOpacity>
                       </View>
                     )}
 
@@ -285,7 +318,7 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
                     {st === 'BLOCKED' && (
                       <View style={styles.actionRowColumn}>
                         {isLocked ? (
-                          /* Admin Lock is Active: Show [Remove Admin Lock] */
+                          /* Admin Lock Active: Show [Remove Admin Lock] */
                           <TouchableOpacity
                             style={[styles.btnAction, styles.btnUnblockAdmin]}
                             onPress={() => handleRemoveAdminLock(item)}
@@ -293,20 +326,29 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
                             <Text style={styles.btnUnblockAdminText}>🔓 Remove Admin Lock</Text>
                           </TouchableOpacity>
                         ) : (
-                          /* Normal Blocked: Show [Unblock] & [Block Admin Access] */
-                          <View style={styles.actionRow}>
-                            <TouchableOpacity
-                              style={[styles.btnAction, styles.btnUnblock]}
-                              onPress={() => handleStatusChange(item.device_id, item.device_name, 'ACTIVE')}
-                            >
-                              <Text style={styles.btnUnblockText}>🔓 আনব্লক করুন (Unblock)</Text>
-                            </TouchableOpacity>
+                          /* Normal Blocked: Show [Unblock], [Block Admin Access] and [Force Logout] */
+                          <View style={styles.actionRowColumn}>
+                            <View style={styles.actionRow}>
+                              <TouchableOpacity
+                                style={[styles.btnAction, styles.btnUnblock]}
+                                onPress={() => handleStatusChange(item.device_id, item.device_name, 'ACTIVE')}
+                              >
+                                <Text style={styles.btnUnblockText}>🔓 আনব্লক করুন</Text>
+                              </TouchableOpacity>
+
+                              <TouchableOpacity
+                                style={[styles.btnAction, styles.btnAdminLock]}
+                                onPress={() => handleInitiateAdminLock(item)}
+                              >
+                                <Text style={styles.btnAdminLockText}>🔒 Block Admin</Text>
+                              </TouchableOpacity>
+                            </View>
 
                             <TouchableOpacity
-                              style={[styles.btnAction, styles.btnAdminLock]}
-                              onPress={() => handleInitiateAdminLock(item)}
+                              style={[styles.btnAction, styles.btnForceLogoutFull]}
+                              onPress={() => handleForceLogoutPrompt(item)}
                             >
-                              <Text style={styles.btnAdminLockText}>🔒 Block Admin</Text>
+                              <Text style={styles.btnForceLogoutText}>🔄 Force Logout (সাইন-আউট)</Text>
                             </TouchableOpacity>
                           </View>
                         )}
@@ -610,6 +652,18 @@ const styles = StyleSheet.create({
     borderColor: '#ef4444',
   },
   btnAdminLockText: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
+  btnForceLogout: {
+    backgroundColor: '#ea580c',
+  },
+  btnForceLogoutFull: {
+    backgroundColor: '#ea580c',
+    paddingVertical: 10,
+  },
+  btnForceLogoutText: {
     color: '#ffffff',
     fontWeight: 'bold',
     fontSize: 12,

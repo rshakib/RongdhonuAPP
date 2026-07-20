@@ -326,8 +326,21 @@ export default function App() {
 
         // Device Registration Check (Phase 1 Access Control)
         try {
-          const { registerDeviceIfNeeded } = require('./services/deviceRegistry');
+          const { registerDeviceIfNeeded, checkAndExecuteForceLogout } = require('./services/deviceRegistry');
           await registerDeviceIfNeeded();
+          const forceRes = checkAndExecuteForceLogout();
+          if (forceRes && forceRes.triggered) {
+            setIsLoggedIn(false);
+            setUserRole('');
+            setUserDisplayName('');
+            setPendingLoginInfo(null);
+            setCurrentScreen('LOGIN');
+            Alert.alert(
+              'অ্যাডমিন সাইন-আউট (Administrator Signed You Out)',
+              forceRes.message || 'Administrator has signed you out.\nPlease login again using your Username and PIN.',
+              [{ text: 'ঠিক আছে (OK)' }]
+            );
+          }
         } catch (devErr) {
           console.error("[App] Device registration check failed:", devErr);
         }
@@ -783,9 +796,24 @@ export default function App() {
   };
 
   const handleLoginSuccess = async (role, displayName, mode = 'online_only') => {
-    // --- DEVICE ACCESS CONTROL (PHASE 3) ---
+    // --- DEVICE ACCESS CONTROL (PHASE 3 & 5) ---
     try {
-      const { checkDeviceLoginPermission } = require('./services/deviceRegistry');
+      const { checkDeviceLoginPermission, checkAndExecuteForceLogout } = require('./services/deviceRegistry');
+      const forceRes = checkAndExecuteForceLogout();
+      if (forceRes && forceRes.triggered) {
+        setIsLoggedIn(false);
+        setUserRole('');
+        setUserDisplayName('');
+        setPendingLoginInfo(null);
+        setCurrentScreen('LOGIN');
+        Alert.alert(
+          'অ্যাডমিন সাইন-আউট (Administrator Signed You Out)',
+          forceRes.message || 'Administrator has signed you out.\nPlease login again using your Username and PIN.',
+          [{ text: 'ঠিক আছে (OK)' }]
+        );
+        return;
+      }
+
       const devPerm = checkDeviceLoginPermission(role);
       if (!devPerm.allowed) {
         setPendingDeviceId(devPerm.deviceId || '');

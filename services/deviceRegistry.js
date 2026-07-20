@@ -1,15 +1,16 @@
 import * as Device from 'expo-device';
 import * as Application from 'expo-application';
 import { Platform } from 'react-native';
-import { getDb, enqueueSync } from '../database';
+import { getDb, enqueueSync, setAppConfig } from '../database';
 
 /**
- * Device Access Control Layer — Phase 1, 2, 3 & 4
+ * Device Access Control Layer — Phase 1, 2, 3, 4 & 5
  * 
  * Phase 1: Device Registration & Telemetry
  * Phase 2: Device Approval & Blocking Access Control
  * Phase 3: Manager Approval Workflow & PENDING/BLOCKED Screens
  * Phase 4: Admin Device Lock (Stolen Device Protection)
+ * Phase 5: Remote Force Logout & Invalidation of Saved Sessions
  */
 
 /**
@@ -75,11 +76,12 @@ export async function registerDeviceIfNeeded() {
       created_at TEXT,
       updated_at TEXT,
       is_synced INTEGER DEFAULT 0,
-      admin_lock INTEGER DEFAULT 0
+      admin_lock INTEGER DEFAULT 0,
+      force_logout INTEGER DEFAULT 0
     );
   `);
 
-  // Migration: Ensure missing columns (is_synced, admin_lock) exist
+  // Migration: Ensure missing columns (is_synced, admin_lock, force_logout) exist
   try {
     const cols = db.getAllSync("PRAGMA table_info('device_registry')").map(c => c.name);
     if (!cols.includes('is_synced')) {
@@ -87,6 +89,9 @@ export async function registerDeviceIfNeeded() {
     }
     if (!cols.includes('admin_lock')) {
       db.runSync("ALTER TABLE device_registry ADD COLUMN admin_lock INTEGER DEFAULT 0;");
+    }
+    if (!cols.includes('force_logout')) {
+      db.runSync("ALTER TABLE device_registry ADD COLUMN force_logout INTEGER DEFAULT 0;");
     }
   } catch (e) {}
 
@@ -113,8 +118,8 @@ export async function registerDeviceIfNeeded() {
         id, device_id, device_name, manufacturer, brand, model,
         android_version, app_version, first_install_time, last_seen,
         allow_login, allow_offline, status, registered_by, notes,
-        created_at, updated_at, admin_lock
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 'PENDING', 'system', 'Auto registered on app startup', ?, ?, 0)
+        created_at, updated_at, admin_lock, force_logout
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 'PENDING', 'system', 'Auto registered on app startup', ?, ?, 0, 0)
     `, [
       recordId,
       deviceId,
@@ -163,14 +168,7 @@ export function getCurrentDeviceRecord() {
 }
 
 /**
- * Phase 4: Check whether a user with `userRole` is allowed to log in on this device.
- * 
- * Rules:
- * - admin_lock == 1: DENIES LOGIN for ALL roles including ADMIN (Stolen Device Lockout).
- * - ADMIN: Login allowed if admin_lock == 0.
- * - OWNER: Login allowed unless status == BLOCKED or admin_lock == 1.
- * - MANAGER (and others): Requires ACTIVE approval.
- * 
+ * Check whether a user with `userRole` is allowed to log in on this device.
  * @param {string} userRole 
  * @returns {object} { allowed: boolean, status: string, isAdminLock?: boolean, deviceId?: string, message?: string }
  */
@@ -305,7 +303,6 @@ export function updateDeviceStatus(deviceId, newStatus, adminUsername = 'admin')
 
     db.runSync(sql, params);
 
-    // Enqueue cloud sync update
     enqueueSync("device_registry", record.id, "UPDATE");
     console.log(`[DeviceRegistry] Admin '${adminUsername}' updated device '${deviceId}' status to '${cleanStatus}'`);
     return true;
@@ -318,7 +315,7 @@ export function updateDeviceStatus(deviceId, newStatus, adminUsername = 'admin')
 /**
  * Phase 4: Set or remove Admin Lock for a device (Stolen Device Protection).
  * @param {string} deviceId 
- * @param {boolean} enableLock If true, sets admin_lock = 1, status = 'BLOCKED', allow_login = 0. If false, sets admin_lock = 0, status = 'ACTIVE', allow_login = 1.
+ * @param {boolean} enableLock 
  * @param {string} adminUsername 
  * @returns {boolean} True on success
  */
@@ -352,5 +349,90 @@ export function setAdminDeviceLock(deviceId, enableLock, adminUsername = 'admin'
   } catch (err) {
     console.error("[DeviceRegistry] Error setting admin device lock:", err);
     return false;
+  }
+}
+
+/**
+ * Phase 5: Trigger Remote Force Logout for a target device (Admin action).
+ * Sets force_logout = 1 on the target device row in device_registry and queues Firestore sync.
+ * @param {string} deviceId 
+ * @param {string} adminUsername 
+ * @returns {boolean} True on success
+ */
+export function triggerForceLogout(deviceId, adminUsername = 'admin') {
+  try {
+    const db = getDb();
+    const now = new Date().toISOString();
+
+    const record = db.getFirstSync("SELECT * FROM device_registry WHERE device_id = ?", [deviceId]);
+    if (!record) {
+      throw new Error(`Device record not found for device_id: ${deviceId}`);
+    }
+
+    db.runSync(`
+      UPDATE device_registry
+      SET force_logout = 1, updated_at = ?
+      WHERE device_id = ?
+    `, [now, deviceId]);
+
+    enqueueSync("device_registry", record.id, "UPDATE");
+    console.log(`[DeviceRegistry] Remote force_logout triggered for deviceId='${deviceId}' by '${adminUsername}'`);
+    return true;
+  } catch (err) {
+    console.error("[DeviceRegistry] Error triggering force logout:", err);
+    return false;
+  }
+}
+
+/**
+ * Phase 5: Check whether force_logout is flagged on the current device.
+ * If force_logout == 1:
+ *   1. Clears every saved session, remembered user, and PIN session in app_config.
+ *   2. Resets force_logout = 0 in device_registry and queues Firestore sync.
+ *   3. Returns { triggered: true, message: '...' }.
+ * @returns {object} { triggered: boolean, message?: string }
+ */
+export function checkAndExecuteForceLogout() {
+  try {
+    const db = getDb();
+    const deviceRecord = getCurrentDeviceRecord();
+    if (!deviceRecord) return { triggered: false };
+
+    const forceLogoutFlag = Number(deviceRecord.force_logout || 0);
+    if (forceLogoutFlag !== 1) {
+      return { triggered: false };
+    }
+
+    console.log("[DeviceRegistry] FORCE LOGOUT FLAGGED! Executing session invalidation...");
+
+    // 1. Clear saved session keys from app_config (remembered_username, login_session_user, etc.)
+    setAppConfig('remembered_username', '');
+    setAppConfig('login_session_user', '');
+    setAppConfig('login_session_role', '');
+    setAppConfig('remember_me_pin', '');
+    
+    try {
+      db.runSync("DELETE FROM app_config WHERE key LIKE 'remember_%' OR key LIKE 'session_%' OR key = 'login_session_user'");
+    } catch (e) {}
+
+    // 2. Reset force_logout = 0 on current device in SQLite
+    const now = new Date().toISOString();
+    db.runSync(`
+      UPDATE device_registry
+      SET force_logout = 0, updated_at = ?
+      WHERE device_id = ?
+    `, [now, deviceRecord.device_id]);
+
+    // 3. Queue Firestore sync for force_logout reset
+    enqueueSync("device_registry", deviceRecord.id, "UPDATE");
+
+    console.log(`[DeviceRegistry] Successfully executed Force Logout cleanup for device '${deviceRecord.device_id}'`);
+    return {
+      triggered: true,
+      message: 'Administrator has signed you out.\nPlease login again using your Username and PIN.'
+    };
+  } catch (err) {
+    console.error("[DeviceRegistry] Error in checkAndExecuteForceLogout:", err);
+    return { triggered: false };
   }
 }
