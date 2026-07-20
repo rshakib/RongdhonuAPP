@@ -4,16 +4,16 @@ import { Platform } from 'react-native';
 import { getDb, enqueueSync } from '../database';
 
 /**
- * Device Access Control Layer — Phase 1, Phase 2 & Phase 3
+ * Device Access Control Layer — Phase 1, 2, 3 & 4
  * 
  * Phase 1: Device Registration & Telemetry
  * Phase 2: Device Approval & Blocking Access Control
- * Phase 3: Full Manager & Owner Approval Workflows & Custom Screen Navigation
+ * Phase 3: Manager Approval Workflow & PENDING/BLOCKED Screens
+ * Phase 4: Admin Device Lock (Stolen Device Protection)
  */
 
 /**
  * Generates or retrieves a stable, persistent device ID.
- * Uses Android ID if available, otherwise generates a unique UUID stored in app_config.
  * @param {object} db 
  * @returns {Promise<string>} Unique persistent device ID
  */
@@ -74,15 +74,19 @@ export async function registerDeviceIfNeeded() {
       notes TEXT,
       created_at TEXT,
       updated_at TEXT,
-      is_synced INTEGER DEFAULT 0
+      is_synced INTEGER DEFAULT 0,
+      admin_lock INTEGER DEFAULT 0
     );
   `);
 
-  // Ensure is_synced column exists on legacy device_registry table
+  // Migration: Ensure missing columns (is_synced, admin_lock) exist
   try {
     const cols = db.getAllSync("PRAGMA table_info('device_registry')").map(c => c.name);
     if (!cols.includes('is_synced')) {
       db.runSync("ALTER TABLE device_registry ADD COLUMN is_synced INTEGER DEFAULT 0;");
+    }
+    if (!cols.includes('admin_lock')) {
+      db.runSync("ALTER TABLE device_registry ADD COLUMN admin_lock INTEGER DEFAULT 0;");
     }
   } catch (e) {}
 
@@ -109,8 +113,8 @@ export async function registerDeviceIfNeeded() {
         id, device_id, device_name, manufacturer, brand, model,
         android_version, app_version, first_install_time, last_seen,
         allow_login, allow_offline, status, registered_by, notes,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 'PENDING', 'system', 'Auto registered on app startup', ?, ?)
+        created_at, updated_at, admin_lock
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 'PENDING', 'system', 'Auto registered on app startup', ?, ?, 0)
     `, [
       recordId,
       deviceId,
@@ -159,26 +163,36 @@ export function getCurrentDeviceRecord() {
 }
 
 /**
- * Phase 3: Check whether a user with `userRole` is allowed to log in on this device.
+ * Phase 4: Check whether a user with `userRole` is allowed to log in on this device.
  * 
  * Rules:
- * - ADMIN: Login allowed from any device immediately.
- * - OWNER: Login allowed unless device status is BLOCKED.
- * - MANAGER (and others):
- *     - PENDING  => Login denied (navigate to DevicePendingScreen).
- *     - BLOCKED  => Login denied (navigate to DeviceBlockedScreen).
- *     - ACTIVE   => Login allowed.
+ * - admin_lock == 1: DENIES LOGIN for ALL roles including ADMIN (Stolen Device Lockout).
+ * - ADMIN: Login allowed if admin_lock == 0.
+ * - OWNER: Login allowed unless status == BLOCKED or admin_lock == 1.
+ * - MANAGER (and others): Requires ACTIVE approval.
  * 
  * @param {string} userRole 
- * @returns {object} { allowed: boolean, status: string, deviceId?: string, message?: string }
+ * @returns {object} { allowed: boolean, status: string, isAdminLock?: boolean, deviceId?: string, message?: string }
  */
 export function checkDeviceLoginPermission(userRole) {
   const roleUpper = String(userRole || '').toUpperCase().trim();
   const deviceRecord = getCurrentDeviceRecord();
   const deviceId = deviceRecord ? deviceRecord.device_id : 'Unknown';
   const status = deviceRecord ? String(deviceRecord.status || 'PENDING').toUpperCase().trim() : 'PENDING';
+  const adminLock = deviceRecord ? Number(deviceRecord.admin_lock || 0) : 0;
 
-  // 1. ADMIN always bypasses device status checks
+  // 1. ADMIN LOCK CHECK (Stolen Device Protection)
+  if (adminLock === 1) {
+    return {
+      allowed: false,
+      status: 'BLOCKED',
+      isAdminLock: true,
+      deviceId,
+      message: 'Administrator access has been disabled for this device. This device has been marked as lost/stolen. Please contact another Administrator.'
+    };
+  }
+
+  // 2. ADMIN bypasses status check when adminLock == 0
   if (roleUpper === 'ADMIN') {
     return {
       allowed: true,
@@ -188,12 +202,13 @@ export function checkDeviceLoginPermission(userRole) {
     };
   }
 
-  // 2. OWNER can login immediately unless status is BLOCKED
+  // 3. OWNER can login immediately unless status is BLOCKED
   if (roleUpper === 'OWNER') {
     if (status === 'BLOCKED') {
       return {
         allowed: false,
         status: 'BLOCKED',
+        isAdminLock: false,
         deviceId,
         message: 'এই ডিভাইসটি Administrator ব্লক করেছেন। এই ডিভাইস থেকে Login করা যাবে না।'
       };
@@ -206,11 +221,12 @@ export function checkDeviceLoginPermission(userRole) {
     };
   }
 
-  // 3. MANAGER (and all other roles) require ACTIVE approval
+  // 4. MANAGER (and all other roles) require ACTIVE approval
   if (status === 'PENDING') {
     return {
       allowed: false,
       status: 'PENDING',
+      isAdminLock: false,
       deviceId,
       message: 'এই ডিভাইসটি এখনো Administrator কর্তৃক অনুমোদিত হয়নি।'
     };
@@ -220,6 +236,7 @@ export function checkDeviceLoginPermission(userRole) {
     return {
       allowed: false,
       status: 'BLOCKED',
+      isAdminLock: false,
       deviceId,
       message: 'এই ডিভাইসটি Administrator ব্লক করেছেন। এই ডিভাইস থেকে Login করা যাবে না।'
     };
@@ -243,7 +260,7 @@ export function checkDeviceLoginPermission(userRole) {
 }
 
 /**
- * Get all registered devices from device_registry table (for Admin panel).
+ * Get all registered devices from device_registry table.
  * @returns {Array} Array of device records
  */
 export function getAllRegisteredDevices() {
@@ -271,10 +288,6 @@ export function updateDeviceStatus(deviceId, newStatus, adminUsername = 'admin')
       throw new Error(`Invalid status: ${newStatus}`);
     }
 
-    console.log("[DeviceRegistry] updateDeviceStatus called");
-    console.log("[DeviceRegistry] Target deviceId:", deviceId);
-    console.log("[DeviceRegistry] Target newStatus:", cleanStatus);
-
     const record = db.getFirstSync("SELECT * FROM device_registry WHERE device_id = ?", [deviceId]);
     if (!record) {
       throw new Error(`Device record not found for device_id: ${deviceId}`);
@@ -292,16 +305,52 @@ export function updateDeviceStatus(deviceId, newStatus, adminUsername = 'admin')
 
     db.runSync(sql, params);
 
-    // Verification check
-    const updatedRow = db.getFirstSync("SELECT status, allow_login, updated_at FROM device_registry WHERE device_id = ?", [deviceId]);
-    console.log("[DeviceRegistry] Verification Query Result:", JSON.stringify(updatedRow));
-
     // Enqueue cloud sync update
     enqueueSync("device_registry", record.id, "UPDATE");
     console.log(`[DeviceRegistry] Admin '${adminUsername}' updated device '${deviceId}' status to '${cleanStatus}'`);
     return true;
   } catch (err) {
     console.error("[DeviceRegistry] Error updating device status:", err);
+    return false;
+  }
+}
+
+/**
+ * Phase 4: Set or remove Admin Lock for a device (Stolen Device Protection).
+ * @param {string} deviceId 
+ * @param {boolean} enableLock If true, sets admin_lock = 1, status = 'BLOCKED', allow_login = 0. If false, sets admin_lock = 0, status = 'ACTIVE', allow_login = 1.
+ * @param {string} adminUsername 
+ * @returns {boolean} True on success
+ */
+export function setAdminDeviceLock(deviceId, enableLock, adminUsername = 'admin') {
+  try {
+    const db = getDb();
+    const now = new Date().toISOString();
+
+    const record = db.getFirstSync("SELECT * FROM device_registry WHERE device_id = ?", [deviceId]);
+    if (!record) {
+      throw new Error(`Device record not found for device_id: ${deviceId}`);
+    }
+
+    if (enableLock) {
+      db.runSync(`
+        UPDATE device_registry
+        SET admin_lock = 1, status = 'BLOCKED', allow_login = 0, registered_by = ?, updated_at = ?
+        WHERE device_id = ?
+      `, [adminUsername, now, deviceId]);
+    } else {
+      db.runSync(`
+        UPDATE device_registry
+        SET admin_lock = 0, status = 'ACTIVE', allow_login = 1, registered_by = ?, updated_at = ?
+        WHERE device_id = ?
+      `, [adminUsername, now, deviceId]);
+    }
+
+    enqueueSync("device_registry", record.id, "UPDATE");
+    console.log(`[DeviceRegistry] setAdminDeviceLock deviceId='${deviceId}' enableLock=${enableLock} by '${adminUsername}'`);
+    return true;
+  } catch (err) {
+    console.error("[DeviceRegistry] Error setting admin device lock:", err);
     return false;
   }
 }

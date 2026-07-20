@@ -6,24 +6,31 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  Modal,
+  TextInput,
   ActivityIndicator,
   StatusBar as RNStatusBar
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getAllRegisteredDevices, updateDeviceStatus } from '../services/deviceRegistry';
+import { getAllRegisteredDevices, updateDeviceStatus, setAdminDeviceLock } from '../services/deviceRegistry';
+import { verifyPinCode } from '../database';
 
 export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
   const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Fallback to true if userRole is missing or matches ADMIN / admin
+  // Admin Lock Confirmation Modal State
+  const [pinModalVisible, setPinModalVisible] = useState(false);
+  const [targetLockDevice, setTargetLockDevice] = useState(null);
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState('');
+
   const isAdmin = !userRole || String(userRole).toUpperCase().trim() === 'ADMIN';
 
   const loadDevices = () => {
     setLoading(true);
     try {
       const list = getAllRegisteredDevices();
-      console.log(`[DeviceManagement UI Audit] Loaded ${list ? list.length : 0} registered devices.`);
       setDevices(list || []);
     } catch (err) {
       console.error('[DeviceManagement] Error loading devices:', err);
@@ -38,10 +45,6 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
   }, []);
 
   const handleStatusChange = (deviceId, deviceName, newStatus) => {
-    console.log("[DeviceManagement UI Audit] Approve/Block button clicked");
-    console.log("[DeviceManagement UI Audit] deviceId:", deviceId);
-    console.log("[DeviceManagement UI Audit] newStatus:", newStatus);
-
     const actionText = newStatus === 'ACTIVE' ? 'অনুমোদন (Approve)' : newStatus === 'BLOCKED' ? 'ব্লক (Block)' : 'পুনরায় পেন্ডিং';
     
     Alert.alert(
@@ -66,8 +69,88 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
     );
   };
 
-  const renderStatusBadge = (status) => {
+  // Phase 4: Handle Admin Lock Warning Dialog
+  const handleInitiateAdminLock = (device) => {
+    Alert.alert(
+      '⚠️ Block Administrator Access',
+      `You are about to permanently disable Administrator access from this device ('${device.device_name || device.device_id}').\n\nAfter enabling this option:\n• Admin cannot login\n• Owner cannot login\n• Manager cannot login\n\nOnly another approved Admin device can remove this lock.\n\nContinue?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          style: 'destructive',
+          onPress: () => {
+            setTargetLockDevice(device);
+            setPinInput('');
+            setPinError('');
+            setPinModalVisible(true);
+          }
+        }
+      ]
+    );
+  };
+
+  // Confirm PIN and execute Admin Lock
+  const handleConfirmPinAndLock = () => {
+    if (!pinInput.trim()) {
+      setPinError('অ্যাডমিন পিন কোড দিন (Enter Admin PIN)');
+      return;
+    }
+
+    // Verify PIN against Admin users
+    const isValidPin = verifyPinCode(pinInput.trim(), 'admin');
+    if (!isValidPin) {
+      setPinError('ভুল পিন কোড! পুনরায় চেষ্টা করুন (Invalid Admin PIN)');
+      return;
+    }
+
+    if (!targetLockDevice) return;
+
+    const success = setAdminDeviceLock(targetLockDevice.device_id, true, 'admin');
+    setPinModalVisible(false);
+    setPinInput('');
+    setTargetLockDevice(null);
+
+    if (success) {
+      Alert.alert('সফল', 'অ্যাডমিন এক্সেস স্থায়ীভাবে ব্লক করা হয়েছে (Admin Lock Enabled).');
+      loadDevices();
+    } else {
+      Alert.alert('ত্রুটি', 'অ্যাডমিন ব্লক ব্যর্থ হয়েছে।');
+    }
+  };
+
+  // Remove Admin Lock Action
+  const handleRemoveAdminLock = (device) => {
+    Alert.alert(
+      '🔓 Remove Admin Lock',
+      `আপনি কি নিশ্চিত যে '${device.device_name || device.device_id}' ডিভাইসটির অ্যাডমিন লক সরাতে চান?`,
+      [
+        { text: 'বাতিল (Cancel)', style: 'cancel' },
+        {
+          text: 'আনব্লক করুন (Confirm)',
+          onPress: () => {
+            const success = setAdminDeviceLock(device.device_id, false, 'admin');
+            if (success) {
+              Alert.alert('সফল', 'অ্যাডমিন লক সফলভাবে অপসারিত হয়েছে।');
+              loadDevices();
+            } else {
+              Alert.alert('ত্রুটি', 'অ্যাডমিন লক অপসারণ ব্যর্থ হয়েছে।');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const renderStatusBadge = (status, adminLock) => {
     const st = String(status || 'PENDING').toUpperCase().trim();
+    if (adminLock === 1) {
+      return (
+        <View style={[styles.badge, styles.badgeAdminLock]}>
+          <Text style={styles.badgeTextAdminLock}>🔒 ADMIN LOCKED</Text>
+        </View>
+      );
+    }
     if (st === 'ACTIVE') {
       return (
         <View style={[styles.badge, styles.badgeActive]}>
@@ -106,9 +189,9 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
 
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.infoBanner}>
-          <Text style={styles.infoBannerTitle}>🛡️ Device Registry Policy</Text>
+          <Text style={styles.infoBannerTitle}>🛡️ Stolen Device Protection</Text>
           <Text style={styles.infoBannerText}>
-            এডমিন যে কোনো ডিভাইস অনুমোদন বা ব্লক করতে পারেন। ম্যানেজার একাউন্ট দিয়ে লগইনের জন্য ডিভাইসটির স্ট্যাটাস 'ACTIVE' হতে হবে।
+            হারিয়ে যাওয়া/চুরি হওয়া ডিভাইসে 'Block Admin Access' ব্যবহার করলে ওই ডিভাইস থেকে অ্যাডমিন, ওনার ও ম্যানেজার কোনো এক্সেস থাকবে না।
           </Text>
         </View>
 
@@ -126,8 +209,7 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
         ) : (
           devices.map((item) => {
             const st = String(item.status || 'PENDING').toUpperCase().trim();
-
-            console.log(`[DeviceCard Render Audit] userRole="${userRole}" device.status="${st}" isAdmin=${isAdmin} currentBranch="${st === 'PENDING' ? 'PENDING ([Approve], [Block])' : st === 'ACTIVE' ? 'ACTIVE ([Block])' : 'BLOCKED ([Unblock])'}"`);
+            const isLocked = Number(item.admin_lock || 0) === 1;
 
             return (
               <View key={item.id || item.device_id} style={styles.deviceCard}>
@@ -139,7 +221,7 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
                       <Text style={styles.deviceIdText}>ID: {item.device_id}</Text>
                     </View>
                   </View>
-                  {renderStatusBadge(st)}
+                  {renderStatusBadge(st, isLocked)}
                 </View>
 
                 <View style={styles.divider} />
@@ -167,10 +249,10 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
 
                 {/* Admin Action Buttons */}
                 {isAdmin && (
-                  <View style={styles.actionRow}>
+                  <View style={styles.actionRowContainer}>
                     {/* PENDING State: Show [Approve] and [Block] */}
-                    {st === 'PENDING' && (
-                      <>
+                    {st === 'PENDING' && !isLocked && (
+                      <View style={styles.actionRow}>
                         <TouchableOpacity
                           style={[styles.btnAction, styles.btnApprove]}
                           onPress={() => handleStatusChange(item.device_id, item.device_name, 'ACTIVE')}
@@ -184,27 +266,51 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
                         >
                           <Text style={styles.btnBlockText}>🚫 ব্লক (Block)</Text>
                         </TouchableOpacity>
-                      </>
+                      </View>
                     )}
 
                     {/* ACTIVE State: Show [Block] */}
-                    {st === 'ACTIVE' && (
-                      <TouchableOpacity
-                        style={[styles.btnAction, styles.btnBlock]}
-                        onPress={() => handleStatusChange(item.device_id, item.device_name, 'BLOCKED')}
-                      >
-                        <Text style={styles.btnBlockText}>🚫 ব্লক করুন (Block)</Text>
-                      </TouchableOpacity>
+                    {st === 'ACTIVE' && !isLocked && (
+                      <View style={styles.actionRow}>
+                        <TouchableOpacity
+                          style={[styles.btnAction, styles.btnBlock]}
+                          onPress={() => handleStatusChange(item.device_id, item.device_name, 'BLOCKED')}
+                        >
+                          <Text style={styles.btnBlockText}>🚫 ব্লক করুন (Block)</Text>
+                        </TouchableOpacity>
+                      </View>
                     )}
 
-                    {/* BLOCKED State: Show [Unblock] */}
+                    {/* BLOCKED State */}
                     {st === 'BLOCKED' && (
-                      <TouchableOpacity
-                        style={[styles.btnAction, styles.btnUnblock]}
-                        onPress={() => handleStatusChange(item.device_id, item.device_name, 'ACTIVE')}
-                      >
-                        <Text style={styles.btnUnblockText}>🔓 আনব্লক করুন (Unblock)</Text>
-                      </TouchableOpacity>
+                      <View style={styles.actionRowColumn}>
+                        {isLocked ? (
+                          /* Admin Lock is Active: Show [Remove Admin Lock] */
+                          <TouchableOpacity
+                            style={[styles.btnAction, styles.btnUnblockAdmin]}
+                            onPress={() => handleRemoveAdminLock(item)}
+                          >
+                            <Text style={styles.btnUnblockAdminText}>🔓 Remove Admin Lock</Text>
+                          </TouchableOpacity>
+                        ) : (
+                          /* Normal Blocked: Show [Unblock] & [Block Admin Access] */
+                          <View style={styles.actionRow}>
+                            <TouchableOpacity
+                              style={[styles.btnAction, styles.btnUnblock]}
+                              onPress={() => handleStatusChange(item.device_id, item.device_name, 'ACTIVE')}
+                            >
+                              <Text style={styles.btnUnblockText}>🔓 আনব্লক করুন (Unblock)</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              style={[styles.btnAction, styles.btnAdminLock]}
+                              onPress={() => handleInitiateAdminLock(item)}
+                            >
+                              <Text style={styles.btnAdminLockText}>🔒 Block Admin</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </View>
                     )}
                   </View>
                 )}
@@ -213,6 +319,63 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
           })
         )}
       </ScrollView>
+
+      {/* Admin PIN Confirmation Modal */}
+      <Modal
+        visible={pinModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setPinModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setPinModalVisible(false)}
+        >
+          <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+            <Text style={styles.modalTitle}>🔒 Admin Security Verification</Text>
+            <Text style={styles.modalDesc}>
+              অ্যাডমিন এক্সেস স্থায়ীভাবে লক করতে আপনার Administrator PIN লিখুন:
+            </Text>
+
+            {pinError ? (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>⚠️ {pinError}</Text>
+              </View>
+            ) : null}
+
+            <TextInput
+              style={styles.pinInput}
+              placeholder="Enter Admin PIN"
+              placeholderTextColor="#71717a"
+              keyboardType="number-pad"
+              secureTextEntry={true}
+              value={pinInput}
+              onChangeText={(val) => {
+                setPinInput(val);
+                if (pinError) setPinError('');
+              }}
+              autoFocus={true}
+            />
+
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setPinModalVisible(false)}
+              >
+                <Text style={styles.modalCancelText}>বাতিল (Cancel)</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.modalConfirmBtn}
+                onPress={handleConfirmPinAndLock}
+              >
+                <Text style={styles.modalConfirmText}>লক নিশ্চিত করুন</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -256,15 +419,15 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   infoBanner: {
-    backgroundColor: 'rgba(255, 183, 3, 0.08)',
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 183, 3, 0.25)',
+    borderColor: 'rgba(239, 68, 68, 0.25)',
     borderRadius: 14,
     padding: 14,
     marginBottom: 20,
   },
   infoBannerTitle: {
-    color: '#ffb703',
+    color: '#ef4444',
     fontWeight: 'bold',
     fontSize: 13,
     marginBottom: 4,
@@ -369,6 +532,16 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: 'bold',
   },
+  badgeAdminLock: {
+    backgroundColor: 'rgba(239, 68, 68, 0.25)',
+    borderWidth: 1,
+    borderColor: '#ef4444',
+  },
+  badgeTextAdminLock: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
   divider: {
     height: 1,
     backgroundColor: '#27272a',
@@ -390,9 +563,14 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
   },
+  actionRowContainer: {
+    marginTop: 14,
+  },
   actionRow: {
     flexDirection: 'row',
-    marginTop: 14,
+    gap: 10,
+  },
+  actionRowColumn: {
     gap: 10,
   },
   btnAction: {
@@ -425,5 +603,104 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: 'bold',
     fontSize: 12,
+  },
+  btnAdminLock: {
+    backgroundColor: '#7f1d1d',
+    borderWidth: 1,
+    borderColor: '#ef4444',
+  },
+  btnAdminLockText: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
+  btnUnblockAdmin: {
+    backgroundColor: '#16a34a',
+    paddingVertical: 12,
+  },
+  btnUnblockAdminText: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+    fontSize: 13,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#18181b',
+    borderWidth: 1,
+    borderColor: '#27272a',
+    borderRadius: 18,
+    padding: 22,
+    width: '100%',
+    maxWidth: 360,
+  },
+  modalTitle: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  modalDesc: {
+    color: '#a1a1aa',
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  errorBox: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderRadius: 8,
+    padding: 8,
+    marginBottom: 12,
+  },
+  errorText: {
+    color: '#fca5a5',
+    fontSize: 12,
+  },
+  pinInput: {
+    backgroundColor: '#09090b',
+    borderWidth: 1,
+    borderColor: '#3f3f46',
+    borderRadius: 10,
+    color: '#ffffff',
+    paddingHorizontal: 14,
+    height: 48,
+    fontSize: 16,
+    marginBottom: 18,
+    textAlign: 'center',
+  },
+  modalBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    backgroundColor: '#27272a',
+    borderRadius: 10,
+    height: 42,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCancelText: {
+    color: '#a1a1aa',
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  modalConfirmBtn: {
+    flex: 1,
+    backgroundColor: '#b91c1c',
+    borderRadius: 10,
+    height: 42,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalConfirmText: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+    fontSize: 13,
   },
 });

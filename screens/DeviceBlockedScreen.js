@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-export default function DeviceBlockedScreen({ deviceId, onExit }) {
+export default function DeviceBlockedScreen({ deviceId, isAdminLock = false, onExit }) {
   return (
     <SafeAreaView style={styles.container}>
       <RNStatusBar barStyle="light-content" backgroundColor="#09090b" />
@@ -17,7 +17,7 @@ export default function DeviceBlockedScreen({ deviceId, onExit }) {
         {/* Brand Icon */}
         <View style={styles.badgeContainer}>
           <View style={styles.iconCircle}>
-            <Text style={styles.iconEmoji}>🚫</Text>
+            <Text style={styles.iconEmoji}>🔒</Text>
           </View>
         </View>
 
@@ -26,20 +26,38 @@ export default function DeviceBlockedScreen({ deviceId, onExit }) {
 
         {/* Status Pill */}
         <View style={styles.statusPill}>
-          <Text style={styles.statusPillText}>✖ STATUS: BLOCKED</Text>
+          <Text style={styles.statusPillText}>
+            {isAdminLock ? '✖ STATUS: ADMIN LOCKED (STOLEN DEVICE)' : '✖ STATUS: BLOCKED'}
+          </Text>
         </View>
 
         {/* Body Message */}
         <View style={styles.bodyCard}>
-          <Text style={styles.bodyText}>
-            এই ডিভাইসটি Administrator ব্লক করেছেন।
-          </Text>
-          <Text style={[styles.bodyText, { marginTop: 8 }]}>
-            এই ডিভাইস থেকে Login করা যাবে না।
-          </Text>
-          <Text style={[styles.bodyText, { marginTop: 10, color: '#a1a1aa' }]}>
-            অনুগ্রহ করে Administrator-এর সাথে যোগাযোগ করুন।
-          </Text>
+          {isAdminLock ? (
+            <>
+              <Text style={styles.bodyText}>
+                Administrator access has been disabled for this device.
+              </Text>
+              <Text style={[styles.bodyText, { marginTop: 8 }]}>
+                This device has been marked as lost/stolen.
+              </Text>
+              <Text style={[styles.bodyText, { marginTop: 10, color: '#a1a1aa' }]}>
+                Please contact another Administrator.
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.bodyText}>
+                এই ডিভাইসটি Administrator ব্লক করেছেন।
+              </Text>
+              <Text style={[styles.bodyText, { marginTop: 8 }]}>
+                এই ডিভাইস থেকে Login করা যাবে না।
+              </Text>
+              <Text style={[styles.bodyText, { marginTop: 10, color: '#a1a1aa' }]}>
+                অনুগ্রহ করে Administrator-এর সাথে যোগাযোগ করুন।
+              </Text>
+            </>
+          )}
         </View>
 
         {/* Device ID Card */}

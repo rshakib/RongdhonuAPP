@@ -789,7 +789,7 @@ export default function App() {
       const devPerm = checkDeviceLoginPermission(role);
       if (!devPerm.allowed) {
         setPendingDeviceId(devPerm.deviceId || '');
-        setPendingLoginInfo({ role, displayName, mode });
+        setPendingLoginInfo({ role, displayName, mode, isAdminLock: !!devPerm.isAdminLock });
         setIsLoggedIn(false);
 
         if (devPerm.status === 'BLOCKED') {
@@ -1336,6 +1336,7 @@ export default function App() {
         return (
           <DeviceBlockedScreen
             deviceId={pendingDeviceId}
+            isAdminLock={pendingLoginInfo?.isAdminLock}
             onExit={() => {
               setIsLoggedIn(false);
               setPendingLoginInfo(null);
