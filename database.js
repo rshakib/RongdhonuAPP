@@ -4273,10 +4273,23 @@ export function checkAndApplyIjaraRollover() {
         console.log(`[Auto Ijara] Applying Opening Ijara ৳${pendingAmount} for target date ${targetDate}`);
         const targetIso = `${targetDate}T00:00:00.000Z`;
 
-        const existingIjara = db.getFirstSync(
-          "SELECT amount FROM expenses WHERE (id = ? OR date(created_at, 'localtime') = ?) AND category = 'ijara'",
-          [`exp_${targetDate}_ijara`, targetDate]
-        );
+        const ijaraQuery = "SELECT * FROM expenses WHERE (id = ? OR date(created_at, 'localtime') = ?) AND category = 'ijara'";
+        const ijaraQueryParams = [`exp_${targetDate}_ijara`, targetDate];
+        console.log("[ROLLOVER] Querying existing expense SQL:", ijaraQuery);
+        console.log("[ROLLOVER] Query Params:", JSON.stringify(ijaraQueryParams));
+
+        const existingIjara = db.getFirstSync(ijaraQuery, ijaraQueryParams);
+        console.log("[ROLLOVER] existingExpense FULL =", JSON.stringify(existingIjara, null, 2));
+
+        if (existingIjara) {
+          console.log("[ROLLOVER] Existing Expense Columns:");
+          console.log("[ROLLOVER] - id:", existingIjara.id);
+          console.log("[ROLLOVER] - category:", existingIjara.category);
+          console.log("[ROLLOVER] - amount:", existingIjara.amount);
+          console.log("[ROLLOVER] - created_at:", existingIjara.created_at);
+          console.log("[ROLLOVER] - updated_at:", existingIjara.updated_at);
+          console.log("[ROLLOVER] - note:", existingIjara.note);
+        }
 
         if (!existingIjara) {
           const stableExpId = `exp_${targetDate}_ijara`;
