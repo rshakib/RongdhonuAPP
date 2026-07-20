@@ -229,114 +229,181 @@ export default function DailySubmitScreen({ dailyExpenses, completedOrders = [],
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollBody} contentContainerStyle={styles.scrollContent}>
-        {/* Section 1: Large Summary Card */}
+        {/* Business Date Banner */}
         <View style={styles.summaryCard}>
           <View style={styles.summaryCardHeader}>
             <Text style={styles.summaryDateLabel}>📅 ব্যবসায়িক তারিখ (Business Date)</Text>
             <Text style={styles.summaryDateValue}>{currentDateText}</Text>
           </View>
-          <View style={styles.summaryDivider} />
+        </View>
+
+        {/* Card 1: Total Cash (Read Only Display) */}
+        <View style={styles.summaryCard}>
           <View style={styles.summarySalesRow}>
             <View>
-              <Text style={styles.summarySalesLabel}>💰 মোট বিক্রয় (Total Sales)</Text>
-              <Text style={styles.summarySalesSubtext}>সকল পেমেন্ট গেটওয়ে সহ</Text>
+              <Text style={styles.summarySalesLabel}>💰 মোট ক্যাশ (Total Cash Sales)</Text>
+              <Text style={styles.summarySalesSubtext}>ক্যাশ বিক্রয় হিসাব</Text>
             </View>
-            <Text style={styles.summarySalesValue}>৳ {totalSell.toLocaleString()}</Text>
+            <Text style={styles.summarySalesValue}>৳ {cashSell.toLocaleString()}</Text>
           </View>
         </View>
 
-        {/* Section 2: Large Expense Card */}
+        {/* Card 2: Expense Breakdown (Editable Inputs) */}
         <View style={styles.expenseCardContainer}>
           <View style={styles.expenseHeaderRow}>
             <View>
-              <Text style={styles.expenseHeaderLabel}>📉 মোট খরচ (Total Expenses)</Text>
-              <Text style={styles.expenseHeaderSub}>আজকের সকল খরচের বিবরণ</Text>
+              <Text style={styles.expenseHeaderLabel}>📉 খরচ বিবরণী (Expense Breakdown)</Text>
+              <Text style={styles.expenseHeaderSub}>প্রয়োজনে খরচের পরিমাণ এডিট করুন</Text>
             </View>
             <Text style={styles.expenseHeaderValue}>৳ {totalExpenses.toLocaleString()}</Text>
           </View>
           
           <View style={styles.expenseDivider} />
 
-          {/* Dudu Miah */}
-          <View style={styles.expenseRow}>
+          {/* Dudu Miah Input */}
+          <View style={styles.expenseEditRow}>
             <Text style={styles.expenseRowLabel}>🛍️ দুদু মিয়া খরচ</Text>
-            <Text style={styles.expenseRowValue}>৳ {numDudu.toLocaleString()}</Text>
-          </View>
-
-          {/* Akash Chicken */}
-          <View style={styles.expenseRow}>
-            <Text style={styles.expenseRowLabel}>🐔 আকাশ মুরগী খরচ</Text>
-            <Text style={styles.expenseRowValue}>৳ {numAkash.toLocaleString()}</Text>
-          </View>
-
-          {/* Burger Bun */}
-          <View style={styles.expenseRow}>
-            <Text style={styles.expenseRowLabel}>🍔 বার্গার বান খরচ</Text>
-            <Text style={styles.expenseRowValue}>৳ {numBurger.toLocaleString()}</Text>
-          </View>
-
-          {/* Bazar */}
-          <View style={styles.expenseRow}>
-            <View style={{ flex: 1, marginRight: 8 }}>
-              <Text style={styles.expenseRowLabel}>🛒 বাজার খরচ</Text>
-              {bazarNote ? <Text style={styles.expenseRowNote}>📝 {bazarNote}</Text> : null}
-            </View>
-            <Text style={styles.expenseRowValue}>৳ {numBazar.toLocaleString()}</Text>
-          </View>
-
-          {/* Others */}
-          <View style={[styles.expenseRow, { borderBottomWidth: 0 }]}>
-            <View style={{ flex: 1, marginRight: 8 }}>
-              <Text style={styles.expenseRowLabel}>📦 অন্যান্য খরচ</Text>
-              {othersNote ? <Text style={styles.expenseRowNote}>📝 {othersNote}</Text> : null}
-            </View>
-            <Text style={styles.expenseRowValue}>৳ {numOthers.toLocaleString()}</Text>
-          </View>
-        </View>
-
-        {/* Section 3: Final Calculations Grid (Net Cash & Owner Deposit Cards Side-by-Side) */}
-        <View style={styles.gridContainer}>
-          {/* Card 1: Net Cash */}
-          <View style={styles.gridCardNetCash}>
-            <Text style={styles.gridCardIcon}>💵</Text>
-            <Text style={styles.gridCardLabel}>নেট ক্যাশ (Net Cash)</Text>
-            <Text style={styles.gridCardValueNetCash}>৳ {netCash.toLocaleString()}</Text>
-          </View>
-
-          {/* Card 2: Owner Deposit */}
-          <View style={styles.gridCardDeposit}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-              <Text style={styles.gridCardIconSmall}>🏦</Text>
-              <Text style={styles.gridCardLabelDeposit}>মালিককে জমা</Text>
-            </View>
-            <View style={[styles.depositMiniInputRow, (isDailySubmitted && userRole !== 'admin') && styles.disabledMiniInputRow]}>
-              <Text style={[styles.miniCurrencySymbol, (isDailySubmitted && userRole !== 'admin') && styles.disabledInputText]}>৳</Text>
+            <View style={styles.expenseInputWrapper}>
+              <Text style={styles.currencyPrefix}>৳</Text>
               <TextInput
-                style={[styles.miniDepositInput, (isDailySubmitted && userRole !== 'admin') && styles.disabledInputText]}
+                style={styles.expenseInputField}
                 keyboardType="numeric"
-                value={depositAmount}
-                onChangeText={setDepositAmount}
+                value={duduMiah}
+                onChangeText={setDuduMiah}
                 placeholder="0"
-                placeholderTextColor="#666666"
+                placeholderTextColor="#666"
                 editable={!isDailySubmitted || userRole === 'admin'}
               />
             </View>
           </View>
+
+          {/* Akash Chicken Input */}
+          <View style={styles.expenseEditRow}>
+            <Text style={styles.expenseRowLabel}>🐔 আকাশ মুরগী খরচ</Text>
+            <View style={styles.expenseInputWrapper}>
+              <Text style={styles.currencyPrefix}>৳</Text>
+              <TextInput
+                style={styles.expenseInputField}
+                keyboardType="numeric"
+                value={akashChicken}
+                onChangeText={setAkashChicken}
+                placeholder="0"
+                placeholderTextColor="#666"
+                editable={!isDailySubmitted || userRole === 'admin'}
+              />
+            </View>
+          </View>
+
+          {/* Burger Bun Input */}
+          <View style={styles.expenseEditRow}>
+            <Text style={styles.expenseRowLabel}>🍔 বার্গার বান খরচ</Text>
+            <View style={styles.expenseInputWrapper}>
+              <Text style={styles.currencyPrefix}>৳</Text>
+              <TextInput
+                style={styles.expenseInputField}
+                keyboardType="numeric"
+                value={burgerBun}
+                onChangeText={setBurgerBun}
+                placeholder="0"
+                placeholderTextColor="#666"
+                editable={!isDailySubmitted || userRole === 'admin'}
+              />
+            </View>
+          </View>
+
+          {/* Bazar Input + Note */}
+          <View style={styles.expenseEditCol}>
+            <View style={styles.expenseEditRow}>
+              <Text style={styles.expenseRowLabel}>🛒 বাজার খরচ</Text>
+              <View style={styles.expenseInputWrapper}>
+                <Text style={styles.currencyPrefix}>৳</Text>
+                <TextInput
+                  style={styles.expenseInputField}
+                  keyboardType="numeric"
+                  value={bazar}
+                  onChangeText={setBazar}
+                  placeholder="0"
+                  placeholderTextColor="#666"
+                  editable={!isDailySubmitted || userRole === 'admin'}
+                />
+              </View>
+            </View>
+            <TextInput
+              style={styles.expenseNoteField}
+              value={bazarNote}
+              onChangeText={setBazarNote}
+              placeholder="📝 বাজারের নোট (ঐচ্ছিক)"
+              placeholderTextColor="#666"
+              editable={!isDailySubmitted || userRole === 'admin'}
+            />
+          </View>
+
+          {/* Others Input + Note */}
+          <View style={styles.expenseEditCol}>
+            <View style={styles.expenseEditRow}>
+              <Text style={styles.expenseRowLabel}>📦 অন্যান্য খরচ</Text>
+              <View style={styles.expenseInputWrapper}>
+                <Text style={styles.currencyPrefix}>৳</Text>
+                <TextInput
+                  style={styles.expenseInputField}
+                  keyboardType="numeric"
+                  value={others}
+                  onChangeText={setOthers}
+                  placeholder="0"
+                  placeholderTextColor="#666"
+                  editable={!isDailySubmitted || userRole === 'admin'}
+                />
+              </View>
+            </View>
+            <TextInput
+              style={styles.expenseNoteField}
+              value={othersNote}
+              onChangeText={setOthersNote}
+              placeholder="📝 খরচের নোট (ঐচ্ছিক)"
+              placeholderTextColor="#666"
+              editable={!isDailySubmitted || userRole === 'admin'}
+            />
+          </View>
         </View>
 
-        {/* Note Warning Box */}
-        <View style={styles.warningCard}>
-          <Text style={styles.warningIcon}>{(isDailySubmitted && userRole !== 'admin') ? '🔒' : '⚡'}</Text>
-          <Text style={styles.warningText}>
-            {isDailySubmitted
-              ? (userRole === 'admin'
-                  ? 'আজকের ডেইলি শীট জমা দেওয়া হয়েছে, কিন্তু আপনি এডমিন হওয়ায় হিসাব সংশোধন বা পুনরায় সাবমিট করতে পারবেন।'
-                  : 'আজকের ডেইলি শীট সফলভাবে জমা দেওয়া হয়েছে এবং সব তথ্য লক করা আছে।')
-              : 'নোট: সঠিক তথ্য দিয়ে সাবমিট করুন। সাবমিট করার পর আর পরিবর্তন করা যাবে না।'}
+        {/* Card 3: Owner Deposit Card (Editable) */}
+        <View style={styles.expenseCardContainer}>
+          <View style={styles.expenseHeaderRow}>
+            <View>
+              <Text style={styles.expenseHeaderLabel}>🏦 মালিককে জমা (Owner Deposit)</Text>
+              <Text style={styles.expenseHeaderSub}>মালিকের কাছে জমা দেওয়ার পরিমাণ</Text>
+            </View>
+          </View>
+          <View style={styles.expenseDivider} />
+          <View style={styles.depositLargeInputRow}>
+            <Text style={styles.depositCurrencySymbol}>৳</Text>
+            <TextInput
+              style={styles.depositLargeInput}
+              keyboardType="numeric"
+              value={depositAmount}
+              onChangeText={setDepositAmount}
+              placeholder="0"
+              placeholderTextColor="#666"
+              editable={!isDailySubmitted || userRole === 'admin'}
+            />
+          </View>
+        </View>
+
+        {/* Card 4: Next Day Opening Ija (Live Calculation Read-Only) */}
+        <View style={styles.ijaraCardContainer}>
+          <View style={styles.summaryCardHeader}>
+            <Text style={styles.ijaraCardTitle}>✨ পরবর্তী দিনের প্রারম্ভিক ইজা (Next Day Opening Ija)</Text>
+            <Text style={styles.ijaraEmoji}>🏛️</Text>
+          </View>
+          <Text style={styles.ijaraAmountValue}>
+            ৳ {Math.max(0, (cashSell + (dailyExpenses.ijara || 0) - totalExpenses) - (parseFloat(depositAmount) || 0)).toLocaleString()}
+          </Text>
+          <Text style={styles.ijaraSubtext}>
+            পরবর্তী ব্যবসায়িক দিনে এটি স্বয়ংক্রিয়ভাবে প্রারম্ভিক বেলেন্স হবে।
           </Text>
         </View>
 
-        {/* Section 4: Submit Button */}
+        {/* Section 5: Submit Button */}
         {(!isDailySubmitted || userRole === 'admin') ? (
           <TouchableOpacity style={styles.submitBtn} onPress={handleFormSubmit} activeOpacity={0.85}>
             <Text style={styles.submitCheckText}>✓</Text>
@@ -1443,5 +1510,105 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     height: '100%',
     padding: 0,
+  },
+  expenseEditRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.04)',
+  },
+  expenseEditCol: {
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.04)',
+  },
+  expenseInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#09090b',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    height: 38,
+    minWidth: 110,
+  },
+  currencyPrefix: {
+    color: '#FFB703',
+    fontWeight: 'bold',
+    fontSize: 14,
+    marginRight: 4,
+  },
+  expenseInputField: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: 'bold',
+    padding: 0,
+  },
+  expenseNoteField: {
+    backgroundColor: '#09090b',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.06)',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    color: '#D4D4D8',
+    fontSize: 12,
+    marginTop: 6,
+  },
+  depositLargeInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#09090b',
+    borderWidth: 1,
+    borderColor: '#3B82F6',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    height: 48,
+    marginTop: 4,
+  },
+  depositCurrencySymbol: {
+    fontSize: 18,
+    color: '#3B82F6',
+    fontWeight: 'bold',
+    marginRight: 6,
+  },
+  depositLargeInput: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+    height: '100%',
+    padding: 0,
+  },
+  ijaraCardContainer: {
+    backgroundColor: '#1E1E24',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 183, 3, 0.3)',
+  },
+  ijaraCardTitle: {
+    color: '#FFB703',
+    fontSize: 13,
+    fontWeight: 'bold',
+    flex: 1,
+  },
+  ijaraEmoji: {
+    fontSize: 18,
+  },
+  ijaraAmountValue: {
+    fontSize: 26,
+    color: '#FFB703',
+    fontWeight: '900',
+    marginVertical: 6,
+  },
+  ijaraSubtext: {
+    color: '#A1A1AA',
+    fontSize: 11,
   },
 });
