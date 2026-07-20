@@ -324,6 +324,20 @@ export default function DailySubmitScreen({ dailyExpenses, completedOrders = [],
           </View>
         </View>
 
+        {/* Card 4: Next Day Opening Ija (Live Calculation Read-Only) */}
+        <View style={styles.ijaraCardContainer}>
+          <View style={styles.summaryCardHeader}>
+            <Text style={styles.ijaraCardTitle}>✨ পরবর্তী দিনের প্রারম্ভিক ইজা (Next Day Opening Ija)</Text>
+            <Text style={styles.ijaraEmoji}>🏛️</Text>
+          </View>
+          <Text style={styles.ijaraAmountValue}>
+            ৳ {Math.max(0, (cashSell + (dailyExpenses.ijara || 0) - totalExpenses) - (parseFloat(depositAmount) || 0)).toLocaleString()}
+          </Text>
+          <Text style={styles.ijaraSubtext}>
+            পরবর্তী ব্যবসায়িক দিনে এটি স্বয়ংক্রিয়ভাবে প্রারম্ভিক বেলেন্স হবে।
+          </Text>
+        </View>
+
         {/* Note Warning Box */}
         <View style={styles.warningCard}>
           <Text style={styles.warningIcon}>{(isDailySubmitted && userRole !== 'admin') ? '🔒' : '⚡'}</Text>
@@ -1443,5 +1457,32 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     height: '100%',
     padding: 0,
+  },
+  ijaraCardContainer: {
+    backgroundColor: '#1E1E24',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 183, 3, 0.3)',
+  },
+  ijaraCardTitle: {
+    color: '#FFB703',
+    fontSize: 13,
+    fontWeight: 'bold',
+    flex: 1,
+  },
+  ijaraEmoji: {
+    fontSize: 18,
+  },
+  ijaraAmountValue: {
+    fontSize: 24,
+    color: '#FFB703',
+    fontWeight: '900',
+    marginVertical: 6,
+  },
+  ijaraSubtext: {
+    color: '#A1A1AA',
+    fontSize: 11,
   },
 });
