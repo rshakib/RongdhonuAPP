@@ -408,12 +408,12 @@ export default function App() {
         startSyncService();
 
         // Check if there are any pending midnight rollovers to apply
-        const didRollover = checkAndApplyIjaraRollover();
+        const didRollover = await checkAndApplyIjaraRollover();
         if (didRollover) refreshData();
 
         // Set interval to check for midnight rollovers every minute
-        setInterval(() => {
-          const rollover = checkAndApplyIjaraRollover();
+        setInterval(async () => {
+          const rollover = await checkAndApplyIjaraRollover();
           if (rollover) refreshData();
         }, 60000);
 

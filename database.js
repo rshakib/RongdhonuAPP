@@ -4147,6 +4147,7 @@ export function submitDailySheet(summary, submittedBy, submissionType = 'MANUAL'
   try {
     const todayStr = summary.bizDate || getBusinessDate();
     const now = new Date().toISOString();
+    console.log("[FORENSIC DEBUG] STEP 1 - submitDailySheet started for bizDate:", todayStr, "by:", submittedBy);
     
     db.runSync(`
       INSERT OR REPLACE INTO daily_submit (
@@ -4190,7 +4191,6 @@ export function submitDailySheet(summary, submittedBy, submissionType = 'MANUAL'
     const yearStr = todayStr.substring(0, 4);
     const splId = `spl_${todayStr}`;
 
-    // Use latest values from breakdown; preserve created_by/created_at if existing
     const existingSpl = db.getFirstSync("SELECT created_by, created_at FROM supplier_payment_ledger WHERE id = ?", [splId]);
     const finalCreatedBy = existingSpl ? existingSpl.created_by : submittedBy;
     const finalCreatedAt = existingSpl ? existingSpl.created_at : now;
@@ -4216,11 +4216,9 @@ export function submitDailySheet(summary, submittedBy, submissionType = 'MANUAL'
     calculateAndSaveDailySummary(todayStr);
 
     // --- ML EXPORT TRIGGER ---
-    // Enqueue summary and item sales exports after locking the day
     enqueueDailyMLExports(todayStr);
 
     // --- PENDING NEXT-DAY IJARA ---
-    // Business Formula: Cash Sales + Previous Ija - Total Expense - Owner Deposit
     const cashSales = summary.breakdown?.cash || 0;
     const currentIjara = summary.breakdown?.ijara || 0;
     const totalExpense = summary.expense || 0;
@@ -4229,8 +4227,6 @@ export function submitDailySheet(summary, submittedBy, submissionType = 'MANUAL'
     const calculatedIjara = (cashSales + currentIjara - totalExpense) - ownerDeposit;
     const nextDayIjara = Math.max(0, calculatedIjara);
 
-    // Calculate Next Business Date from Submitted Business Date (todayStr + 1 day)
-    // NEVER use Date.now() or device current timestamp!
     const [bY, bM, bD] = todayStr.split('-').map(Number);
     const submittedDateObj = new Date(bY, bM - 1, bD);
     submittedDateObj.setDate(submittedDateObj.getDate() + 1);
@@ -4240,79 +4236,106 @@ export function submitDailySheet(summary, submittedBy, submissionType = 'MANUAL'
     const nDay = String(submittedDateObj.getDate()).padStart(2, '0');
     const nextBizDateStr = `${nY}-${nM}-${nDay}`;
 
+    console.log("[FORENSIC DEBUG] Calculated nextDayIjara:", nextDayIjara, "pendingDateStr:", nextBizDateStr, "(cashSales:", cashSales, "currentIjara:", currentIjara, "totalExpense:", totalExpense, "ownerDeposit:", ownerDeposit, ")");
+
     db.runSync("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)", ['pending_ijara_amount', nextDayIjara.toString()]);
     db.runSync("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)", ['pending_ijara_date', nextBizDateStr]);
     
     enqueueSync("app_config", "pending_ijara_amount", "UPDATE");
     enqueueSync("app_config", "pending_ijara_date", "UPDATE");
-    console.log(`[Auto Ijara] Calculated next_day_ijara = ৳${nextDayIjara} pending for ${nextBizDateStr} (Submitted Biz Date: ${todayStr})`);
 
-    // Immediately apply carry forward for next business date upon submit
-    checkAndApplyIjaraRollover(true);
+    console.log("[FORENSIC DEBUG] STEP 2 - calling checkAndApplyIjaraRollover(true)...");
+    // Fire-and-forget: do not block submitDailySheet return on async Firestore upload
+    checkAndApplyIjaraRollover(true).catch(e => console.error("[Auto Ijara] Immediate sync failed (will retry from queue):", e));
 
     return true;
   } catch (err) {
-    console.error("Submit daily sheet error:", err);
+    console.error("[FORENSIC DEBUG] EXCEPTION STACK in submitDailySheet:", err.stack || err);
     return false;
   }
 }
 
-export function checkAndApplyIjaraRollover(isImmediateAfterSubmit = false) {
+export async function checkAndApplyIjaraRollover(isImmediateAfterSubmit = false) {
   try {
+    console.log("[FORENSIC DEBUG] Inside checkAndApplyIjaraRollover - isImmediateAfterSubmit:", isImmediateAfterSubmit);
     const amountRow = db.getFirstSync("SELECT value FROM app_config WHERE key = 'pending_ijara_amount'");
     const dateRow = db.getFirstSync("SELECT value FROM app_config WHERE key = 'pending_ijara_date'");
+
+    console.log("[FORENSIC DEBUG] Querying app_config: amountRow =", amountRow, "dateRow =", dateRow);
+    console.log("[FORENSIC DEBUG] IF 1 (amountRow && dateRow) evaluation:", !!(amountRow && dateRow));
 
     if (amountRow && dateRow) {
       const pendingAmount = parseFloat(amountRow.value);
       const pendingDateStr = dateRow.value;
       const todayStr = getBusinessDate();
 
-      // If triggered immediately after submit OR if today >= pendingDateStr
+      console.log("[FORENSIC DEBUG] Values: pendingAmount =", pendingAmount, "pendingDateStr =", pendingDateStr, "todayStr =", todayStr);
+      console.log("[FORENSIC DEBUG] IF 2 (isImmediateAfterSubmit || todayStr >= pendingDateStr) evaluation:", (isImmediateAfterSubmit || todayStr >= pendingDateStr), "(isImmediateAfterSubmit:", isImmediateAfterSubmit, "todayStr >= pendingDateStr:", todayStr >= pendingDateStr, ")");
+
       if (isImmediateAfterSubmit || todayStr >= pendingDateStr) {
         const targetDate = pendingDateStr;
         console.log(`[Auto Ijara] Applying Opening Ijara ৳${pendingAmount} for target date ${targetDate} (Immediate=${isImmediateAfterSubmit})`);
         const now = new Date().toISOString();
         const targetIso = `${targetDate}T00:00:00.000Z`;
 
-        // Check if target date's ijara expense already exists
         const existingIjara = db.getFirstSync(
           "SELECT amount FROM expenses WHERE (id = ? OR date(created_at, 'localtime') = ?) AND category = 'ijara'",
           [`exp_${targetDate}_ijara`, targetDate]
         );
 
+        console.log("[FORENSIC DEBUG] IF 3 (!existingIjara) evaluation:", !existingIjara, "(existingIjara =", existingIjara, ")");
+
         if (!existingIjara) {
-          // 1. Set as Current Ijara in expenses for targetDate
           const stableExpId = `exp_${targetDate}_ijara`;
+          console.log("[FORENSIC DEBUG] Creating expense: ID =", stableExpId, "Date =", targetDate, "Amount =", pendingAmount);
+
           db.runSync(
             "INSERT OR REPLACE INTO expenses (id, category, amount, note, is_due, given_amount, used_amount, returned_amount, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, ?, 0)",
             [stableExpId, 'ijara', pendingAmount, 'Auto Carry Forward', targetIso, targetIso]
           );
           enqueueSync("expenses", stableExpId, "INSERT");
+          // Immediately upload to Firestore; errors are caught so queue retry is unaffected
+          try {
+            const expSyncResult = await syncRecordImmediately("expenses", stableExpId);
+            console.log(`[Auto Ijara] Immediate Firestore sync for ${stableExpId}: ${expSyncResult ? 'SUCCESS' : 'FAILED (queued for retry)'}`);
+          } catch (syncErr) {
+            console.error(`[Auto Ijara] Immediate sync error for ${stableExpId} (will retry from queue):`, syncErr);
+          }
 
-          // 2. Set as Current Ijara in eja_history for targetDate
           const ejaId = `eja_${targetDate}`;
+          console.log("[FORENSIC DEBUG] Creating eja_history: ID =", ejaId, "Date =", targetDate, "Amount =", pendingAmount);
+
           db.runSync(
             "INSERT OR REPLACE INTO eja_history (id, date, eja_amount, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, 0)",
             [ejaId, targetDate, pendingAmount, targetIso, targetIso]
           );
           enqueueSync("eja_history", ejaId, "INSERT");
+          // Immediately upload to Firestore; errors are caught so queue retry is unaffected
+          try {
+            const ejaSyncResult = await syncRecordImmediately("eja_history", ejaId);
+            console.log(`[Auto Ijara] Immediate Firestore sync for ${ejaId}: ${ejaSyncResult ? 'SUCCESS' : 'FAILED (queued for retry)'}`);
+          } catch (syncErr) {
+            console.error(`[Auto Ijara] Immediate sync error for ${ejaId} (will retry from queue):`, syncErr);
+          }
+
+          console.log("[FORENSIC DEBUG] SQLite insert and immediate Firestore sync completed for targetDate:", targetDate);
         } else {
           console.log(`[Auto Ijara] Target date ${targetDate} ijara expense already exists (value: ${existingIjara.amount}). Skipping insertion.`);
         }
 
-        // Clear pending states
         db.runSync("DELETE FROM app_config WHERE key = 'pending_ijara_amount'");
         db.runSync("DELETE FROM app_config WHERE key = 'pending_ijara_date'");
         
         enqueueSync("app_config", "pending_ijara_amount", "DELETE");
         enqueueSync("app_config", "pending_ijara_date", "DELETE");
         
+        console.log("[FORENSIC DEBUG] app_config pending keys cleared and enqueued for Firestore delete.");
         return true;
       }
     }
     return false;
   } catch (err) {
-    console.error("[Auto Ijara] Rollover check failed:", err);
+    console.error("[FORENSIC DEBUG] EXCEPTION STACK in checkAndApplyIjaraRollover:", err.stack || err);
     return false;
   }
 }
