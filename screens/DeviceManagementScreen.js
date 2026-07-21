@@ -14,16 +14,31 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   getAllRegisteredDevices,
+  getDeletedDevices,
   updateDeviceStatus,
   setAdminDeviceLock,
   triggerForceLogout,
-  updateDeviceOfflinePermission
+  updateDeviceOfflinePermission,
+  renameDevice,
+  softDeleteDevice,
+  restoreDevice
 } from '../services/deviceRegistry';
 import { verifyPinCode } from '../database';
 
 export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
+  const [viewMode, setViewMode] = useState('ACTIVE'); // 'ACTIVE' or 'DELETED'
   const [devices, setDevices] = useState([]);
+  const [deletedDevices, setDeletedDevices] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Context Menu State (Long Press)
+  const [contextMenuVisible, setContextMenuVisible] = useState(false);
+  const [selectedDevice, setSelectedDevice] = useState(null);
+
+  // Rename Modal State
+  const [renameModalVisible, setRenameModalVisible] = useState(false);
+  const [renameInput, setRenameInput] = useState('');
+  const [renameError, setRenameError] = useState('');
 
   // Admin Lock Confirmation Modal State
   const [pinModalVisible, setPinModalVisible] = useState(false);
@@ -36,8 +51,13 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
   const loadDevices = () => {
     setLoading(true);
     try {
-      const list = getAllRegisteredDevices();
-      setDevices(list || []);
+      if (viewMode === 'DELETED') {
+        const delList = getDeletedDevices();
+        setDeletedDevices(delList || []);
+      } else {
+        const list = getAllRegisteredDevices();
+        setDevices(list || []);
+      }
     } catch (err) {
       console.error('[DeviceManagement] Error loading devices:', err);
       Alert.alert('ত্রুটি', 'ডিভাইস তালিকা লোড করতে ব্যর্থ হয়েছে');
@@ -48,7 +68,97 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
 
   useEffect(() => {
     loadDevices();
-  }, []);
+  }, [viewMode]);
+
+  // FEATURE 1: Long Press Context Menu Trigger
+  const handleLongPressDevice = (device) => {
+    if (!isAdmin) return;
+    setSelectedDevice(device);
+    setContextMenuVisible(true);
+  };
+
+  // FEATURE 2: Open Rename Modal
+  const handleInitiateRename = () => {
+    setContextMenuVisible(false);
+    if (!selectedDevice) return;
+    setRenameInput(selectedDevice.device_name || selectedDevice.model || '');
+    setRenameError('');
+    setRenameModalVisible(true);
+  };
+
+  // FEATURE 2: Confirm Rename Execution
+  const handleConfirmRename = () => {
+    const cleanName = renameInput.trim();
+    if (!cleanName) {
+      setRenameError('ডিভাইসের নাম খালি রাখা যাবে না (Enter valid device name)');
+      return;
+    }
+    if (!selectedDevice) return;
+
+    const success = renameDevice(selectedDevice.device_id, cleanName, 'admin');
+    setRenameModalVisible(false);
+    setRenameInput('');
+    setSelectedDevice(null);
+
+    if (success) {
+      Alert.alert('সফল', 'ডিভাইসের নাম পরিবর্তন করা হয়েছে।');
+      loadDevices();
+    } else {
+      Alert.alert('ত্রুটি', 'নাম পরিবর্তন ব্যর্থ হয়েছে।');
+    }
+  };
+
+  // FEATURE 3: Initiate Soft Delete with Confirmation
+  const handleInitiateSoftDelete = () => {
+    setContextMenuVisible(false);
+    if (!selectedDevice) return;
+    const device = selectedDevice;
+
+    Alert.alert(
+      '🗑️ ডিভাইস ডিলিট নিশ্চিতকরণ',
+      `আপনি কি নিশ্চিত যে '${device.device_name || device.device_id}' ডিভাইসটি মুছে ফেলতে চান?\n\nএটি মুছে ফেললে ডিভাইসটি সাধারণ তালিকা থেকে সরিয়ে ফেলা হবে, তবে 'Deleted Devices' থেকে পুনরায় রিকভার করা যাবে।`,
+      [
+        { text: 'বাতিল (Cancel)', style: 'cancel' },
+        {
+          text: 'হ্যাঁ, মুছে ফেলুন (Delete)',
+          style: 'destructive',
+          onPress: () => {
+            const success = softDeleteDevice(device.device_id, 'admin');
+            setSelectedDevice(null);
+            if (success) {
+              Alert.alert('সফল', 'ডিভাইসটি মুছে ফেলা হয়েছে এবং "Deleted Devices" তালিকায় রাখা হয়েছে।');
+              loadDevices();
+            } else {
+              Alert.alert('ত্রুটি', 'ডিভাইস মোছা ব্যর্থ হয়েছে।');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // FEATURE 5: Confirm Device Restoration
+  const handleRestoreDeviceAction = (device) => {
+    Alert.alert(
+      '🔄 ডিভাইস রিকভার নিশ্চিতকরণ',
+      `আপনি কি '${device.device_name || device.device_id}' ডিভাইসটি পুনরায় পূর্ববর্তী অবস্থায় রিকভার করতে চান?`,
+      [
+        { text: 'বাতিল (Cancel)', style: 'cancel' },
+        {
+          text: 'রিকভার করুন (Restore)',
+          onPress: () => {
+            const success = restoreDevice(device.device_id, 'admin');
+            if (success) {
+              Alert.alert('সফল', 'ডিভাইসটি সফলভাবে পূর্বের কনফিগারেশনে রিকভার করা হয়েছে।');
+              loadDevices();
+            } else {
+              Alert.alert('ত্রুটি', 'ডিভাইস রিকভার ব্যর্থ হয়েছে।');
+            }
+          }
+        }
+      ]
+    );
+  };
 
   const handleStatusChange = (deviceId, deviceName, newStatus) => {
     const actionText = newStatus === 'ACTIVE' ? 'অনুমোদন (Approve)' : newStatus === 'BLOCKED' ? 'ব্লক (Block)' : 'পুনরায় পেন্ডিং';
@@ -239,183 +349,354 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
         <TouchableOpacity onPress={onBack} style={styles.backBtn}>
           <Text style={styles.backBtnText}>❮ Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>📱 ডিভাইস অ্যাক্সেস কন্ট্রোল</Text>
-        <TouchableOpacity onPress={loadDevices} style={styles.refreshBtn}>
-          <Text style={styles.refreshBtnText}>🔄</Text>
-        </TouchableOpacity>
+        <Text style={styles.headerTitle}>
+          {viewMode === 'ACTIVE' ? '📱 ডিভাইস অ্যাক্সেস কন্ট্রোল' : '🗑️ মুছে ফেলা ডিভাইসসমূহ'}
+        </Text>
+        <View style={styles.headerRightGroup}>
+          {isAdmin && (
+            <TouchableOpacity
+              onPress={() => setViewMode(prev => (prev === 'ACTIVE' ? 'DELETED' : 'ACTIVE'))}
+              style={[styles.tabToggleBtn, viewMode === 'DELETED' ? styles.tabToggleBtnActive : null]}
+            >
+              <Text style={styles.tabToggleBtnText}>
+                {viewMode === 'ACTIVE' ? '🗑️ Deleted' : '📱 Active'}
+              </Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={loadDevices} style={styles.refreshBtn}>
+            <Text style={styles.refreshBtnText}>🔄</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.infoBanner}>
-          <Text style={styles.infoBannerTitle}>🛡️ Device Registry & Policy Control</Text>
-          <Text style={styles.infoBannerText}>
-            এডমিন যে কোনো ডিভাইসের অনুমোদন, ব্লক, স্টোলেন লক, ফোর্স সাইন-আউট এবং অফলাইন এক্সেস (Offline Permission) নিয়ন্ত্রণ করতে পারেন।
-          </Text>
-        </View>
+        {viewMode === 'ACTIVE' ? (
+          <>
+            <View style={styles.infoBanner}>
+              <Text style={styles.infoBannerTitle}>🛡️ Device Registry & Policy Control</Text>
+              <Text style={styles.infoBannerText}>
+                এডমিন যে কোনো ডিভাইসের অনুমোদন, ব্লক, স্টোলেন লক, রিনেম (Long Press), ডিলিট ও রিকভার নিয়ন্ত্রণ করতে পারেন।
+              </Text>
+            </View>
 
-        <Text style={styles.sectionHeader}>নিবন্ধিত ডিভাইসের তালিকা ({devices.length})</Text>
+            <Text style={styles.sectionHeader}>নিবন্ধিত ডিভাইসের তালিকা ({devices.length})</Text>
 
-        {loading ? (
-          <View style={styles.loadingBox}>
-            <ActivityIndicator size="large" color="#FFB703" />
-            <Text style={styles.loadingText}>ডিভাইস তথ্য লোড হচ্ছে...</Text>
-          </View>
-        ) : devices.length === 0 ? (
-          <View style={styles.emptyBox}>
-            <Text style={styles.emptyText}>কোনো ডিভাইস নিবন্ধিত পাওয়া যায়নি</Text>
-          </View>
-        ) : (
-          devices.map((item) => {
-            const st = String(item.status || 'PENDING').toUpperCase().trim();
-            const isLocked = Number(item.admin_lock || 0) === 1;
-            const forceLogoutPending = Number(item.force_logout || 0) === 1;
-            const isOfflineAllowed = Number(item.allow_offline || 0) === 1;
+            {loading ? (
+              <View style={styles.loadingBox}>
+                <ActivityIndicator size="large" color="#FFB703" />
+                <Text style={styles.loadingText}>ডিভাইস তথ্য লোড হচ্ছে...</Text>
+              </View>
+            ) : devices.length === 0 ? (
+              <View style={styles.emptyBox}>
+                <Text style={styles.emptyText}>কোনো সক্রিয় ডিভাইস নিবন্ধিত পাওয়া যায়নি</Text>
+              </View>
+            ) : (
+              devices.map((item) => {
+                const st = String(item.status || 'PENDING').toUpperCase().trim();
+                const isLocked = Number(item.admin_lock || 0) === 1;
+                const forceLogoutPending = Number(item.force_logout || 0) === 1;
+                const isOfflineAllowed = Number(item.allow_offline || 0) === 1;
 
-            return (
-              <View key={item.id || item.device_id} style={styles.deviceCard}>
-                <View style={styles.cardHeader}>
-                  <View style={styles.deviceTitleGroup}>
-                    <Text style={styles.deviceIcon}>📱</Text>
-                    <View>
-                      <Text style={styles.deviceName}>{item.device_name || item.model || 'Unknown Device'}</Text>
-                      <Text style={styles.deviceIdText}>ID: {item.device_id}</Text>
+                return (
+                  <TouchableOpacity
+                    key={item.id || item.device_id}
+                    style={styles.deviceCard}
+                    activeOpacity={0.95}
+                    onLongPress={() => handleLongPressDevice(item)}
+                    delayLongPress={500}
+                  >
+                    <View style={styles.cardHeader}>
+                      <View style={styles.deviceTitleGroup}>
+                        <Text style={styles.deviceIcon}>📱</Text>
+                        <View>
+                          <Text style={styles.deviceName}>{item.device_name || item.model || 'Unknown Device'}</Text>
+                          <Text style={styles.deviceIdText}>ID: {item.device_id}</Text>
+                        </View>
+                      </View>
+                      {renderStatusBadge(st, isLocked, forceLogoutPending)}
                     </View>
-                  </View>
-                  {renderStatusBadge(st, isLocked, forceLogoutPending)}
-                </View>
 
-                <View style={styles.divider} />
+                    <View style={styles.divider} />
 
-                <View style={styles.detailsGrid}>
-                  <View style={styles.detailItem}>
-                    <Text style={styles.detailLabel}>প্রস্তুতকারক (Brand):</Text>
-                    <Text style={styles.detailValue}>{item.manufacturer || item.brand || 'Android'}</Text>
-                  </View>
-                  <View style={styles.detailItem}>
-                    <Text style={styles.detailLabel}>অ্যান্ড্রয়েড ভার্সন:</Text>
-                    <Text style={styles.detailValue}>{item.android_version || 'N/A'}</Text>
-                  </View>
-                  <View style={styles.detailItem}>
-                    <Text style={styles.detailLabel}>অ্যাপ ভার্সন:</Text>
-                    <Text style={styles.detailValue}>v{item.app_version || '1.0.0'}</Text>
-                  </View>
-                  <View style={styles.detailItem}>
-                    <Text style={styles.detailLabel}>সর্বশেষ সক্রিয় (Last Seen):</Text>
-                    <Text style={styles.detailValue}>
-                      {item.last_seen ? new Date(item.last_seen).toLocaleString() : 'N/A'}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Phase 6: Admin Offline Permission Switch Row */}
-                {isAdmin && (
-                  <View style={styles.permissionBox}>
-                    <View style={styles.permissionTextGroup}>
-                      <Text style={styles.permissionLabel}>⚡ Offline Mode Permission:</Text>
-                      <Text style={styles.permissionSublabel}>
-                        {isOfflineAllowed ? 'অফলাইন মোড চালুর অনুমতি দেওয়া আছে' : 'অফলাইন মোড নিষ্ক্রিয় করা আছে'}
-                      </Text>
+                    <View style={styles.detailsGrid}>
+                      <View style={styles.detailItem}>
+                        <Text style={styles.detailLabel}>প্রস্তুতকারক (Brand):</Text>
+                        <Text style={styles.detailValue}>{item.manufacturer || item.brand || 'Android'}</Text>
+                      </View>
+                      <View style={styles.detailItem}>
+                        <Text style={styles.detailLabel}>অ্যান্ড্রয়েড ভার্সন:</Text>
+                        <Text style={styles.detailValue}>{item.android_version || 'N/A'}</Text>
+                      </View>
+                      <View style={styles.detailItem}>
+                        <Text style={styles.detailLabel}>অ্যাপ ভার্সন:</Text>
+                        <Text style={styles.detailValue}>v{item.app_version || '1.0.0'}</Text>
+                      </View>
+                      <View style={styles.detailItem}>
+                        <Text style={styles.detailLabel}>সর্বশেষ সক্রিয় (Last Seen):</Text>
+                        <Text style={styles.detailValue}>
+                          {item.last_seen ? new Date(item.last_seen).toLocaleString() : 'N/A'}
+                        </Text>
+                      </View>
                     </View>
-                    <TouchableOpacity
-                      style={[styles.toggleSwitchBtn, isOfflineAllowed ? styles.toggleSwitchOn : styles.toggleSwitchOff]}
-                      onPress={() => handleToggleOfflinePermission(item)}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={styles.toggleSwitchText}>
-                        {isOfflineAllowed ? 'ON' : 'OFF'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
 
-                {/* Admin Action Buttons */}
-                {isAdmin && (
-                  <View style={styles.actionRowContainer}>
-                    {/* PENDING State: Show [Approve] and [Block] */}
-                    {st === 'PENDING' && !isLocked && (
-                      <View style={styles.actionRow}>
+                    {/* Phase 6: Admin Offline Permission Switch Row */}
+                    {isAdmin && (
+                      <View style={styles.permissionBox}>
+                        <View style={styles.permissionTextGroup}>
+                          <Text style={styles.permissionLabel}>⚡ Offline Mode Permission:</Text>
+                          <Text style={styles.permissionSublabel}>
+                            {isOfflineAllowed ? 'অফলাইন মোড চালুর অনুমতি দেওয়া আছে' : 'অফলাইন মোড নিষ্ক্রিয় করা আছে'}
+                          </Text>
+                        </View>
                         <TouchableOpacity
-                          style={[styles.btnAction, styles.btnApprove]}
-                          onPress={() => handleStatusChange(item.device_id, item.device_name, 'ACTIVE')}
+                          style={[styles.toggleSwitchBtn, isOfflineAllowed ? styles.toggleSwitchOn : styles.toggleSwitchOff]}
+                          onPress={() => handleToggleOfflinePermission(item)}
+                          activeOpacity={0.8}
                         >
-                          <Text style={styles.btnApproveText}>✅ অনুমোদন (Approve)</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={[styles.btnAction, styles.btnBlock]}
-                          onPress={() => handleStatusChange(item.device_id, item.device_name, 'BLOCKED')}
-                        >
-                          <Text style={styles.btnBlockText}>🚫 ব্লক (Block)</Text>
+                          <Text style={styles.toggleSwitchText}>
+                            {isOfflineAllowed ? 'ON' : 'OFF'}
+                          </Text>
                         </TouchableOpacity>
                       </View>
                     )}
 
-                    {/* ACTIVE State: Show [Block] and [Force Logout] */}
-                    {st === 'ACTIVE' && !isLocked && (
-                      <View style={styles.actionRow}>
-                        <TouchableOpacity
-                          style={[styles.btnAction, styles.btnBlock]}
-                          onPress={() => handleStatusChange(item.device_id, item.device_name, 'BLOCKED')}
-                        >
-                          <Text style={styles.btnBlockText}>🚫 ব্লক করুন (Block)</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          style={[styles.btnAction, styles.btnForceLogout]}
-                          onPress={() => handleForceLogoutPrompt(item)}
-                        >
-                          <Text style={styles.btnForceLogoutText}>🔄 Force Logout</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-
-                    {/* BLOCKED State */}
-                    {st === 'BLOCKED' && (
-                      <View style={styles.actionRowColumn}>
-                        {isLocked ? (
-                          /* Admin Lock Active: Show [Remove Admin Lock] */
-                          <TouchableOpacity
-                            style={[styles.btnAction, styles.btnUnblockAdmin]}
-                            onPress={() => handleRemoveAdminLock(item)}
-                          >
-                            <Text style={styles.btnUnblockAdminText}>🔓 Remove Admin Lock</Text>
-                          </TouchableOpacity>
-                        ) : (
-                          /* Normal Blocked: Show [Unblock], [Block Admin Access] and [Force Logout] */
-                          <View style={styles.actionRowColumn}>
-                            <View style={styles.actionRow}>
-                              <TouchableOpacity
-                                style={[styles.btnAction, styles.btnUnblock]}
-                                onPress={() => handleStatusChange(item.device_id, item.device_name, 'ACTIVE')}
-                              >
-                                <Text style={styles.btnUnblockText}>🔓 আনব্লক করুন</Text>
-                              </TouchableOpacity>
-
-                              <TouchableOpacity
-                                style={[styles.btnAction, styles.btnAdminLock]}
-                                onPress={() => handleInitiateAdminLock(item)}
-                              >
-                                <Text style={styles.btnAdminLockText}>🔒 Block Admin</Text>
-                              </TouchableOpacity>
-                            </View>
+                    {/* Admin Action Buttons */}
+                    {isAdmin && (
+                      <View style={styles.actionRowContainer}>
+                        {/* PENDING State: Show [Approve] and [Block] */}
+                        {st === 'PENDING' && !isLocked && (
+                          <View style={styles.actionRow}>
+                            <TouchableOpacity
+                              style={[styles.btnAction, styles.btnApprove]}
+                              onPress={() => handleStatusChange(item.device_id, item.device_name, 'ACTIVE')}
+                            >
+                              <Text style={styles.btnApproveText}>✅ অনুমোদন (Approve)</Text>
+                            </TouchableOpacity>
 
                             <TouchableOpacity
-                              style={[styles.btnAction, styles.btnForceLogoutFull]}
+                              style={[styles.btnAction, styles.btnBlock]}
+                              onPress={() => handleStatusChange(item.device_id, item.device_name, 'BLOCKED')}
+                            >
+                              <Text style={styles.btnBlockText}>🚫 ব্লক (Block)</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+
+                        {/* ACTIVE State: Show [Block] and [Force Logout] */}
+                        {st === 'ACTIVE' && !isLocked && (
+                          <View style={styles.actionRow}>
+                            <TouchableOpacity
+                              style={[styles.btnAction, styles.btnBlock]}
+                              onPress={() => handleStatusChange(item.device_id, item.device_name, 'BLOCKED')}
+                            >
+                              <Text style={styles.btnBlockText}>🚫 ব্লক করুন (Block)</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              style={[styles.btnAction, styles.btnForceLogout]}
                               onPress={() => handleForceLogoutPrompt(item)}
                             >
-                              <Text style={styles.btnForceLogoutText}>🔄 Force Logout (সাইন-আউট)</Text>
+                              <Text style={styles.btnForceLogoutText}>🔄 Force Logout</Text>
                             </TouchableOpacity>
+                          </View>
+                        )}
+
+                        {/* BLOCKED State */}
+                        {st === 'BLOCKED' && (
+                          <View style={styles.actionRowColumn}>
+                            {isLocked ? (
+                              <TouchableOpacity
+                                style={[styles.btnAction, styles.btnUnblockAdmin]}
+                                onPress={() => handleRemoveAdminLock(item)}
+                              >
+                                <Text style={styles.btnUnblockAdminText}>🔓 Remove Admin Lock</Text>
+                              </TouchableOpacity>
+                            ) : (
+                              <View style={styles.actionRowColumn}>
+                                <View style={styles.actionRow}>
+                                  <TouchableOpacity
+                                    style={[styles.btnAction, styles.btnUnblock]}
+                                    onPress={() => handleStatusChange(item.device_id, item.device_name, 'ACTIVE')}
+                                  >
+                                    <Text style={styles.btnUnblockText}>🔓 আনব্লক করুন</Text>
+                                  </TouchableOpacity>
+
+                                  <TouchableOpacity
+                                    style={[styles.btnAction, styles.btnAdminLock]}
+                                    onPress={() => handleInitiateAdminLock(item)}
+                                  >
+                                    <Text style={styles.btnAdminLockText}>🔒 Block Admin</Text>
+                                  </TouchableOpacity>
+                                </View>
+
+                                <TouchableOpacity
+                                  style={[styles.btnAction, styles.btnForceLogoutFull]}
+                                  onPress={() => handleForceLogoutPrompt(item)}
+                                >
+                                  <Text style={styles.btnForceLogoutText}>🔄 Force Logout (সাইন-আউট)</Text>
+                                </TouchableOpacity>
+                              </View>
+                            )}
                           </View>
                         )}
                       </View>
                     )}
-                  </View>
-                )}
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </>
+        ) : (
+          /* FEATURE 4: FULL-SCREEN DELETED DEVICES LIST */
+          <>
+            <View style={styles.deletedBanner}>
+              <Text style={styles.deletedBannerTitle}>🗑️ Soft-Deleted Device Archive</Text>
+              <Text style={styles.deletedBannerText}>
+                এখানে পূর্বে মুছে ফেলা ডিভাইসসমূহ সংরক্ষিত আছে। ডিলিট হওয়া ডিভাইস পুনরায় রিকভার করা সম্ভব।
+              </Text>
+            </View>
+
+            <Text style={styles.sectionHeader}>মুছে ফেলা ডিভাইসের তালিকা ({deletedDevices.length})</Text>
+
+            {loading ? (
+              <View style={styles.loadingBox}>
+                <ActivityIndicator size="large" color="#FFB703" />
+                <Text style={styles.loadingText}>মুছে ফেলা ডিভাইস লোড হচ্ছে...</Text>
               </View>
-            );
-          })
+            ) : deletedDevices.length === 0 ? (
+              <View style={styles.emptyBox}>
+                <Text style={styles.emptyText}>কোনো মুছে ফেলা ডিভাইস পাওয়া যায়নি</Text>
+              </View>
+            ) : (
+              deletedDevices.map((item) => (
+                <View key={item.id || item.device_id} style={styles.deletedCard}>
+                  <View style={styles.cardHeader}>
+                    <View style={styles.deviceTitleGroup}>
+                      <Text style={styles.deviceIcon}>🗑️</Text>
+                      <View>
+                        <Text style={styles.deviceName}>{item.device_name || item.model || 'Unknown Device'}</Text>
+                        <Text style={styles.deviceIdText}>ID: {item.device_id}</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={styles.divider} />
+
+                  <View style={styles.detailsGrid}>
+                    <View style={styles.detailItem}>
+                      <Text style={styles.detailLabel}>ডিলিট করার তারিখ (Deleted Date):</Text>
+                      <Text style={styles.detailValue}>
+                        {item.deleted_at ? new Date(item.deleted_at).toLocaleString() : 'N/A'}
+                      </Text>
+                    </View>
+                    <View style={styles.detailItem}>
+                      <Text style={styles.detailLabel}>ডিলিট করেছেন (Deleted By):</Text>
+                      <Text style={styles.detailValue}>{item.deleted_by || 'admin'}</Text>
+                    </View>
+                  </View>
+
+                  {isAdmin && (
+                    <TouchableOpacity
+                      style={styles.btnRestore}
+                      onPress={() => handleRestoreDeviceAction(item)}
+                    >
+                      <Text style={styles.btnRestoreText}>🔄 Restore Device (পুনরুদ্ধার করুন)</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))
+            )}
+          </>
         )}
       </ScrollView>
+
+      {/* FEATURE 1: Context Menu Modal (Long Press Action) */}
+      <Modal
+        visible={contextMenuVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setContextMenuVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setContextMenuVisible(false)}
+        >
+          <View style={styles.contextMenuContent} onStartShouldSetResponder={() => true}>
+            <Text style={styles.contextMenuTitle}>
+              📱 {selectedDevice?.device_name || selectedDevice?.model || 'Device Options'}
+            </Text>
+            <Text style={styles.contextMenuSub}>ID: {selectedDevice?.device_id}</Text>
+
+            <TouchableOpacity style={styles.contextOptionBtn} onPress={handleInitiateRename}>
+              <Text style={styles.contextOptionText}>✏️ Rename Device (নাম পরিবর্তন)</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={[styles.contextOptionBtn, styles.contextOptionDelete]} onPress={handleInitiateSoftDelete}>
+              <Text style={styles.contextOptionDeleteText}>🗑️ Delete Device (মুছে ফেলুন)</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.contextCancelBtn} onPress={() => setContextMenuVisible(false)}>
+              <Text style={styles.contextCancelText}>বাতিল (Cancel)</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* FEATURE 2: Rename Device Modal */}
+      <Modal
+        visible={renameModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setRenameModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setRenameModalVisible(false)}
+        >
+          <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+            <Text style={styles.modalTitle}>✏️ Rename Device</Text>
+            <Text style={styles.modalDesc}>
+              ডিভাইসের জন্য একটি নতুন প্রদর্শন নাম লিখুন:
+            </Text>
+
+            {renameError ? (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>⚠️ {renameError}</Text>
+              </View>
+            ) : null}
+
+            <TextInput
+              style={styles.pinInput}
+              placeholder="Enter new device name"
+              placeholderTextColor="#71717a"
+              value={renameInput}
+              onChangeText={(val) => {
+                setRenameInput(val);
+                if (renameError) setRenameError('');
+              }}
+              autoFocus={true}
+            />
+
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setRenameModalVisible(false)}
+              >
+                <Text style={styles.modalCancelText}>বাতিল (Cancel)</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalConfirmBtn, { backgroundColor: '#16a34a' }]}
+                onPress={handleConfirmRename}
+              >
+                <Text style={styles.modalConfirmText}>সেভ করুন</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Admin PIN Confirmation Modal */}
       <Modal
@@ -855,5 +1136,124 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: 'bold',
     fontSize: 13,
+  },
+  headerRightGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  tabToggleBtn: {
+    backgroundColor: '#27272a',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: '#3f3f46',
+  },
+  tabToggleBtnActive: {
+    backgroundColor: '#b91c1c',
+    borderColor: '#ef4444',
+  },
+  tabToggleBtnText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  deletedBanner: {
+    backgroundColor: 'rgba(185, 28, 28, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 20,
+  },
+  deletedBannerTitle: {
+    color: '#fca5a5',
+    fontWeight: 'bold',
+    fontSize: 13,
+    marginBottom: 4,
+  },
+  deletedBannerText: {
+    color: '#a1a1aa',
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  deletedCard: {
+    backgroundColor: '#18181b',
+    borderWidth: 1,
+    borderColor: '#3f3f46',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 14,
+    opacity: 0.9,
+  },
+  btnRestore: {
+    backgroundColor: '#16a34a',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 14,
+  },
+  btnRestoreText: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+    fontSize: 13,
+  },
+  contextMenuContent: {
+    backgroundColor: '#18181b',
+    borderWidth: 1,
+    borderColor: '#3f3f46',
+    borderRadius: 18,
+    padding: 20,
+    width: '100%',
+    maxWidth: 320,
+    alignItems: 'stretch',
+  },
+  contextMenuTitle: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  contextMenuSub: {
+    color: '#71717a',
+    fontSize: 11,
+    textAlign: 'center',
+    marginBottom: 18,
+    marginTop: 2,
+  },
+  contextOptionBtn: {
+    backgroundColor: '#27272a',
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginBottom: 10,
+    alignItems: 'center',
+  },
+  contextOptionText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  contextOptionDelete: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+  },
+  contextOptionDeleteText: {
+    color: '#fca5a5',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  contextCancelBtn: {
+    paddingVertical: 10,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  contextCancelText: {
+    color: '#71717a',
+    fontSize: 13,
+    fontWeight: '600',
   },
 });

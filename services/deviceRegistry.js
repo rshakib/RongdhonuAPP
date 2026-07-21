@@ -94,11 +94,14 @@ export async function registerDeviceIfNeeded() {
       updated_at TEXT,
       is_synced INTEGER DEFAULT 0,
       admin_lock INTEGER DEFAULT 0,
-      force_logout INTEGER DEFAULT 0
+      force_logout INTEGER DEFAULT 0,
+      is_deleted INTEGER DEFAULT 0,
+      deleted_at TEXT,
+      deleted_by TEXT
     );
   `);
 
-  // Migration: Ensure missing columns (is_synced, admin_lock, force_logout) exist
+  // Migration: Ensure missing columns (is_synced, admin_lock, force_logout, is_deleted, deleted_at, deleted_by) exist
   try {
     const cols = db.getAllSync("PRAGMA table_info('device_registry')").map(c => c.name);
     if (!cols.includes('is_synced')) {
@@ -109,6 +112,15 @@ export async function registerDeviceIfNeeded() {
     }
     if (!cols.includes('force_logout')) {
       db.runSync("ALTER TABLE device_registry ADD COLUMN force_logout INTEGER DEFAULT 0;");
+    }
+    if (!cols.includes('is_deleted')) {
+      db.runSync("ALTER TABLE device_registry ADD COLUMN is_deleted INTEGER DEFAULT 0;");
+    }
+    if (!cols.includes('deleted_at')) {
+      db.runSync("ALTER TABLE device_registry ADD COLUMN deleted_at TEXT;");
+    }
+    if (!cols.includes('deleted_by')) {
+      db.runSync("ALTER TABLE device_registry ADD COLUMN deleted_by TEXT;");
     }
   } catch (e) {}
 
@@ -135,8 +147,8 @@ export async function registerDeviceIfNeeded() {
         id, device_id, device_name, manufacturer, brand, model,
         android_version, app_version, first_install_time, last_seen,
         allow_login, allow_offline, status, registered_by, notes,
-        created_at, updated_at, admin_lock, force_logout
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 'PENDING', 'system', 'Auto registered on app startup', ?, ?, 0, 0)
+        created_at, updated_at, admin_lock, force_logout, is_deleted
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 'PENDING', 'system', 'Auto registered on app startup', ?, ?, 0, 0, 0)
     `, [
       recordId,
       deviceId,
@@ -156,7 +168,7 @@ export async function registerDeviceIfNeeded() {
     syncRecordImmediately("device_registry", recordId);
     lastFlushedLastSeen = now;
     console.log(`[DeviceRegistry] Successfully registered new device: ${deviceId} (status: PENDING)`);
-  } else {
+  } else if (Number(existingRecord.is_deleted || 0) !== 1) {
     db.runSync(`
       UPDATE device_registry
       SET last_seen = ?, app_version = ?, android_version = ?, updated_at = ?
@@ -194,6 +206,19 @@ export function checkDeviceLoginPermission(userRole) {
   const roleUpper = String(userRole || '').toUpperCase().trim();
   const deviceRecord = getCurrentDeviceRecord();
   const deviceId = deviceRecord ? deviceRecord.device_id : 'Unknown';
+  const isDeleted = deviceRecord ? Number(deviceRecord.is_deleted || 0) === 1 : false;
+
+  // FEATURE 6: LOGIN PROTECTION FOR DELETED DEVICES
+  if (isDeleted) {
+    return {
+      allowed: false,
+      status: 'DELETED',
+      isAdminLock: false,
+      deviceId,
+      message: 'This device has been removed by Administrator.\nPlease contact Admin.'
+    };
+  }
+
   const status = deviceRecord ? String(deviceRecord.status || 'PENDING').toUpperCase().trim() : 'PENDING';
   const adminLock = deviceRecord ? Number(deviceRecord.admin_lock || 0) : 0;
 
@@ -276,16 +301,111 @@ export function checkDeviceLoginPermission(userRole) {
 }
 
 /**
- * Get all registered devices from device_registry table.
- * @returns {Array} Array of device records
+ * FEATURE 7: Get all active (non-deleted) registered devices from device_registry table.
+ * @returns {Array} Array of active device records
  */
 export function getAllRegisteredDevices() {
   try {
     const db = getDb();
-    return db.getAllSync("SELECT * FROM device_registry ORDER BY created_at DESC");
+    return db.getAllSync("SELECT * FROM device_registry WHERE is_deleted IS NULL OR is_deleted = 0 ORDER BY created_at DESC");
   } catch (err) {
     console.error("[DeviceRegistry] Error fetching all registered devices:", err);
     return [];
+  }
+}
+
+/**
+ * FEATURE 7: Get all soft-deleted devices from device_registry table.
+ * @returns {Array} Array of soft-deleted device records
+ */
+export function getDeletedDevices() {
+  try {
+    const db = getDb();
+    return db.getAllSync("SELECT * FROM device_registry WHERE is_deleted = 1 ORDER BY deleted_at DESC, created_at DESC");
+  } catch (err) {
+    console.error("[DeviceRegistry] Error fetching deleted devices:", err);
+    return [];
+  }
+}
+
+/**
+ * FEATURE 2: Rename a device's display name.
+ * Only updates device_name and updated_at/registered_by. Does NOT alter status, allow_login, etc.
+ */
+export function renameDevice(deviceId, newName, adminUsername = 'admin') {
+  try {
+    const db = getDb();
+    const cleanName = String(newName || '').trim();
+    if (!cleanName) throw new Error("Device name cannot be empty");
+
+    const record = db.getFirstSync("SELECT * FROM device_registry WHERE device_id = ?", [deviceId]);
+    if (!record) throw new Error(`Device record not found for device_id: ${deviceId}`);
+
+    const now = new Date().toISOString();
+    db.runSync(
+      "UPDATE device_registry SET device_name = ?, registered_by = ?, updated_at = ? WHERE device_id = ?",
+      [cleanName, adminUsername, now, deviceId]
+    );
+
+    enqueueSync("device_registry", record.id, "UPDATE");
+    syncRecordImmediately("device_registry", record.id);
+    console.log(`[DeviceRegistry] Admin '${adminUsername}' renamed device '${deviceId}' to '${cleanName}'`);
+    return true;
+  } catch (err) {
+    console.error("[DeviceRegistry] Error renaming device:", err);
+    return false;
+  }
+}
+
+/**
+ * FEATURE 3: Soft-delete a device (is_deleted = 1, deleted_at = timestamp, deleted_by = admin).
+ * Does NOT change status, allow_login, admin_lock, etc.
+ */
+export function softDeleteDevice(deviceId, adminUsername = 'admin') {
+  try {
+    const db = getDb();
+    const record = db.getFirstSync("SELECT * FROM device_registry WHERE device_id = ?", [deviceId]);
+    if (!record) throw new Error(`Device record not found for device_id: ${deviceId}`);
+
+    const now = new Date().toISOString();
+    db.runSync(
+      "UPDATE device_registry SET is_deleted = 1, deleted_at = ?, deleted_by = ?, updated_at = ? WHERE device_id = ?",
+      [now, adminUsername, now, deviceId]
+    );
+
+    enqueueSync("device_registry", record.id, "UPDATE");
+    syncRecordImmediately("device_registry", record.id);
+    console.log(`[DeviceRegistry] Admin '${adminUsername}' soft-deleted device '${deviceId}'`);
+    return true;
+  } catch (err) {
+    console.error("[DeviceRegistry] Error soft-deleting device:", err);
+    return false;
+  }
+}
+
+/**
+ * FEATURE 5: Restore a soft-deleted device (is_deleted = 0, deleted_at = NULL, deleted_by = NULL).
+ * Never forces status = ACTIVE or allow_login = 1. Restores exact previous configuration.
+ */
+export function restoreDevice(deviceId, adminUsername = 'admin') {
+  try {
+    const db = getDb();
+    const record = db.getFirstSync("SELECT * FROM device_registry WHERE device_id = ?", [deviceId]);
+    if (!record) throw new Error(`Device record not found for device_id: ${deviceId}`);
+
+    const now = new Date().toISOString();
+    db.runSync(
+      "UPDATE device_registry SET is_deleted = 0, deleted_at = NULL, deleted_by = NULL, updated_at = ? WHERE device_id = ?",
+      [now, deviceId]
+    );
+
+    enqueueSync("device_registry", record.id, "UPDATE");
+    syncRecordImmediately("device_registry", record.id);
+    console.log(`[DeviceRegistry] Admin '${adminUsername}' restored device '${deviceId}'`);
+    return true;
+  } catch (err) {
+    console.error("[DeviceRegistry] Error restoring device:", err);
+    return false;
   }
 }
 
