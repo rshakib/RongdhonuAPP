@@ -1468,45 +1468,113 @@ export default function App() {
     switch (currentScreen) {
       case 'DASHBOARD':
         if (ACTIVE_APP_PROFILE === 'ADMIN') {
-          return (
-            <AdminDB
-              onLogout={handleLogout}
-              tables={tables}
-              deliveries={deliveries}
-              completedOrders={completedOrders}
-              delCountdown={delCountdown}
-              tabCountdown={tabCountdown}
-              fullCountdown={fullCountdown}
-              onTableSelect={handleTableSelect}
-              onCreateDelivery={handleCreateDelivery}
-              onUpdateTableName={handleUpdateTableName}
-              onNavigateToExpenses={() => setCurrentScreen('EXPENSES')}
-              onNavigateToSubmit={(mandatory = false) => { setIsMandatorySubmit(mandatory); setCurrentScreen('DAILY_SUBMIT'); }}
-              onNavigateToEditMenu={() => setCurrentScreen('EDIT_MENU')}
-              onNavigateToSupplierDue={() => setCurrentScreen('SUPPLIER_DUE')}
-              onNavigateToItemSalesReport={() => setCurrentScreen('ITEM_SALES_REPORT')}
-              onNavigateToSyncDiagnostics={() => setCurrentScreen('SYNC_DIAGNOSTICS')}
-              onNavigateToDeleteHistory={() => setCurrentScreen('DELETE_HISTORY')}
-              onNavigateToSystemTools={() => setCurrentScreen('SYSTEM_TOOLS')}
-              onNavigateToDeviceManagement={() => setCurrentScreen('DEVICE_MANAGEMENT')}
-              onCloudRestore={handleCloudRestore}
-              onMenuRecovery={handleMenuRecovery}
-              onResetHistoryLimits={handleResetHistoryLimits}
-              onHistoricalMonthDownload={handleHistoricalMonthDownload}
+          const roleNormalized = String(userRole || '').toLowerCase().trim();
+          if (roleNormalized === 'admin') {
+            return (
+              <AdminDB
+                onLogout={handleLogout}
+                tables={tables}
+                deliveries={deliveries}
+                completedOrders={completedOrders}
+                delCountdown={delCountdown}
+                tabCountdown={tabCountdown}
+                fullCountdown={fullCountdown}
+                onTableSelect={handleTableSelect}
+                onCreateDelivery={handleCreateDelivery}
+                onUpdateTableName={handleUpdateTableName}
+                onNavigateToExpenses={() => setCurrentScreen('EXPENSES')}
+                onNavigateToSubmit={(mandatory = false) => { setIsMandatorySubmit(mandatory); setCurrentScreen('DAILY_SUBMIT'); }}
+                onNavigateToEditMenu={() => setCurrentScreen('EDIT_MENU')}
+                onNavigateToSupplierDue={() => setCurrentScreen('SUPPLIER_DUE')}
+                onNavigateToItemSalesReport={() => setCurrentScreen('ITEM_SALES_REPORT')}
+                onNavigateToSyncDiagnostics={() => setCurrentScreen('SYNC_DIAGNOSTICS')}
+                onNavigateToDeleteHistory={() => setCurrentScreen('DELETE_HISTORY')}
+                onNavigateToSystemTools={() => setCurrentScreen('SYSTEM_TOOLS')}
+                onNavigateToDeviceManagement={() => setCurrentScreen('DEVICE_MANAGEMENT')}
+                onCloudRestore={handleCloudRestore}
+                onMenuRecovery={handleMenuRecovery}
+                onResetHistoryLimits={handleResetHistoryLimits}
+                onHistoricalMonthDownload={handleHistoricalMonthDownload}
 
-              submissionHistory={submissionHistory}
-              onSavePastAccount={handleSavePastAccount}
-              onDeletePastAccount={handleDeletePastAccount}
+                submissionHistory={submissionHistory}
+                onSavePastAccount={handleSavePastAccount}
+                onDeletePastAccount={handleDeletePastAccount}
 
-              dailyExpenses={dailyExpenses}
-              onUpdateExpenses={handleUpdateExpenses}
-              isDailySubmitted={isDailySubmitted}
-              onDeleteActiveOrder={handleDeleteActiveOrder}
-              onDeleteDoneOrder={handleDeleteDoneOrder}
-              onResetDailySubmit={handleResetDailySubmit}
-              onResetIjara={handleResetIjara}
-            />
-          );
+                dailyExpenses={dailyExpenses}
+                onUpdateExpenses={handleUpdateExpenses}
+                isDailySubmitted={isDailySubmitted}
+                onDeleteActiveOrder={handleDeleteActiveOrder}
+                onDeleteDoneOrder={handleDeleteDoneOrder}
+                onResetDailySubmit={handleResetDailySubmit}
+                onResetIjara={handleResetIjara}
+              />
+            );
+          } else if (roleNormalized === 'owner') {
+            return (
+              <OwnerDashboard
+                onLogout={handleLogout}
+                tables={tables}
+                deliveries={deliveries}
+                completedOrders={completedOrders}
+                delCountdown={delCountdown}
+                tabCountdown={tabCountdown}
+                fullCountdown={fullCountdown}
+                onTableSelect={handleTableSelect}
+                onCreateDelivery={handleCreateDelivery}
+                onUpdateTableName={handleUpdateTableName}
+                onNavigateToExpenses={() => setCurrentScreen('EXPENSES')}
+                onNavigateToSubmit={(mandatory = false) => { setIsMandatorySubmit(mandatory); setCurrentScreen('DAILY_SUBMIT'); }}
+                onNavigateToEditMenu={() => setCurrentScreen('EDIT_MENU')}
+                onNavigateToSupplierDue={() => setCurrentScreen('SUPPLIER_DUE')}
+                onNavigateToItemSalesReport={() => setCurrentScreen('ITEM_SALES_REPORT')}
+                onCloudRestore={handleCloudRestore}
+
+                onMenuRecovery={handleMenuRecovery}
+                onHistoricalMonthDownload={handleHistoricalMonthDownload}
+
+                submissionHistory={submissionHistory}
+                onSavePastAccount={handleSavePastAccount}
+                onDeletePastAccount={handleDeletePastAccount}
+
+                dailyExpenses={dailyExpenses}
+                onUpdateExpenses={handleUpdateExpenses}
+                isDailySubmitted={isDailySubmitted}
+                onDeleteActiveOrder={handleDeleteActiveOrder}
+                onDeleteDoneOrder={handleDeleteDoneOrder}
+                onNavigateToOwnerFinance={() => setCurrentScreen('OWNER_FINANCE_DASHBOARD')}
+              />
+            );
+          } else {
+            return (
+              <ManagerDashboard
+                onLogout={handleLogout}
+                tables={tables}
+                deliveries={deliveries}
+                completedOrders={completedOrders}
+                delCountdown={delCountdown}
+                tabCountdown={tabCountdown}
+                fullCountdown={fullCountdown}
+                onTableSelect={handleTableSelect}
+                onCreateDelivery={handleCreateDelivery}
+                onNavigateToSubmit={(mandatory = false) => { setIsMandatorySubmit(mandatory); setCurrentScreen('DAILY_SUBMIT'); }}
+                submissionHistory={submissionHistory}
+                onSavePastAccount={handleSavePastAccount}
+                onDeletePastAccount={handleDeletePastAccount}
+                onUpdateTableName={handleUpdateTableName}
+                onNavigateToExpenses={() => setCurrentScreen('EXPENSES')}
+                onNavigateToSupplierDue={() => setCurrentScreen('SUPPLIER_DUE')}
+                onNavigateToItemSalesReport={() => setCurrentScreen('ITEM_SALES_REPORT')}
+                onCloudRestore={handleCloudRestore}
+                onMenuRecovery={handleMenuRecovery}
+
+                dailyExpenses={dailyExpenses}
+                onUpdateExpenses={handleUpdateExpenses}
+                isDailySubmitted={isDailySubmitted}
+                onDeleteActiveOrder={handleDeleteActiveOrder}
+                onDeleteDoneOrder={handleDeleteDoneOrder}
+              />
+            );
+          }
         } else if (ACTIVE_APP_PROFILE === 'OWNER') {
           return (
             <OwnerDashboard
@@ -1746,14 +1814,18 @@ export default function App() {
         );
 
       case 'SYNC_DIAGNOSTICS':
-        return (
-          <SyncDiagnosticsScreen
-            onBack={() => setCurrentScreen('DASHBOARD')}
-          />
-        );
+        if (ACTIVE_APP_PROFILE === 'ADMIN' && String(userRole || '').toLowerCase().trim() === 'admin') {
+          return (
+            <SyncDiagnosticsScreen
+              onBack={() => setCurrentScreen('DASHBOARD')}
+            />
+          );
+        } else {
+          return null;
+        }
 
       case 'DELETE_HISTORY':
-        if (ACTIVE_APP_PROFILE === 'ADMIN') {
+        if (ACTIVE_APP_PROFILE === 'ADMIN' && String(userRole || '').toLowerCase().trim() === 'admin') {
           return (
             <DeleteHistoryScreen
               onBack={() => setCurrentScreen('DASHBOARD')}
@@ -1764,7 +1836,7 @@ export default function App() {
         }
 
       case 'DEVICE_MANAGEMENT':
-        if (ACTIVE_APP_PROFILE === 'ADMIN') {
+        if (ACTIVE_APP_PROFILE === 'ADMIN' && String(userRole || '').toLowerCase().trim() === 'admin') {
           return (
             <DeviceManagementScreen
               onBack={() => setCurrentScreen('DASHBOARD')}
@@ -1776,7 +1848,7 @@ export default function App() {
         }
 
       case 'SYSTEM_TOOLS':
-        if (ACTIVE_APP_PROFILE === 'ADMIN') {
+        if (ACTIVE_APP_PROFILE === 'ADMIN' && String(userRole || '').toLowerCase().trim() === 'admin') {
           return (
             <SystemToolsScreen
               onBack={() => setCurrentScreen('DASHBOARD')}
@@ -1788,7 +1860,7 @@ export default function App() {
         }
 
       case 'DB_HEALTH':
-        if (ACTIVE_APP_PROFILE === 'ADMIN') {
+        if (ACTIVE_APP_PROFILE === 'ADMIN' && String(userRole || '').toLowerCase().trim() === 'admin') {
           return (
             <DatabaseHealthScreen
               onBack={() => setCurrentScreen('SYSTEM_TOOLS')}
@@ -1799,7 +1871,7 @@ export default function App() {
         }
 
       case 'SYNC_STATUS':
-        if (ACTIVE_APP_PROFILE === 'ADMIN') {
+        if (ACTIVE_APP_PROFILE === 'ADMIN' && String(userRole || '').toLowerCase().trim() === 'admin') {
           return (
             <SyncStatusScreen
               onBack={() => setCurrentScreen('SYSTEM_TOOLS')}
@@ -1810,7 +1882,7 @@ export default function App() {
         }
 
       case 'DB_STATS':
-        if (ACTIVE_APP_PROFILE === 'ADMIN') {
+        if (ACTIVE_APP_PROFILE === 'ADMIN' && String(userRole || '').toLowerCase().trim() === 'admin') {
           return (
             <DatabaseStatsScreen
               onBack={() => setCurrentScreen('SYSTEM_TOOLS')}
@@ -1821,7 +1893,7 @@ export default function App() {
         }
 
       case 'SYSTEM_INFO':
-        if (ACTIVE_APP_PROFILE === 'ADMIN') {
+        if (ACTIVE_APP_PROFILE === 'ADMIN' && String(userRole || '').toLowerCase().trim() === 'admin') {
           return (
             <SystemInfoScreen
               onBack={() => setCurrentScreen('SYSTEM_TOOLS')}
@@ -1832,7 +1904,7 @@ export default function App() {
         }
 
       case 'DB_EXPLORER':
-        if (ACTIVE_APP_PROFILE === 'ADMIN') {
+        if (ACTIVE_APP_PROFILE === 'ADMIN' && String(userRole || '').toLowerCase().trim() === 'admin') {
           return (
             <DatabaseExplorerScreen
               onBack={() => setCurrentScreen('SYSTEM_TOOLS')}
@@ -1847,7 +1919,7 @@ export default function App() {
         }
 
       case 'TABLE_VIEWER':
-        if (ACTIVE_APP_PROFILE === 'ADMIN') {
+        if (ACTIVE_APP_PROFILE === 'ADMIN' && String(userRole || '').toLowerCase().trim() === 'admin') {
           return (
             <TableViewerScreen
               tableName={selectedDBTable}
@@ -1863,7 +1935,7 @@ export default function App() {
         }
 
       case 'ROW_DETAIL':
-        if (ACTIVE_APP_PROFILE === 'ADMIN') {
+        if (ACTIVE_APP_PROFILE === 'ADMIN' && String(userRole || '').toLowerCase().trim() === 'admin') {
           return (
             <RowDetailScreen
               rowData={selectedDBRow}
