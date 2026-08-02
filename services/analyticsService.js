@@ -31,9 +31,6 @@ function getISOWeekDateRangeLabel(year, week) {
   const endD = String(ISOweekEnd.getUTCDate()).padStart(2, '0');
   const endM = months[ISOweekEnd.getUTCMonth()];
 
-  if (startM === endM) {
-    return `${startD} ${startM} – ${endD} ${endM}`;
-  }
   return `${startD} ${startM} – ${endD} ${endM}`;
 }
 
@@ -70,22 +67,27 @@ function formatMonthShortLabel(monthKey) {
 /**
  * Fetch ALL months from daily_submit without SQL filtering, compute JS coverage %,
  * and return both allMonths and validMonths (coverage >= 80%).
+ * 
+ * OFFICIAL BUSINESS RULE:
+ * Sales = SUM(daily_submit.total_sell)
+ * Expense = SUM(daily_submit.total_expense)
+ * Owner Profit = SUM(daily_submit.net_deposit) (Source of Truth)
+ * Expense Ratio = (Total Expense / Total Sales) * 100
  */
 export function getAvailableMonthsOverview() {
   try {
-    // 1. RAW SQL QUERY: NO HAVING FILTER
     const rows = executeInspectorQuery(`
       SELECT 
         strftime('%Y-%m', date) as month_key, 
         COUNT(DISTINCT date) as submitted_days,
         SUM(total_sell) as total_sales,
-        SUM(total_expense) as total_expense
+        SUM(total_expense) as total_expense,
+        SUM(net_deposit) as total_deposit
       FROM daily_submit
       GROUP BY month_key
       ORDER BY month_key ASC
     `);
     
-    // 2. JS COVERAGE CALCULATIONS
     const allMonths = rows.map(r => {
       const [year, month] = r.month_key.split('-').map(Number);
       const calendarDays = getDaysInMonth(year, month);
@@ -94,7 +96,7 @@ export function getAvailableMonthsOverview() {
 
       const sales = r.total_sales || 0;
       const expense = r.total_expense || 0;
-      const profit = sales - expense;
+      const profit = r.total_deposit || 0; // OFFICIAL BUSINESS RULE: Owner Profit = Net Deposit
       const ratio = sales > 0 ? (expense / sales) * 100 : 0;
 
       return {
@@ -111,7 +113,6 @@ export function getAvailableMonthsOverview() {
       };
     });
 
-    // 3. SEPARATE VALID MONTHS (Coverage >= 80%)
     const validMonths = allMonths.filter(m => m.coverage >= 80.0);
 
     return {
@@ -126,12 +127,15 @@ export function getAvailableMonthsOverview() {
 
 /**
  * Fetch ALL weeks from daily_submit, compute JS coverage % (out of 7 days),
- * and return both allWeeks and validWeeks (coverage >= 80%, i.e. >= 6 days, or >= 5 days for 80% boundary).
+ * and return both allWeeks and validWeeks (coverage >= 80%).
+ * 
+ * OFFICIAL BUSINESS RULE:
+ * Owner Profit = SUM(daily_submit.net_deposit)
  */
 export function getAvailableWeeksOverview() {
   try {
     const rows = executeInspectorQuery(`
-      SELECT date, total_sell, total_expense
+      SELECT date, total_sell, total_expense, net_deposit
       FROM daily_submit
       ORDER BY date ASC
     `);
@@ -151,19 +155,21 @@ export function getAvailableWeeksOverview() {
           label: `${dateRangeLabel} (${year})`,
           dates: new Set(),
           sales: 0,
-          expense: 0
+          expense: 0,
+          deposit: 0
         };
       }
       weekMap[weekKey].dates.add(r.date);
       weekMap[weekKey].sales += (r.total_sell || 0);
       weekMap[weekKey].expense += (r.total_expense || 0);
+      weekMap[weekKey].deposit += (r.net_deposit || 0);
     });
 
     const allWeeks = Object.values(weekMap).map(w => {
       const calendarDays = 7;
       const submittedDays = w.dates.size;
       const coverage = (submittedDays / calendarDays) * 100;
-      const profit = w.sales - w.expense;
+      const profit = w.deposit; // OFFICIAL BUSINESS RULE: Owner Profit = Net Deposit
       const ratio = w.sales > 0 ? (w.expense / w.sales) * 100 : 0;
 
       return {
@@ -181,7 +187,7 @@ export function getAvailableWeeksOverview() {
     });
 
     allWeeks.sort((a, b) => a.key.localeCompare(b.key));
-    const validWeeks = allWeeks.filter(w => w.coverage >= 70.0 || w.submittedDays >= 5); // >= 80% (>= 5.6 days -> 5-6 days)
+    const validWeeks = allWeeks.filter(w => w.coverage >= 70.0 || w.submittedDays >= 5);
 
     return {
       allWeeks,
@@ -195,6 +201,11 @@ export function getAvailableWeeksOverview() {
 
 /**
  * Aggregates financial and itemized metrics for a given period (Monthly or Weekly).
+ * 
+ * OFFICIAL BUSINESS RULE:
+ * Sales = SUM(total_sell)
+ * Expense = SUM(total_expense)
+ * Owner Profit = SUM(net_deposit)
  */
 export function getPeriodAnalytics(mode, periodKey) {
   try {
@@ -234,7 +245,7 @@ export function getPeriodAnalytics(mode, periodKey) {
 
     const totalSales = submitRows.reduce((sum, r) => sum + (r.total_sell || 0), 0);
     const totalExpense = submitRows.reduce((sum, r) => sum + (r.total_expense || 0), 0);
-    const ownerProfit = totalSales - totalExpense;
+    const ownerProfit = submitRows.reduce((sum, r) => sum + (r.net_deposit || 0), 0); // OFFICIAL BUSINESS RULE: Owner Profit = Net Deposit
     const expenseRatio = totalSales > 0 ? (totalExpense / totalSales) * 100 : 0;
 
     let orderDateFilterSql = mode === 'monthly'
