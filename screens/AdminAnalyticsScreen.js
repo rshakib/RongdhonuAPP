@@ -382,26 +382,6 @@ export default function AdminAnalyticsScreen({ onBack }) {
                   null,
                   true
                 )}
-
-                {/* 6. AUTOMATED BENGALI BUSINESS REPORT */}
-                <View style={styles.reportCard}>
-                  <Text style={styles.reportCardTitle}>📝 স্বয়ংক্রিয় ব্যবসায়িক রিপোর্ট (Automated Insights)</Text>
-                  <Text style={styles.reportCardText}>{analyticsData.reportText}</Text>
-                </View>
-
-                {/* 7. TOP 3 BUSINESS REASONS */}
-                <View style={styles.reasonsCard}>
-                  <Text style={styles.reasonsCardTitle}>🎯 প্রধান ৩টি ব্যবসায়িক কারণ (Top Business Reasons)</Text>
-                  {analyticsData.reasons.length > 0 ? (
-                    analyticsData.reasons.map((r, i) => (
-                      <View key={i} style={styles.reasonRow}>
-                        <Text style={styles.reasonRowText}>{r}</Text>
-                      </View>
-                    ))
-                  ) : (
-                    <Text style={styles.reasonRowText}>পর্যাপ্ত বৈসাদৃশ্য পাওয়া যায়নি।</Text>
-                  )}
-                </View>
               </>
             )}
           </>
@@ -453,7 +433,7 @@ const styles = StyleSheet.create({
   sectionHeaderTitle: { color: '#F4F4F5', fontWeight: 'bold', fontSize: 13, marginBottom: 10 },
   tableHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justify: 'space-between',
     backgroundColor: '#27272A',
     paddingVertical: 8,
     paddingHorizontal: 6,
@@ -463,7 +443,7 @@ const styles = StyleSheet.create({
   tableTh: { color: '#A1A1AA', fontSize: 10, fontWeight: 'bold' },
   tableRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justify: 'space-between',
     paddingVertical: 8,
     paddingHorizontal: 6,
     borderBottomWidth: 1,
@@ -548,16 +528,5 @@ const styles = StyleSheet.create({
   lineNode: { position: 'absolute', width: 8, height: 8, borderRadius: 4, alignItems: 'center' },
   nodeTooltip: { position: 'absolute', top: -14, color: '#FFF', fontSize: 8, fontWeight: 'bold', minWidth: 35, textAlign: 'center' },
   nodeTooltipSecondary: { position: 'absolute', bottom: -14, color: '#A1A1AA', fontSize: 8, fontWeight: 'bold', minWidth: 35, textAlign: 'center' },
-  xAxisLabel: { color: '#71717A', fontSize: 10, fontWeight: 'bold', marginTop: 8 },
-
-  /* REPORT CARD */
-  reportCard: { backgroundColor: '#18181B', borderWidth: 1, borderColor: '#2563EB', borderRadius: 12, padding: 14, marginBottom: 14 },
-  reportCardTitle: { color: '#60A5FA', fontWeight: 'bold', fontSize: 13, marginBottom: 8 },
-  reportCardText: { color: '#E4E4E7', fontSize: 12, lineHeight: 18 },
-
-  /* REASONS CARD */
-  reasonsCard: { backgroundColor: '#18181B', borderWidth: 1, borderColor: '#27272A', borderRadius: 12, padding: 14 },
-  reasonsCardTitle: { color: '#F59E0B', fontWeight: 'bold', fontSize: 13, marginBottom: 8 },
-  reasonRow: { marginBottom: 6 },
-  reasonRowText: { color: '#D4D4D8', fontSize: 12, lineHeight: 17 }
+  xAxisLabel: { color: '#71717A', fontSize: 10, fontWeight: 'bold', marginTop: 8 }
 });

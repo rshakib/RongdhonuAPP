@@ -200,7 +200,7 @@ export function getAvailableWeeksOverview() {
 }
 
 /**
- * Aggregates financial and itemized metrics for a given period (Monthly or Weekly).
+ * Aggregates financial metrics for a given period (Monthly or Weekly).
  * 
  * OFFICIAL BUSINESS RULE:
  * Sales = SUM(total_sell)
@@ -248,52 +248,12 @@ export function getPeriodAnalytics(mode, periodKey) {
     const ownerProfit = submitRows.reduce((sum, r) => sum + (r.net_deposit || 0), 0); // OFFICIAL BUSINESS RULE: Owner Profit = Net Deposit
     const expenseRatio = totalSales > 0 ? (totalExpense / totalSales) * 100 : 0;
 
-    let orderDateFilterSql = mode === 'monthly'
-      ? "strftime('%Y-%m', date(created_at, 'localtime')) = ?"
-      : `date(created_at, 'localtime') IN (${params.map(() => '?').join(',')})`;
-
-    const orderRows = executeInspectorQuery(
-      `SELECT id FROM orders WHERE ${orderDateFilterSql}`,
-      params
-    );
-    const totalOrders = orderRows.length;
-    const avgOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
-
-    let itemDateFilterSql = mode === 'monthly'
-      ? "strftime('%Y-%m', date(created_at, 'localtime')) = ?"
-      : `date(created_at, 'localtime') IN (${params.map(() => '?').join(',')})`;
-
-    const itemRows = executeInspectorQuery(
-      `SELECT itemName, SUM(quantity) as totalQty, SUM(revenue) as totalRev 
-       FROM order_items 
-       WHERE ${itemDateFilterSql} 
-       GROUP BY itemName 
-       ORDER BY totalRev DESC`,
-      params
-    );
-
-    const topItem = itemRows.length > 0 ? itemRows[0] : null;
-
-    let daySalesMap = {};
-    submitRows.forEach(r => {
-      const dayNum = new Date(r.date).getDay();
-      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-      const dayName = days[dayNum];
-      if (!daySalesMap[dayName]) daySalesMap[dayName] = { name: dayName, sales: 0, count: 0 };
-      daySalesMap[dayName].sales += (r.total_sell || 0);
-      daySalesMap[dayName].count += 1;
-    });
-
     return {
       periodKey,
       totalSales,
       totalExpense,
       ownerProfit,
-      expenseRatio,
-      totalOrders,
-      avgOrderValue,
-      topItem,
-      daySalesMap
+      expenseRatio
     };
   } catch (err) {
     console.error("[AnalyticsService] getPeriodAnalytics error:", err);
@@ -302,7 +262,7 @@ export function getPeriodAnalytics(mode, periodKey) {
 }
 
 /**
- * Compares two periods and builds Section 4 KPIs, Bengali Report, and Top 3 Reasons.
+ * Compares two periods and builds Section 4 KPIs.
  */
 export function buildAnalyticsComparison(mode, currentKey, compareKey, currentLabel, compareLabel) {
   if (!currentKey || !compareKey || currentKey === compareKey) return null;
@@ -322,66 +282,6 @@ export function buildAnalyticsComparison(mode, currentKey, compareKey, currentLa
   const newExpenseRatio = cur.expenseRatio;
   const isRatioImproved = newExpenseRatio <= oldExpenseRatio;
 
-  const curLabel = currentLabel || currentKey;
-  const cmpLabel = compareLabel || compareKey;
-
-  const salesText = `${curLabel} মাসে ${cmpLabel}-এর তুলনায় মোট Sales ${Math.abs(salesPct).toFixed(2)}% ${salesPct >= 0 ? 'বেড়েছে' : 'কমেছে'}।`;
-  const profitText = `Owner Profit ${Math.abs(profitPct).toFixed(2)}% ${profitPct >= 0 ? 'বেড়েছে' : 'কমেছে'}।`;
-  const expenseText = `Expense ${Math.abs(expensePct).toFixed(2)}% ${expensePct >= 0 ? 'বেড়েছে' : 'কমেছে'}।`;
-  const ratioText = `Expense Ratio ${oldExpenseRatio.toFixed(2)}% থেকে ${newExpenseRatio.toFixed(2)}%-এ ${isRatioImproved ? 'নেমেছে, যা খরচ নিয়ন্ত্রণের উন্নতি নির্দেশ করে' : 'উঠেছে, যা খরচ বৃদ্ধির সংকেত দেয়'}।`;
-
-  let overallSummary = "";
-  if (salesPct >= 0 && profitPct >= 0) {
-    overallSummary = "Overall Business Performance:\nবিক্রয় এবং লাভ উভয় ক্ষেত্রই ইতিবাচক প্রবৃদ্ধি নির্দেশ করছে। এই ধারা বজায় রাখা প্রয়োজন।";
-  } else if (salesPct < 0 && isRatioImproved) {
-    overallSummary = "Overall Business Performance:\nSales কিছুটা কমেছে, তবে Expense আরও বেশি কমানো হয়েছে। ভবিষ্যতে Sales বৃদ্ধি করা গেলে Profit আরও উন্নত হওয়ার সম্ভাবনা রয়েছে।";
-  } else if (salesPct < 0 && !isRatioImproved) {
-    overallSummary = "Overall Business Performance:\nSales কমার পাশাপাশি খরচের অনুপাত বৃদ্ধি পেয়েছে। খরচ নিয়ন্ত্রণ এবং বিক্রয় বাড়ানোর দিকে নজর দেওয়া জরুরি।";
-  } else {
-    overallSummary = "Overall Business Performance:\nব্যবসায়িক ফলাফল মিশ্র প্রতিক্রিয়া দেখাচ্ছে। সামগ্রিক পারফরম্যান্স বজায় রাখতে নিয়মিত পর্যবেক্ষণ রাখুন।";
-  }
-
-  const reportText = `${salesText}\n\n${profitText}\n\n${expenseText}\n\n${ratioText}\n\n${overallSummary}`;
-
-  const reasons = [];
-  const ordersPct = calcPct(cur.totalOrders, cmp.totalOrders);
-  if (salesPct < 0 && ordersPct < 0) {
-    reasons.push(`1. Total Orders decreased by ${Math.abs(ordersPct).toFixed(1)}% (${cmp.totalOrders} → ${cur.totalOrders} orders)`);
-  } else if (salesPct >= 0 && ordersPct >= 0) {
-    reasons.push(`1. Total Orders increased by ${ordersPct.toFixed(1)}% (${cmp.totalOrders} → ${cur.totalOrders} orders)`);
-  }
-
-  if (cur.topItem && cmp.topItem) {
-    if (cur.topItem.itemName === cmp.topItem.itemName) {
-      const itemRevPct = calcPct(cur.topItem.totalRev, cmp.topItem.totalRev);
-      reasons.push(`2. ${cur.topItem.itemName} revenue ${itemRevPct >= 0 ? 'increased' : 'decreased'} by ${Math.abs(itemRevPct).toFixed(1)}%`);
-    } else {
-      reasons.push(`2. Top selling item shifted from ${cmp.topItem.itemName} to ${cur.topItem.itemName}`);
-    }
-  }
-
-  let worstDay = null;
-  let maxDrop = 0;
-  Object.keys(cur.daySalesMap).forEach(day => {
-    if (cmp.daySalesMap[day]) {
-      const curAvg = cur.daySalesMap[day].sales / cur.daySalesMap[day].count;
-      const cmpAvg = cmp.daySalesMap[day].sales / cmp.daySalesMap[day].count;
-      if (cmpAvg > 0) {
-        const drop = ((cmpAvg - curAvg) / cmpAvg) * 100;
-        if (drop > maxDrop) {
-          maxDrop = drop;
-          worstDay = day;
-        }
-      }
-    }
-  });
-
-  if (worstDay && maxDrop > 5) {
-    reasons.push(`3. ${worstDay} average daily sales were ${maxDrop.toFixed(1)}% lower than comparison period`);
-  } else if (reasons.length < 3 && Math.abs(expensePct) > 2) {
-    reasons.push(`3. Total operational expenses ${expensePct >= 0 ? 'increased' : 'decreased'} by ${Math.abs(expensePct).toFixed(1)}%`);
-  }
-
   return {
     currentData: cur,
     compareData: cmp,
@@ -392,8 +292,6 @@ export function buildAnalyticsComparison(mode, currentKey, compareKey, currentLa
       oldExpenseRatio,
       newExpenseRatio,
       isRatioImproved
-    },
-    reportText,
-    reasons
+    }
   };
 }
