@@ -5,100 +5,98 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView,
-  ActivityIndicator
+  SafeAreaView
 } from 'react-native';
 import {
-  getAvailableMonthsForAnalytics,
-  getAvailableWeeksForAnalytics,
+  getAvailableMonthsOverview,
+  getAvailableWeeksOverview,
   buildAnalyticsComparison
 } from '../services/analyticsService';
 
 export default function AdminAnalyticsScreen({ onBack }) {
   const [mode, setMode] = useState('monthly'); // 'monthly' or 'weekly'
-  const [monthsList, setMonthsList] = useState([]);
-  const [weeksList, setWeeksList] = useState([]);
+  const [monthsOverview, setMonthsOverview] = useState([]);
+  const [weeksOverview, setWeeksOverview] = useState([]);
   
   const [currentKey, setCurrentKey] = useState('');
   const [compareKey, setCompareKey] = useState('');
 
-  const [monthDropdownOpen, setMonthDropdownOpen] = useState(false);
+  const [currentDropdownOpen, setCurrentDropdownOpen] = useState(false);
   const [compareDropdownOpen, setCompareDropdownOpen] = useState(false);
 
-  // Load available options
+  // Load available periods overview on mount
   useEffect(() => {
-    const m = getAvailableMonthsForAnalytics();
-    setMonthsList(m);
+    const m = getAvailableMonthsOverview();
+    setMonthsOverview(m);
     if (m.length >= 2) {
-      setCurrentKey(m[0].key);
-      setCompareKey(m[1].key);
+      setCurrentKey(m[m.length - 1].key); // Latest
+      setCompareKey(m[m.length - 2].key); // Previous
     } else if (m.length === 1) {
       setCurrentKey(m[0].key);
-      setCompareKey(m[0].key);
+      setCompareKey('');
     }
 
-    const w = getAvailableWeeksForAnalytics();
-    setWeeksList(w);
+    const w = getAvailableWeeksOverview();
+    setWeeksOverview(w);
   }, []);
 
-  // When mode changes, switch initial keys
+  // Handle Mode Change (Monthly <-> Weekly)
   const handleModeChange = (newMode) => {
     setMode(newMode);
-    setMonthDropdownOpen(false);
+    setCurrentDropdownOpen(false);
     setCompareDropdownOpen(false);
-    if (newMode === 'monthly') {
-      if (monthsList.length >= 2) {
-        setCurrentKey(monthsList[0].key);
-        setCompareKey(monthsList[1].key);
-      } else if (monthsList.length === 1) {
-        setCurrentKey(monthsList[0].key);
-        setCompareKey(monthsList[0].key);
-      }
+    const list = newMode === 'monthly' ? monthsOverview : weeksOverview;
+    if (list.length >= 2) {
+      setCurrentKey(list[list.length - 1].key); // Latest
+      setCompareKey(list[list.length - 2].key); // Previous
+    } else if (list.length === 1) {
+      setCurrentKey(list[0].key);
+      setCompareKey('');
     } else {
-      if (weeksList.length >= 2) {
-        setCurrentKey(weeksList[0].key);
-        setCompareKey(weeksList[1].key);
-      } else if (weeksList.length === 1) {
-        setCurrentKey(weeksList[0].key);
-        setCompareKey(weeksList[0].key);
-      }
+      setCurrentKey('');
+      setCompareKey('');
     }
   };
 
-  const currentOptions = mode === 'monthly' ? monthsList : weeksList;
+  const periodList = mode === 'monthly' ? monthsOverview : weeksOverview;
 
-  const currentOptionLabel = useMemo(() => {
-    const found = currentOptions.find(o => o.key === currentKey);
-    return found ? found.label : currentKey;
-  }, [currentOptions, currentKey]);
+  const currentOption = useMemo(() => periodList.find(o => o.key === currentKey), [periodList, currentKey]);
+  const compareOption = useMemo(() => periodList.find(o => o.key === compareKey), [periodList, compareKey]);
 
-  const compareOptionLabel = useMemo(() => {
-    const found = currentOptions.find(o => o.key === compareKey);
-    return found ? found.label : compareKey;
-  }, [currentOptions, compareKey]);
+  // Options available for Compare dropdown (NEVER ALLOW SELECTING CURRENT PERIOD)
+  const validCompareOptions = useMemo(() => {
+    return periodList.filter(o => o.key !== currentKey);
+  }, [periodList, currentKey]);
 
-  // Build Analytics Report Comparison
+  // Build Analytics Comparison
   const analyticsData = useMemo(() => {
-    if (!currentKey || !compareKey) return null;
-    return buildAnalyticsComparison(mode, currentKey, compareKey, currentOptionLabel, compareOptionLabel);
-  }, [mode, currentKey, compareKey, currentOptionLabel, compareOptionLabel]);
+    if (!currentKey || !compareKey || currentKey === compareKey) return null;
+    return buildAnalyticsComparison(mode, currentKey, compareKey, currentOption?.label, compareOption?.label);
+  }, [mode, currentKey, compareKey, currentOption, compareOption]);
 
-  // SVG-like Bar / Line chart simulation for Vanilla React Native (Pure Native Elements)
-  const renderSimpleTrendBarChart = (title, items, dataKey1, label1, dataKey2, label2, color1, color2, isPercent = false) => {
+  // Pure Native Line Chart Renderer for React Native
+  const renderNativeLineChart = (title, items, key1, label1, key2, label2, color1, color2, isPercent = false) => {
     if (!items || items.length === 0) return null;
-    
-    // Find max for scaling
-    const maxVal = Math.max(...items.map(i => Math.max(i[dataKey1] || 0, i[dataKey2] || 0)), 1);
+
+    // Calculate Max Value for Chart Height Scaling
+    const maxVal = Math.max(
+      ...items.map(i => Math.max(i[key1] || 0, key2 ? (i[key2] || 0) : 0)),
+      1
+    );
+
+    const chartHeight = 120;
 
     return (
-      <View style={styles.chartContainer}>
+      <View style={styles.chartCard}>
         <Text style={styles.chartTitle}>{title}</Text>
-        <View style={styles.chartLegendRow}>
+        
+        {/* Legend */}
+        <View style={styles.legendRow}>
           <View style={styles.legendItem}>
             <View style={[styles.legendDot, { backgroundColor: color1 }]} />
             <Text style={styles.legendText}>{label1}</Text>
           </View>
-          {dataKey2 && (
+          {key2 && (
             <View style={styles.legendItem}>
               <View style={[styles.legendDot, { backgroundColor: color2 }]} />
               <Text style={styles.legendText}>{label2}</Text>
@@ -106,25 +104,50 @@ export default function AdminAnalyticsScreen({ onBack }) {
           )}
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chartScroll}>
-          <View style={styles.barsRow}>
-            {items.map((item, idx) => {
-              const val1 = item[dataKey1] || 0;
-              const val2 = dataKey2 ? (item[dataKey2] || 0) : 0;
-              const h1 = Math.max(4, (val1 / maxVal) * 110);
-              const h2 = dataKey2 ? Math.max(4, (val2 / maxVal) * 110) : 0;
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View style={styles.lineChartStage}>
+            {/* Horizontal Gridlines */}
+            <View style={styles.gridLineContainer}>
+              <View style={styles.gridLine} />
+              <View style={styles.gridLine} />
+              <View style={styles.gridLine} />
+            </View>
 
-              return (
-                <View key={idx} style={styles.barGroup}>
-                  <View style={styles.barPair}>
-                    <View style={[styles.singleBar, { height: h1, backgroundColor: color1 }]} />
-                    {dataKey2 ? <View style={[styles.singleBar, { height: h2, backgroundColor: color2 }]} /> : null}
+            {/* Line Nodes and Connecting Lines */}
+            <View style={styles.nodesRow}>
+              {items.map((item, idx) => {
+                const val1 = item[key1] || 0;
+                const val2 = key2 ? (item[key2] || 0) : 0;
+
+                const pos1 = Math.max(8, (val1 / maxVal) * chartHeight);
+                const pos2 = key2 ? Math.max(8, (val2 / maxVal) * chartHeight) : 0;
+
+                return (
+                  <View key={idx} style={styles.nodeColumn}>
+                    <View style={[styles.lineTrackArea, { height: chartHeight }]}>
+                      {/* Point 1 */}
+                      <View style={[styles.lineNode, { bottom: pos1, backgroundColor: color1 }]}>
+                        <Text style={styles.nodeTooltip}>
+                          {isPercent ? `${val1.toFixed(0)}%` : `৳${Math.round(val1 / 1000)}k`}
+                        </Text>
+                      </View>
+
+                      {/* Point 2 */}
+                      {key2 && (
+                        <View style={[styles.lineNode, { bottom: pos2, backgroundColor: color2 }]}>
+                          <Text style={styles.nodeTooltipSecondary}>
+                            ৳{Math.round(val2 / 1000)}k
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* X Axis Label */}
+                    <Text style={styles.xAxisLabel}>{item.shortLabel}</Text>
                   </View>
-                  <Text style={styles.barLabel}>{item.date}</Text>
-                  <Text style={styles.barValText}>{isPercent ? `${val1.toFixed(0)}%` : `৳${Math.round(val1)}`}</Text>
-                </View>
-              );
-            })}
+                );
+              })}
+            </View>
           </View>
         </ScrollView>
       </View>
@@ -140,7 +163,7 @@ export default function AdminAnalyticsScreen({ onBack }) {
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>Business Analytics</Text>
-          <Text style={styles.headerSub}>মাসের ও সপ্তাহের ব্যবসায়িক পারফরম্যান্স তুলনা</Text>
+          <Text style={styles.headerSub}>মাসিক ও সাপ্তাহিক ব্যবসায়িক পারফরম্যান্স বিশ্লেষণ</Text>
         </View>
       </View>
 
@@ -151,53 +174,89 @@ export default function AdminAnalyticsScreen({ onBack }) {
             style={[styles.toggleBtn, mode === 'monthly' && styles.toggleBtnActive]}
             onPress={() => handleModeChange('monthly')}
           >
-            <Text style={[styles.toggleBtnText, mode === 'monthly' && styles.toggleBtnTextActive]}>Monthly</Text>
+            <Text style={[styles.toggleBtnText, mode === 'monthly' && styles.toggleBtnTextActive]}>Monthly View</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.toggleBtn, mode === 'weekly' && styles.toggleBtnActive]}
             onPress={() => handleModeChange('weekly')}
           >
-            <Text style={[styles.toggleBtnText, mode === 'weekly' && styles.toggleBtnTextActive]}>Weekly</Text>
+            <Text style={[styles.toggleBtnText, mode === 'weekly' && styles.toggleBtnTextActive]}>Weekly View</Text>
           </TouchableOpacity>
         </View>
 
-        {/* COMPARISON SELECTOR CARD */}
+        {/* 1. PERIOD OVERVIEW TABLE (ALL VALID PERIODS >= 80% DAYS) */}
+        <View style={styles.overviewCard}>
+          <Text style={styles.sectionHeaderTitle}>
+            📋 Available {mode === 'monthly' ? 'Months' : 'Weeks'} Overview (≥80% Valid Days)
+          </Text>
+
+          <View style={styles.tableHeader}>
+            <Text style={[styles.tableTh, { width: 85 }]}>Period</Text>
+            <Text style={[styles.tableTh, { width: 50, textAlign: 'center' }]}>Days</Text>
+            <Text style={[styles.tableTh, { width: 75, textAlign: 'right' }]}>Sales</Text>
+            <Text style={[styles.tableTh, { width: 75, textAlign: 'right' }]}>Expense</Text>
+            <Text style={[styles.tableTh, { width: 75, textAlign: 'right' }]}>Profit</Text>
+            <Text style={[styles.tableTh, { width: 60, textAlign: 'right' }]}>Ratio</Text>
+          </View>
+
+          {periodList.length === 0 ? (
+            <Text style={styles.emptyTableText}>কোনো সময়কালে পর্যাপ্ত তথ্য পাওয়া যায়নি (≥80% Submitted Days)।</Text>
+          ) : (
+            periodList.map((item, idx) => (
+              <View key={item.key} style={[styles.tableRow, idx % 2 === 1 && styles.tableRowAlt]}>
+                <Text style={[styles.tableTd, styles.tableTdBold, { width: 85 }]}>{item.shortLabel}</Text>
+                <Text style={[styles.tableTd, { width: 50, textAlign: 'center', color: '#10B981' }]}>{item.count}d</Text>
+                <Text style={[styles.tableTd, { width: 75, textAlign: 'right' }]}>৳{Math.round(item.sales).toLocaleString()}</Text>
+                <Text style={[styles.tableTd, { width: 75, textAlign: 'right', color: '#EF4444' }]}>৳{Math.round(item.expense).toLocaleString()}</Text>
+                <Text style={[styles.tableTd, styles.tableTdBold, { width: 75, textAlign: 'right', color: item.profit >= 0 ? '#34D399' : '#EF4444' }]}>
+                  ৳{Math.round(item.profit).toLocaleString()}
+                </Text>
+                <Text style={[styles.tableTd, { width: 60, textAlign: 'right', color: '#F59E0B' }]}>{item.ratio.toFixed(1)}%</Text>
+              </View>
+            ))
+          )}
+        </View>
+
+        {/* 2. COMPARISON SELECTORS */}
         <View style={styles.selectorCard}>
-          <Text style={styles.selectorCardTitle}>📊 তুলনা সময়সীমা (Select Comparison)</Text>
+          <Text style={styles.selectorCardTitle}>⚖️ Select Periods for Comparative Insights</Text>
 
           <View style={styles.selectorRow}>
-            {/* Current Period Selector */}
-            <View style={{ flex: 1, marginRight: 8 }}>
+            {/* Current Period */}
+            <View style={{ flex: 1, marginRight: 6 }}>
               <Text style={styles.fieldLabel}>Current {mode === 'monthly' ? 'Month' : 'Week'}:</Text>
               <TouchableOpacity
                 style={styles.dropdownBtn}
-                onPress={() => { setMonthDropdownOpen(!monthDropdownOpen); setCompareDropdownOpen(false); }}
+                onPress={() => { setCurrentDropdownOpen(!currentDropdownOpen); setCompareDropdownOpen(false); }}
               >
-                <Text style={styles.dropdownBtnText}>{currentOptionLabel} ▼</Text>
+                <Text style={styles.dropdownBtnText}>{currentOption ? currentOption.label : 'Select'} ▼</Text>
               </TouchableOpacity>
             </View>
 
-            {/* Compare Period Selector */}
-            <View style={{ flex: 1, marginLeft: 8 }}>
+            {/* Compare With Period */}
+            <View style={{ flex: 1, marginLeft: 6 }}>
               <Text style={styles.fieldLabel}>Compare With:</Text>
               <TouchableOpacity
                 style={styles.dropdownBtn}
-                onPress={() => { setCompareDropdownOpen(!compareDropdownOpen); setMonthDropdownOpen(false); }}
+                onPress={() => { setCompareDropdownOpen(!compareDropdownOpen); setCurrentDropdownOpen(false); }}
               >
-                <Text style={styles.dropdownBtnText}>{compareOptionLabel} ▼</Text>
+                <Text style={styles.dropdownBtnText}>{compareOption ? compareOption.label : 'Select'} ▼</Text>
               </TouchableOpacity>
             </View>
           </View>
 
-          {/* Current Dropdown List */}
-          {monthDropdownOpen && (
-            <View style={styles.dropdownListContainer}>
-              <Text style={styles.dropdownHeader}>সঠিক তথ্য সমৃদ্ধ সময়কাল (≥80% Valid Days):</Text>
-              {currentOptions.map(opt => (
+          {/* Current Dropdown */}
+          {currentDropdownOpen && (
+            <View style={styles.dropdownContainer}>
+              {periodList.map(opt => (
                 <TouchableOpacity
                   key={opt.key}
                   style={[styles.dropdownItem, opt.key === currentKey && styles.dropdownItemActive]}
-                  onPress={() => { setCurrentKey(opt.key); setMonthDropdownOpen(false); }}
+                  onPress={() => {
+                    setCurrentKey(opt.key);
+                    if (opt.key === compareKey) setCompareKey('');
+                    setCurrentDropdownOpen(false);
+                  }}
                 >
                   <Text style={[styles.dropdownItemText, opt.key === currentKey && styles.dropdownItemTextActive]}>
                     {opt.label} ({opt.count} days)
@@ -207,15 +266,18 @@ export default function AdminAnalyticsScreen({ onBack }) {
             </View>
           )}
 
-          {/* Compare Dropdown List */}
+          {/* Compare Dropdown (NEVER ALLOWS SELECTING CURRENT PERIOD) */}
           {compareDropdownOpen && (
-            <View style={styles.dropdownListContainer}>
-              <Text style={styles.dropdownHeader}>সঠিক তথ্য সমৃদ্ধ সময়কাল (≥80% Valid Days):</Text>
-              {currentOptions.map(opt => (
+            <View style={styles.dropdownContainer}>
+              <Text style={styles.dropdownHeaderNote}>*(Current period is excluded to prevent self-comparison)</Text>
+              {validCompareOptions.map(opt => (
                 <TouchableOpacity
                   key={opt.key}
                   style={[styles.dropdownItem, opt.key === compareKey && styles.dropdownItemActive]}
-                  onPress={() => { setCompareKey(opt.key); setCompareDropdownOpen(false); }}
+                  onPress={() => {
+                    setCompareKey(opt.key);
+                    setCompareDropdownOpen(false);
+                  }}
                 >
                   <Text style={[styles.dropdownItemText, opt.key === compareKey && styles.dropdownItemTextActive]}>
                     {opt.label} ({opt.count} days)
@@ -228,49 +290,62 @@ export default function AdminAnalyticsScreen({ onBack }) {
 
         {!analyticsData ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>পর্যাপ্ত সময়কাল নির্বাচন করুন (ন্যূনতম ২টি পর্ব প্রয়োজন)।</Text>
+            <Text style={styles.emptyStateText}>তুলনা করার জন্য দুটি ভিন্ন সময়কাল নির্বাচন করুন।</Text>
           </View>
         ) : (
           <>
-            {/* SECTION 3: COMPARISON KPI CARDS */}
+            {/* 4. COMPARISON KPI CARDS */}
             <View style={styles.kpiGrid}>
+              {/* Sales Card */}
               <View style={styles.kpiCard}>
-                <Text style={styles.kpiTitle}>💰 Sales</Text>
+                <Text style={styles.kpiTitle}>💰 Total Sales</Text>
                 <Text style={styles.kpiValue}>৳{analyticsData.currentData.totalSales.toLocaleString()}</Text>
-                <Text style={[styles.kpiPct, { color: analyticsData.kpis.salesPct >= 0 ? '#10B981' : '#EF4444' }]}>
-                  {analyticsData.kpis.salesPct >= 0 ? '▲' : '▼'} {Math.abs(analyticsData.kpis.salesPct).toFixed(2)}%
-                </Text>
+                <View style={styles.kpiTrendRow}>
+                  <Text style={[styles.kpiTrendText, { color: analyticsData.kpis.salesPct >= 0 ? '#10B981' : '#EF4444' }]}>
+                    {analyticsData.kpis.salesPct >= 0 ? '▲' : '▼'} {Math.abs(analyticsData.kpis.salesPct).toFixed(2)}%
+                  </Text>
+                </View>
               </View>
 
+              {/* Owner Profit Card */}
               <View style={styles.kpiCard}>
                 <Text style={styles.kpiTitle}>📈 Owner Profit</Text>
                 <Text style={styles.kpiValue}>৳{analyticsData.currentData.ownerProfit.toLocaleString()}</Text>
-                <Text style={[styles.kpiPct, { color: analyticsData.kpis.profitPct >= 0 ? '#10B981' : '#EF4444' }]}>
-                  {analyticsData.kpis.profitPct >= 0 ? '▲' : '▼'} {Math.abs(analyticsData.kpis.profitPct).toFixed(2)}%
-                </Text>
+                <View style={styles.kpiTrendRow}>
+                  <Text style={[styles.kpiTrendText, { color: analyticsData.kpis.profitPct >= 0 ? '#10B981' : '#EF4444' }]}>
+                    {analyticsData.kpis.profitPct >= 0 ? '▲' : '▼'} {Math.abs(analyticsData.kpis.profitPct).toFixed(2)}%
+                  </Text>
+                </View>
               </View>
 
+              {/* Expense Card */}
               <View style={styles.kpiCard}>
                 <Text style={styles.kpiTitle}>📉 Expense</Text>
                 <Text style={styles.kpiValue}>৳{analyticsData.currentData.totalExpense.toLocaleString()}</Text>
-                <Text style={[styles.kpiPct, { color: analyticsData.kpis.expensePct <= 0 ? '#10B981' : '#EF4444' }]}>
-                  {analyticsData.kpis.expensePct >= 0 ? '▲' : '▼'} {Math.abs(analyticsData.kpis.expensePct).toFixed(2)}%
-                </Text>
+                <View style={styles.kpiTrendRow}>
+                  <Text style={[styles.kpiTrendText, { color: analyticsData.kpis.expensePct <= 0 ? '#10B981' : '#EF4444' }]}>
+                    {analyticsData.kpis.expensePct >= 0 ? '▲' : '▼'} {Math.abs(analyticsData.kpis.expensePct).toFixed(2)}%
+                  </Text>
+                </View>
               </View>
 
+              {/* Expense Ratio Card */}
               <View style={styles.kpiCard}>
                 <Text style={styles.kpiTitle}>⚖️ Expense Ratio</Text>
-                <Text style={styles.kpiValue}>{analyticsData.kpis.oldExpenseRatio.toFixed(1)}% → {analyticsData.kpis.newExpenseRatio.toFixed(1)}%</Text>
-                <Text style={[styles.kpiBadge, { backgroundColor: analyticsData.kpis.isRatioImproved ? '#065F46' : '#991B1B' }]}>
-                  {analyticsData.kpis.isRatioImproved ? 'Improved' : 'Worse'}
-                </Text>
+                <Text style={styles.kpiValue}>{analyticsData.kpis.newExpenseRatio.toFixed(2)}%</Text>
+                <View style={styles.kpiBadgeRow}>
+                  <Text style={styles.kpiRatioSub}>{analyticsData.kpis.oldExpenseRatio.toFixed(1)}% → {analyticsData.kpis.newExpenseRatio.toFixed(1)}%</Text>
+                  <Text style={[styles.kpiBadge, { backgroundColor: analyticsData.kpis.isRatioImproved ? '#065F46' : '#991B1B' }]}>
+                    {analyticsData.kpis.isRatioImproved ? 'Improved' : 'Worse'}
+                  </Text>
+                </View>
               </View>
             </View>
 
-            {/* SECTION 1: SALES VS OWNER PROFIT TREND */}
-            {renderSimpleTrendBarChart(
-              "📈 Sales vs Owner Profit Trend",
-              analyticsData.currentData.dailyTrend,
+            {/* 5. LINE CHART 1: SALES VS OWNER PROFIT TREND */}
+            {renderNativeLineChart(
+              `📈 Sales vs Owner Profit Trend (${mode === 'monthly' ? 'Monthly' : 'Weekly'})`,
+              periodList,
               "sales",
               "Sales",
               "profit",
@@ -279,11 +354,11 @@ export default function AdminAnalyticsScreen({ onBack }) {
               "#10B981"
             )}
 
-            {/* SECTION 2: EXPENSE RATIO TREND */}
-            {renderSimpleTrendBarChart(
-              "📉 Expense Ratio Trend (%)",
-              analyticsData.currentData.dailyTrend,
-              "expenseRatio",
+            {/* 5. LINE CHART 2: EXPENSE RATIO TREND */}
+            {renderNativeLineChart(
+              `📉 Expense Ratio Trend % (${mode === 'monthly' ? 'Monthly' : 'Weekly'})`,
+              periodList,
+              "ratio",
               "Expense Ratio %",
               null,
               null,
@@ -292,23 +367,23 @@ export default function AdminAnalyticsScreen({ onBack }) {
               true
             )}
 
-            {/* SECTION 4: AUTOMATED BENGALI BUSINESS REPORT */}
+            {/* 6. AUTOMATED BENGALI BUSINESS REPORT */}
             <View style={styles.reportCard}>
-              <Text style={styles.reportTitle}>📝 স্বয়ংক্রিয় ব্যবসায়িক রিপোর্ট (Automated Insights)</Text>
-              <Text style={styles.reportText}>{analyticsData.reportText}</Text>
+              <Text style={styles.reportCardTitle}>📝 স্বয়ংক্রিয় ব্যবসায়িক রিপোর্ট (Automated Insights)</Text>
+              <Text style={styles.reportCardText}>{analyticsData.reportText}</Text>
             </View>
 
-            {/* SECTION 5: TOP 3 BUSINESS REASONS */}
+            {/* 7. TOP 3 BUSINESS REASONS */}
             <View style={styles.reasonsCard}>
-              <Text style={styles.reasonsTitle}>🎯 প্রধান ৩টি ব্যবসায়িক কারণ (Top Business Reasons)</Text>
+              <Text style={styles.reasonsCardTitle}>🎯 প্রধান ৩টি ব্যবসায়িক কারণ (Top Business Reasons)</Text>
               {analyticsData.reasons.length > 0 ? (
                 analyticsData.reasons.map((r, i) => (
                   <View key={i} style={styles.reasonRow}>
-                    <Text style={styles.reasonText}>{r}</Text>
+                    <Text style={styles.reasonRowText}>{r}</Text>
                   </View>
                 ))
               ) : (
-                <Text style={styles.reasonText}>পর্যাপ্ত বৈসাদৃশ্য পাওয়া যায়নি।</Text>
+                <Text style={styles.reasonRowText}>পর্যাপ্ত বৈসাদৃশ্য পাওয়া যায়নি।</Text>
               )}
             </View>
           </>
@@ -328,124 +403,130 @@ const styles = StyleSheet.create({
     borderBottomColor: '#27272A',
     backgroundColor: '#18181B'
   },
-  backButton: { marginRight: 12, padding: 6 },
+  backButton: { marginRight: 12, padding: 4 },
   backArrow: { fontSize: 20, color: '#FFF' },
   headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#FFF' },
   headerSub: { fontSize: 11, color: '#A1A1AA' },
 
   scrollBody: { flex: 1 },
-  scrollContent: { padding: 16, paddingBottom: 40 },
+  scrollContent: { padding: 14, paddingBottom: 40 },
 
   toggleRow: {
     flexDirection: 'row',
     backgroundColor: '#18181B',
     borderRadius: 8,
     padding: 4,
-    marginBottom: 16
+    marginBottom: 14
   },
   toggleBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 6 },
   toggleBtnActive: { backgroundColor: '#2563EB' },
   toggleBtnText: { color: '#A1A1AA', fontWeight: 'bold', fontSize: 13 },
   toggleBtnTextActive: { color: '#FFF' },
 
+  /* OVERVIEW TABLE */
+  overviewCard: {
+    backgroundColor: '#18181B',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#27272A',
+    padding: 12,
+    marginBottom: 14
+  },
+  sectionHeaderTitle: { color: '#F4F4F5', fontWeight: 'bold', fontSize: 13, marginBottom: 10 },
+  tableHeader: {
+    flexDirection: 'row',
+    justify: 'space-between',
+    backgroundColor: '#27272A',
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    borderRadius: 6,
+    marginBottom: 4
+  },
+  tableTh: { color: '#A1A1AA', fontSize: 10, fontWeight: 'bold' },
+  tableRow: {
+    flexDirection: 'row',
+    justify: 'space-between',
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#27272A'
+  },
+  tableRowAlt: { backgroundColor: '#111113' },
+  tableTd: { color: '#E4E4E7', fontSize: 11 },
+  tableTdBold: { fontWeight: 'bold' },
+  emptyTableText: { color: '#71717A', fontSize: 11, padding: 10, textAlign: 'center' },
+
+  /* SELECTOR CARD */
   selectorCard: {
     backgroundColor: '#18181B',
     borderRadius: 12,
-    padding: 14,
     borderWidth: 1,
     borderColor: '#27272A',
-    marginBottom: 16
+    padding: 12,
+    marginBottom: 14
   },
-  selectorCardTitle: { color: '#F4F4F5', fontWeight: 'bold', fontSize: 13, marginBottom: 10 },
+  selectorCardTitle: { color: '#60A5FA', fontWeight: 'bold', fontSize: 12, marginBottom: 10 },
   selectorRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  fieldLabel: { color: '#A1A1AA', fontSize: 11, marginBottom: 4 },
-  dropdownBtn: {
-    backgroundColor: '#27272A',
-    padding: 10,
-    borderRadius: 6,
-    alignItems: 'center'
-  },
+  fieldLabel: { color: '#A1A1AA', fontSize: 10, marginBottom: 4 },
+  dropdownBtn: { backgroundColor: '#27272A', padding: 10, borderRadius: 6, alignItems: 'center' },
   dropdownBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 12 },
 
-  dropdownListContainer: {
-    marginTop: 10,
-    backgroundColor: '#27272A',
-    borderRadius: 8,
-    padding: 8
-  },
-  dropdownHeader: { color: '#F59E0B', fontSize: 10, marginBottom: 6, fontWeight: 'bold' },
+  dropdownContainer: { marginTop: 8, backgroundColor: '#27272A', borderRadius: 8, padding: 6 },
+  dropdownHeaderNote: { color: '#F59E0B', fontSize: 10, fontStyle: 'italic', marginBottom: 4, paddingHorizontal: 6 },
   dropdownItem: { paddingVertical: 8, paddingHorizontal: 10, borderRadius: 4 },
   dropdownItemActive: { backgroundColor: '#3F3F46' },
   dropdownItemText: { color: '#D4D4D8', fontSize: 12 },
   dropdownItemTextActive: { color: '#60A5FA', fontWeight: 'bold' },
 
   emptyState: { padding: 30, alignItems: 'center' },
-  emptyText: { color: '#71717A', fontSize: 13 },
+  emptyStateText: { color: '#71717A', fontSize: 12 },
 
-  kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
-  kpiCard: {
-    width: '48%',
-    backgroundColor: '#18181B',
-    borderWidth: 1,
-    borderColor: '#27272A',
-    borderRadius: 10,
-    padding: 12
-  },
+  /* KPIS */
+  kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
+  kpiCard: { width: '48%', backgroundColor: '#18181B', borderWidth: 1, borderColor: '#27272A', borderRadius: 10, padding: 12 },
   kpiTitle: { color: '#A1A1AA', fontSize: 11, marginBottom: 4 },
-  kpiValue: { color: '#FFF', fontSize: 15, fontWeight: 'bold', marginBottom: 4 },
-  kpiPct: { fontSize: 12, fontWeight: 'bold' },
-  kpiBadge: {
-    alignSelf: 'flex-start',
-    color: '#FFF',
-    fontSize: 10,
-    fontWeight: 'bold',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    marginTop: 2
-  },
+  kpiValue: { color: '#FFF', fontSize: 16, fontWeight: 'bold', marginBottom: 4 },
+  kpiTrendRow: { flexDirection: 'row', alignItems: 'center' },
+  kpiTrendText: { fontSize: 12, fontWeight: 'bold' },
+  kpiBadgeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 },
+  kpiRatioSub: { color: '#A1A1AA', fontSize: 9 },
+  kpiBadge: { color: '#FFF', fontSize: 9, fontWeight: 'bold', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 4 },
 
-  chartContainer: {
+  /* LINE CHART CARD */
+  chartCard: {
     backgroundColor: '#18181B',
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#27272A',
-    padding: 14,
-    marginBottom: 16
+    padding: 12,
+    marginBottom: 14
   },
   chartTitle: { color: '#FFF', fontWeight: 'bold', fontSize: 13, marginBottom: 8 },
-  chartLegendRow: { flexDirection: 'row', gap: 16, marginBottom: 12 },
+  legendRow: { flexDirection: 'row', gap: 14, marginBottom: 10 },
   legendItem: { flexDirection: 'row', alignItems: 'center' },
   legendDot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
   legendText: { color: '#A1A1AA', fontSize: 11 },
 
-  chartScroll: { marginTop: 6 },
-  barsRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 12, paddingBottom: 6 },
-  barGroup: { alignItems: 'center', width: 45 },
-  barPair: { flexDirection: 'row', alignItems: 'flex-end', height: 110, gap: 3 },
-  singleBar: { width: 14, borderRadius: 3 },
-  barLabel: { color: '#71717A', fontSize: 9, marginTop: 4 },
-  barValText: { color: '#A1A1AA', fontSize: 8, fontWeight: 'bold' },
+  lineChartStage: { paddingVertical: 10 },
+  gridLineContainer: { position: 'absolute', top: 10, left: 0, right: 0, bottom: 25, justifyContent: 'space-between' },
+  gridLine: { borderBottomWidth: 1, borderBottomColor: '#27272A', width: '100%' },
 
-  reportCard: {
-    backgroundColor: '#18181B',
-    borderWidth: 1,
-    borderColor: '#2563EB',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 16
-  },
-  reportTitle: { color: '#60A5FA', fontWeight: 'bold', fontSize: 13, marginBottom: 8 },
-  reportText: { color: '#E4E4E7', fontSize: 12, lineHeight: 18 },
+  nodesRow: { flexDirection: 'row', gap: 24, paddingHorizontal: 10 },
+  nodeColumn: { alignItems: 'center', width: 42 },
+  lineTrackArea: { width: '100%', alignItems: 'center' },
+  lineNode: { position: 'absolute', width: 8, height: 8, borderRadius: 4, alignItems: 'center' },
+  nodeTooltip: { position: 'absolute', top: -14, color: '#FFF', fontSize: 8, fontWeight: 'bold', minWidth: 35, textAlign: 'center' },
+  nodeTooltipSecondary: { position: 'absolute', bottom: -14, color: '#A1A1AA', fontSize: 8, fontWeight: 'bold', minWidth: 35, textAlign: 'center' },
+  xAxisLabel: { color: '#71717A', fontSize: 10, fontWeight: 'bold', marginTop: 8 },
 
-  reasonsCard: {
-    backgroundColor: '#18181B',
-    borderWidth: 1,
-    borderColor: '#27272A',
-    borderRadius: 12,
-    padding: 14
-  },
-  reasonsTitle: { color: '#F59E0B', fontWeight: 'bold', fontSize: 13, marginBottom: 8 },
+  /* REPORT CARD */
+  reportCard: { backgroundColor: '#18181B', borderWidth: 1, borderColor: '#2563EB', borderRadius: 12, padding: 14, marginBottom: 14 },
+  reportCardTitle: { color: '#60A5FA', fontWeight: 'bold', fontSize: 13, marginBottom: 8 },
+  reportCardText: { color: '#E4E4E7', fontSize: 12, lineHeight: 18 },
+
+  /* REASONS CARD */
+  reasonsCard: { backgroundColor: '#18181B', borderWidth: 1, borderColor: '#27272A', borderRadius: 12, padding: 14 },
+  reasonsCardTitle: { color: '#F59E0B', fontWeight: 'bold', fontSize: 13, marginBottom: 8 },
   reasonRow: { marginBottom: 6 },
-  reasonText: { color: '#D4D4D8', fontSize: 12, lineHeight: 17 }
+  reasonRowText: { color: '#D4D4D8', fontSize: 12, lineHeight: 17 }
 });

@@ -19,42 +19,68 @@ function getYearAndWeek(dateStr) {
 function formatMonthLabel(monthKey) {
   if (!monthKey) return '';
   const [y, m] = monthKey.split('-').map(Number);
-  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${months[m - 1]} ${y}`;
 }
 
+function formatMonthShortLabel(monthKey) {
+  if (!monthKey) return '';
+  const [, m] = monthKey.split('-').map(Number);
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${months[m - 1]}`;
+}
+
 /**
- * Fetch available months with at least 80% valid submitted business days (>= 22 days per month).
+ * Fetch available months with at least 80% valid submitted business days (>= 22 days per month)
+ * including full overview totals.
  */
-export function getAvailableMonthsForAnalytics() {
+export function getAvailableMonthsOverview() {
   try {
     const rows = executeInspectorQuery(`
-      SELECT strftime('%Y-%m', date) as month_key, COUNT(DISTINCT date) as day_count
+      SELECT 
+        strftime('%Y-%m', date) as month_key, 
+        COUNT(DISTINCT date) as day_count,
+        SUM(total_sell) as total_sales,
+        SUM(total_expense) as total_expense
       FROM daily_submit
       GROUP BY month_key
       HAVING day_count >= 22
-      ORDER BY month_key DESC
+      ORDER BY month_key ASC
     `);
-    return rows.map(r => ({
-      key: r.month_key,
-      label: formatMonthLabel(r.month_key),
-      count: r.day_count
-    }));
+    
+    return rows.map(r => {
+      const sales = r.total_sales || 0;
+      const expense = r.total_expense || 0;
+      const profit = sales - expense;
+      const ratio = sales > 0 ? (expense / sales) * 100 : 0;
+
+      return {
+        key: r.month_key,
+        label: formatMonthLabel(r.month_key),
+        shortLabel: formatMonthShortLabel(r.month_key),
+        count: r.day_count,
+        sales,
+        expense,
+        profit,
+        ratio
+      };
+    });
   } catch (err) {
-    console.error("[AnalyticsService] getAvailableMonths error:", err);
+    console.error("[AnalyticsService] getAvailableMonthsOverview error:", err);
     return [];
   }
 }
 
 /**
- * Fetch available weeks with at least 80% valid submitted business days (>= 5 days per week).
+ * Fetch available weeks with at least 80% valid submitted business days (>= 5 days per week)
+ * including full overview totals.
  */
-export function getAvailableWeeksForAnalytics() {
+export function getAvailableWeeksOverview() {
   try {
     const rows = executeInspectorQuery(`
-      SELECT date
+      SELECT date, total_sell, total_expense
       FROM daily_submit
-      ORDER BY date DESC
+      ORDER BY date ASC
     `);
 
     const weekMap = {};
@@ -63,26 +89,44 @@ export function getAvailableWeeksForAnalytics() {
       const { year, week } = getYearAndWeek(r.date);
       const weekKey = `${year}-W${String(week).padStart(2, '0')}`;
       if (!weekMap[weekKey]) {
-        weekMap[weekKey] = { key: weekKey, year, week, dates: new Set() };
+        weekMap[weekKey] = {
+          key: weekKey,
+          year,
+          week,
+          shortLabel: `W${week}`,
+          label: `Week ${week} (${year})`,
+          dates: new Set(),
+          sales: 0,
+          expense: 0
+        };
       }
       weekMap[weekKey].dates.add(r.date);
+      weekMap[weekKey].sales += (r.total_sell || 0);
+      weekMap[weekKey].expense += (r.total_expense || 0);
     });
 
     const validWeeks = [];
     Object.values(weekMap).forEach(w => {
       if (w.dates.size >= 5) {
+        const profit = w.sales - w.expense;
+        const ratio = w.sales > 0 ? (w.expense / w.sales) * 100 : 0;
         validWeeks.push({
           key: w.key,
-          label: `Week ${w.week} (${w.year})`,
-          count: w.dates.size
+          label: w.label,
+          shortLabel: w.shortLabel,
+          count: w.dates.size,
+          sales: w.sales,
+          expense: w.expense,
+          profit,
+          ratio
         });
       }
     });
 
-    validWeeks.sort((a, b) => b.key.localeCompare(a.key));
+    validWeeks.sort((a, b) => a.key.localeCompare(b.key));
     return validWeeks;
   } catch (err) {
-    console.error("[AnalyticsService] getAvailableWeeks error:", err);
+    console.error("[AnalyticsService] getAvailableWeeksOverview error:", err);
     return [];
   }
 }
@@ -101,12 +145,10 @@ export function getPeriodAnalytics(mode, periodKey) {
       dateFilterSql = "strftime('%Y-%m', date) = ?";
       params.push(periodKey);
     } else {
-      // Weekly mode: parse weekKey "YYYY-WWW"
       const [yearStr, weekStr] = periodKey.split('-W');
       const year = parseInt(yearStr, 10);
       const week = parseInt(weekStr, 10);
 
-      // Get all dates in daily_submit matching this ISO week
       const allSubmits = executeInspectorQuery("SELECT date FROM daily_submit");
       const matchingDates = allSubmits
         .filter(r => {
@@ -123,7 +165,6 @@ export function getPeriodAnalytics(mode, periodKey) {
       params.push(...matchingDates);
     }
 
-    // 1. Fetch Daily Submit aggregate
     const submitRows = executeInspectorQuery(
       `SELECT date, total_sell, total_expense, net_cash, net_deposit FROM daily_submit WHERE ${dateFilterSql} ORDER BY date ASC`,
       params
@@ -131,30 +172,20 @@ export function getPeriodAnalytics(mode, periodKey) {
 
     const totalSales = submitRows.reduce((sum, r) => sum + (r.total_sell || 0), 0);
     const totalExpense = submitRows.reduce((sum, r) => sum + (r.total_expense || 0), 0);
-    const ownerProfit = totalSales - totalExpense; // Net Profit formula
+    const ownerProfit = totalSales - totalExpense;
     const expenseRatio = totalSales > 0 ? (totalExpense / totalSales) * 100 : 0;
 
-    // Daily trends for Line Chart
-    const dailyTrend = submitRows.map(r => ({
-      date: r.date.substring(5), // "MM-DD"
-      sales: r.total_sell || 0,
-      profit: (r.total_sell || 0) - (r.total_expense || 0),
-      expenseRatio: (r.total_sell || 0) > 0 ? (((r.total_expense || 0) / r.total_sell) * 100) : 0
-    }));
-
-    // 2. Fetch Orders aggregate for the period
     let orderDateFilterSql = mode === 'monthly'
       ? "strftime('%Y-%m', date(created_at, 'localtime')) = ?"
       : `date(created_at, 'localtime') IN (${params.map(() => '?').join(',')})`;
 
     const orderRows = executeInspectorQuery(
-      `SELECT id, grand_total, change_money_given, created_at FROM orders WHERE ${orderDateFilterSql}`,
+      `SELECT id FROM orders WHERE ${orderDateFilterSql}`,
       params
     );
     const totalOrders = orderRows.length;
     const avgOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
 
-    // 3. Fetch Top Item breakdown for the period
     let itemDateFilterSql = mode === 'monthly'
       ? "strftime('%Y-%m', date(created_at, 'localtime')) = ?"
       : `date(created_at, 'localtime') IN (${params.map(() => '?').join(',')})`;
@@ -170,7 +201,6 @@ export function getPeriodAnalytics(mode, periodKey) {
 
     const topItem = itemRows.length > 0 ? itemRows[0] : null;
 
-    // 4. Fetch Day-of-week breakdown for worst day analysis
     let daySalesMap = {};
     submitRows.forEach(r => {
       const dayNum = new Date(r.date).getDay();
@@ -189,7 +219,6 @@ export function getPeriodAnalytics(mode, periodKey) {
       expenseRatio,
       totalOrders,
       avgOrderValue,
-      dailyTrend,
       topItem,
       daySalesMap
     };
@@ -200,15 +229,16 @@ export function getPeriodAnalytics(mode, periodKey) {
 }
 
 /**
- * Compares two periods and builds Section 3 KPIs, Section 4 Bengali Report, and Section 5 Top Reasons.
+ * Compares two periods and builds Section 4 KPIs, Bengali Report, and Top 3 Reasons.
  */
 export function buildAnalyticsComparison(mode, currentKey, compareKey, currentLabel, compareLabel) {
+  if (!currentKey || !compareKey || currentKey === compareKey) return null;
+
   const cur = getPeriodAnalytics(mode, currentKey);
   const cmp = getPeriodAnalytics(mode, compareKey);
 
   if (!cur || !cmp) return null;
 
-  // Percentage Calculations
   const calcPct = (c, p) => p > 0 ? ((c - p) / p) * 100 : 0;
 
   const salesPct = calcPct(cur.totalSales, cmp.totalSales);
@@ -219,32 +249,28 @@ export function buildAnalyticsComparison(mode, currentKey, compareKey, currentLa
   const newExpenseRatio = cur.expenseRatio;
   const isRatioImproved = newExpenseRatio <= oldExpenseRatio;
 
-  // Bengali Report Text Generation
   const curLabel = currentLabel || currentKey;
   const cmpLabel = compareLabel || compareKey;
 
-  const salesText = `${curLabel} এ ${cmpLabel}-এর তুলনায় Sales ${Math.abs(salesPct).toFixed(2)}% ${salesPct >= 0 ? 'বেড়েছে' : 'কমেছে'}।`;
+  const salesText = `${curLabel} মাসে ${cmpLabel}-এর তুলনায় মোট Sales ${Math.abs(salesPct).toFixed(2)}% ${salesPct >= 0 ? 'বেড়েছে' : 'কমেছে'}।`;
   const profitText = `Owner Profit ${Math.abs(profitPct).toFixed(2)}% ${profitPct >= 0 ? 'বেড়েছে' : 'কমেছে'}।`;
   const expenseText = `Expense ${Math.abs(expensePct).toFixed(2)}% ${expensePct >= 0 ? 'বেড়েছে' : 'কমেছে'}।`;
   const ratioText = `Expense Ratio ${oldExpenseRatio.toFixed(2)}% থেকে ${newExpenseRatio.toFixed(2)}%-এ ${isRatioImproved ? 'নেমেছে, যা খরচ নিয়ন্ত্রণের উন্নতি নির্দেশ করে' : 'উঠেছে, যা খরচ বৃদ্ধির সংকেত দেয়'}।`;
 
   let overallSummary = "";
   if (salesPct >= 0 && profitPct >= 0) {
-    overallSummary = "Overall Business Performance: বিক্রয় এবং লাভ উভয় ক্ষেত্রই ইতিবাচক প্রবৃদ্ধি নির্দেশ করছে। এই ধারা বজায় রাখা ভালো।";
+    overallSummary = "Overall Business Performance:\nবিক্রয় এবং লাভ উভয় ক্ষেত্রই ইতিবাচক প্রবৃদ্ধি নির্দেশ করছে। এই ধারা বজায় রাখা প্রয়োজন।";
   } else if (salesPct < 0 && isRatioImproved) {
-    overallSummary = "Overall Business Performance: Sales কিছুটা কমেছে, তবে Expense আরও বেশি কমানো হয়েছে। ভবিষ্যতে Sales বৃদ্ধি করা গেলে Profit আরও উন্নত হওয়ার সম্ভাবনা রয়েছে।";
+    overallSummary = "Overall Business Performance:\nSales কিছুটা কমেছে, তবে Expense আরও বেশি কমানো হয়েছে। ভবিষ্যতে Sales বৃদ্ধি করা গেলে Profit আরও উন্নত হওয়ার সম্ভাবনা রয়েছে।";
   } else if (salesPct < 0 && !isRatioImproved) {
-    overallSummary = "Overall Business Performance: Sales কমার পাশাপাশি খরচের অনুপাত বৃদ্ধি পেয়েছে। খরচ নিয়ন্ত্রণ এবং বিক্রয় বাড়ানোর দিকে নজর দেওয়া জরুরি।";
+    overallSummary = "Overall Business Performance:\nSales কমার পাশাপাশি খরচের অনুপাত বৃদ্ধি পেয়েছে। খরচ নিয়ন্ত্রণ এবং বিক্রয় বাড়ানোর দিকে নজর দেওয়া জরুরি।";
   } else {
-    overallSummary = "Overall Business Performance: ব্যবসায়িক ফলাফল মিশ্র প্রতিক্রিয়া দেখাচ্ছে। সামগ্রিক পারফরম্যান্স বজায় রাখতে নিয়মিত পর্যবেক্ষণ রাখুন।";
+    overallSummary = "Overall Business Performance:\nব্যবসায়িক ফলাফল মিশ্র প্রতিক্রিয়া দেখাচ্ছে। সামগ্রিক পারফরম্যান্স বজায় রাখতে নিয়মিত পর্যবেক্ষণ রাখুন।";
   }
 
   const reportText = `${salesText}\n\n${profitText}\n\n${expenseText}\n\n${ratioText}\n\n${overallSummary}`;
 
-  // Top 3 Reasons Determination
   const reasons = [];
-
-  // Reason 1: Orders Trend
   const ordersPct = calcPct(cur.totalOrders, cmp.totalOrders);
   if (salesPct < 0 && ordersPct < 0) {
     reasons.push(`1. Total Orders decreased by ${Math.abs(ordersPct).toFixed(1)}% (${cmp.totalOrders} → ${cur.totalOrders} orders)`);
@@ -252,7 +278,6 @@ export function buildAnalyticsComparison(mode, currentKey, compareKey, currentLa
     reasons.push(`1. Total Orders increased by ${ordersPct.toFixed(1)}% (${cmp.totalOrders} → ${cur.totalOrders} orders)`);
   }
 
-  // Reason 2: Top Item Revenue Difference
   if (cur.topItem && cmp.topItem) {
     if (cur.topItem.itemName === cmp.topItem.itemName) {
       const itemRevPct = calcPct(cur.topItem.totalRev, cmp.topItem.totalRev);
@@ -262,7 +287,6 @@ export function buildAnalyticsComparison(mode, currentKey, compareKey, currentLa
     }
   }
 
-  // Reason 3: Day of week sales drop
   let worstDay = null;
   let maxDrop = 0;
   Object.keys(cur.daySalesMap).forEach(day => {
