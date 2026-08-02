@@ -1491,6 +1491,7 @@ export default function App() {
                 onNavigateToDeleteHistory={() => setCurrentScreen('DELETE_HISTORY')}
                 onNavigateToSystemTools={() => setCurrentScreen('SYSTEM_TOOLS')}
                 onNavigateToDeviceManagement={() => setCurrentScreen('DEVICE_MANAGEMENT')}
+                onNavigateToAnalytics={() => setCurrentScreen('ADMIN_ANALYTICS')}
                 onCloudRestore={handleCloudRestore}
                 onMenuRecovery={handleMenuRecovery}
                 onResetHistoryLimits={handleResetHistoryLimits}
@@ -1812,6 +1813,17 @@ export default function App() {
             onBack={() => setCurrentScreen('DASHBOARD')}
           />
         );
+
+      case 'ADMIN_ANALYTICS':
+        if (ACTIVE_APP_PROFILE === 'ADMIN' && String(userRole || '').toLowerCase().trim() === 'admin') {
+          const AdminAnalyticsScreen = require('./screens/AdminAnalyticsScreen').default;
+          return (
+            <AdminAnalyticsScreen
+              onBack={() => setCurrentScreen('DASHBOARD')}
+            />
+          );
+        }
+        return null;
 
       case 'SYNC_DIAGNOSTICS':
         if (ACTIVE_APP_PROFILE === 'ADMIN' && String(userRole || '').toLowerCase().trim() === 'admin') {

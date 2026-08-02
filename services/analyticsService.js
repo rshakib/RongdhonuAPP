@@ -1,0 +1,302 @@
+import { executeInspectorQuery } from '../database';
+
+/**
+ * Helper to get year and ISO week number (1-53) for a YYYY-MM-DD date string.
+ */
+function getYearAndWeek(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const target = new Date(Date.UTC(y, m - 1, d));
+  const dayNum = target.getUTCDay() || 7;
+  target.setUTCDate(target.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((target - yearStart) / 86400000) + 1) / 7);
+  return { year: target.getUTCFullYear(), week: weekNo };
+}
+
+/**
+ * Helper to format month key YYYY-MM into display label (e.g. "July 2026")
+ */
+function formatMonthLabel(monthKey) {
+  if (!monthKey) return '';
+  const [y, m] = monthKey.split('-').map(Number);
+  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  return `${months[m - 1]} ${y}`;
+}
+
+/**
+ * Fetch available months with at least 80% valid submitted business days (>= 22 days per month).
+ */
+export function getAvailableMonthsForAnalytics() {
+  try {
+    const rows = executeInspectorQuery(`
+      SELECT strftime('%Y-%m', date) as month_key, COUNT(DISTINCT date) as day_count
+      FROM daily_submit
+      GROUP BY month_key
+      HAVING day_count >= 22
+      ORDER BY month_key DESC
+    `);
+    return rows.map(r => ({
+      key: r.month_key,
+      label: formatMonthLabel(r.month_key),
+      count: r.day_count
+    }));
+  } catch (err) {
+    console.error("[AnalyticsService] getAvailableMonths error:", err);
+    return [];
+  }
+}
+
+/**
+ * Fetch available weeks with at least 80% valid submitted business days (>= 5 days per week).
+ */
+export function getAvailableWeeksForAnalytics() {
+  try {
+    const rows = executeInspectorQuery(`
+      SELECT date
+      FROM daily_submit
+      ORDER BY date DESC
+    `);
+
+    const weekMap = {};
+    rows.forEach(r => {
+      if (!r.date) return;
+      const { year, week } = getYearAndWeek(r.date);
+      const weekKey = `${year}-W${String(week).padStart(2, '0')}`;
+      if (!weekMap[weekKey]) {
+        weekMap[weekKey] = { key: weekKey, year, week, dates: new Set() };
+      }
+      weekMap[weekKey].dates.add(r.date);
+    });
+
+    const validWeeks = [];
+    Object.values(weekMap).forEach(w => {
+      if (w.dates.size >= 5) {
+        validWeeks.push({
+          key: w.key,
+          label: `Week ${w.week} (${w.year})`,
+          count: w.dates.size
+        });
+      }
+    });
+
+    validWeeks.sort((a, b) => b.key.localeCompare(a.key));
+    return validWeeks;
+  } catch (err) {
+    console.error("[AnalyticsService] getAvailableWeeks error:", err);
+    return [];
+  }
+}
+
+/**
+ * Aggregates financial and itemized metrics for a given period (Monthly or Weekly).
+ */
+export function getPeriodAnalytics(mode, periodKey) {
+  try {
+    if (!periodKey) return null;
+
+    let dateFilterSql = "";
+    const params = [];
+
+    if (mode === 'monthly') {
+      dateFilterSql = "strftime('%Y-%m', date) = ?";
+      params.push(periodKey);
+    } else {
+      // Weekly mode: parse weekKey "YYYY-WWW"
+      const [yearStr, weekStr] = periodKey.split('-W');
+      const year = parseInt(yearStr, 10);
+      const week = parseInt(weekStr, 10);
+
+      // Get all dates in daily_submit matching this ISO week
+      const allSubmits = executeInspectorQuery("SELECT date FROM daily_submit");
+      const matchingDates = allSubmits
+        .filter(r => {
+          if (!r.date) return false;
+          const yw = getYearAndWeek(r.date);
+          return yw.year === year && yw.week === week;
+        })
+        .map(r => r.date);
+
+      if (matchingDates.length === 0) return null;
+
+      const placeholders = matchingDates.map(() => '?').join(',');
+      dateFilterSql = `date IN (${placeholders})`;
+      params.push(...matchingDates);
+    }
+
+    // 1. Fetch Daily Submit aggregate
+    const submitRows = executeInspectorQuery(
+      `SELECT date, total_sell, total_expense, net_cash, net_deposit FROM daily_submit WHERE ${dateFilterSql} ORDER BY date ASC`,
+      params
+    );
+
+    const totalSales = submitRows.reduce((sum, r) => sum + (r.total_sell || 0), 0);
+    const totalExpense = submitRows.reduce((sum, r) => sum + (r.total_expense || 0), 0);
+    const ownerProfit = totalSales - totalExpense; // Net Profit formula
+    const expenseRatio = totalSales > 0 ? (totalExpense / totalSales) * 100 : 0;
+
+    // Daily trends for Line Chart
+    const dailyTrend = submitRows.map(r => ({
+      date: r.date.substring(5), // "MM-DD"
+      sales: r.total_sell || 0,
+      profit: (r.total_sell || 0) - (r.total_expense || 0),
+      expenseRatio: (r.total_sell || 0) > 0 ? (((r.total_expense || 0) / r.total_sell) * 100) : 0
+    }));
+
+    // 2. Fetch Orders aggregate for the period
+    let orderDateFilterSql = mode === 'monthly'
+      ? "strftime('%Y-%m', date(created_at, 'localtime')) = ?"
+      : `date(created_at, 'localtime') IN (${params.map(() => '?').join(',')})`;
+
+    const orderRows = executeInspectorQuery(
+      `SELECT id, grand_total, change_money_given, created_at FROM orders WHERE ${orderDateFilterSql}`,
+      params
+    );
+    const totalOrders = orderRows.length;
+    const avgOrderValue = totalOrders > 0 ? totalSales / totalOrders : 0;
+
+    // 3. Fetch Top Item breakdown for the period
+    let itemDateFilterSql = mode === 'monthly'
+      ? "strftime('%Y-%m', date(created_at, 'localtime')) = ?"
+      : `date(created_at, 'localtime') IN (${params.map(() => '?').join(',')})`;
+
+    const itemRows = executeInspectorQuery(
+      `SELECT itemName, SUM(quantity) as totalQty, SUM(revenue) as totalRev 
+       FROM order_items 
+       WHERE ${itemDateFilterSql} 
+       GROUP BY itemName 
+       ORDER BY totalRev DESC`,
+      params
+    );
+
+    const topItem = itemRows.length > 0 ? itemRows[0] : null;
+
+    // 4. Fetch Day-of-week breakdown for worst day analysis
+    let daySalesMap = {};
+    submitRows.forEach(r => {
+      const dayNum = new Date(r.date).getDay();
+      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const dayName = days[dayNum];
+      if (!daySalesMap[dayName]) daySalesMap[dayName] = { name: dayName, sales: 0, count: 0 };
+      daySalesMap[dayName].sales += (r.total_sell || 0);
+      daySalesMap[dayName].count += 1;
+    });
+
+    return {
+      periodKey,
+      totalSales,
+      totalExpense,
+      ownerProfit,
+      expenseRatio,
+      totalOrders,
+      avgOrderValue,
+      dailyTrend,
+      topItem,
+      daySalesMap
+    };
+  } catch (err) {
+    console.error("[AnalyticsService] getPeriodAnalytics error:", err);
+    return null;
+  }
+}
+
+/**
+ * Compares two periods and builds Section 3 KPIs, Section 4 Bengali Report, and Section 5 Top Reasons.
+ */
+export function buildAnalyticsComparison(mode, currentKey, compareKey, currentLabel, compareLabel) {
+  const cur = getPeriodAnalytics(mode, currentKey);
+  const cmp = getPeriodAnalytics(mode, compareKey);
+
+  if (!cur || !cmp) return null;
+
+  // Percentage Calculations
+  const calcPct = (c, p) => p > 0 ? ((c - p) / p) * 100 : 0;
+
+  const salesPct = calcPct(cur.totalSales, cmp.totalSales);
+  const profitPct = calcPct(cur.ownerProfit, cmp.ownerProfit);
+  const expensePct = calcPct(cur.totalExpense, cmp.totalExpense);
+
+  const oldExpenseRatio = cmp.expenseRatio;
+  const newExpenseRatio = cur.expenseRatio;
+  const isRatioImproved = newExpenseRatio <= oldExpenseRatio;
+
+  // Bengali Report Text Generation
+  const curLabel = currentLabel || currentKey;
+  const cmpLabel = compareLabel || compareKey;
+
+  const salesText = `${curLabel} এ ${cmpLabel}-এর তুলনায় Sales ${Math.abs(salesPct).toFixed(2)}% ${salesPct >= 0 ? 'বেড়েছে' : 'কমেছে'}।`;
+  const profitText = `Owner Profit ${Math.abs(profitPct).toFixed(2)}% ${profitPct >= 0 ? 'বেড়েছে' : 'কমেছে'}।`;
+  const expenseText = `Expense ${Math.abs(expensePct).toFixed(2)}% ${expensePct >= 0 ? 'বেড়েছে' : 'কমেছে'}।`;
+  const ratioText = `Expense Ratio ${oldExpenseRatio.toFixed(2)}% থেকে ${newExpenseRatio.toFixed(2)}%-এ ${isRatioImproved ? 'নেমেছে, যা খরচ নিয়ন্ত্রণের উন্নতি নির্দেশ করে' : 'উঠেছে, যা খরচ বৃদ্ধির সংকেত দেয়'}।`;
+
+  let overallSummary = "";
+  if (salesPct >= 0 && profitPct >= 0) {
+    overallSummary = "Overall Business Performance: বিক্রয় এবং লাভ উভয় ক্ষেত্রই ইতিবাচক প্রবৃদ্ধি নির্দেশ করছে। এই ধারা বজায় রাখা ভালো।";
+  } else if (salesPct < 0 && isRatioImproved) {
+    overallSummary = "Overall Business Performance: Sales কিছুটা কমেছে, তবে Expense আরও বেশি কমানো হয়েছে। ভবিষ্যতে Sales বৃদ্ধি করা গেলে Profit আরও উন্নত হওয়ার সম্ভাবনা রয়েছে।";
+  } else if (salesPct < 0 && !isRatioImproved) {
+    overallSummary = "Overall Business Performance: Sales কমার পাশাপাশি খরচের অনুপাত বৃদ্ধি পেয়েছে। খরচ নিয়ন্ত্রণ এবং বিক্রয় বাড়ানোর দিকে নজর দেওয়া জরুরি।";
+  } else {
+    overallSummary = "Overall Business Performance: ব্যবসায়িক ফলাফল মিশ্র প্রতিক্রিয়া দেখাচ্ছে। সামগ্রিক পারফরম্যান্স বজায় রাখতে নিয়মিত পর্যবেক্ষণ রাখুন।";
+  }
+
+  const reportText = `${salesText}\n\n${profitText}\n\n${expenseText}\n\n${ratioText}\n\n${overallSummary}`;
+
+  // Top 3 Reasons Determination
+  const reasons = [];
+
+  // Reason 1: Orders Trend
+  const ordersPct = calcPct(cur.totalOrders, cmp.totalOrders);
+  if (salesPct < 0 && ordersPct < 0) {
+    reasons.push(`1. Total Orders decreased by ${Math.abs(ordersPct).toFixed(1)}% (${cmp.totalOrders} → ${cur.totalOrders} orders)`);
+  } else if (salesPct >= 0 && ordersPct >= 0) {
+    reasons.push(`1. Total Orders increased by ${ordersPct.toFixed(1)}% (${cmp.totalOrders} → ${cur.totalOrders} orders)`);
+  }
+
+  // Reason 2: Top Item Revenue Difference
+  if (cur.topItem && cmp.topItem) {
+    if (cur.topItem.itemName === cmp.topItem.itemName) {
+      const itemRevPct = calcPct(cur.topItem.totalRev, cmp.topItem.totalRev);
+      reasons.push(`2. ${cur.topItem.itemName} revenue ${itemRevPct >= 0 ? 'increased' : 'decreased'} by ${Math.abs(itemRevPct).toFixed(1)}%`);
+    } else {
+      reasons.push(`2. Top selling item shifted from ${cmp.topItem.itemName} to ${cur.topItem.itemName}`);
+    }
+  }
+
+  // Reason 3: Day of week sales drop
+  let worstDay = null;
+  let maxDrop = 0;
+  Object.keys(cur.daySalesMap).forEach(day => {
+    if (cmp.daySalesMap[day]) {
+      const curAvg = cur.daySalesMap[day].sales / cur.daySalesMap[day].count;
+      const cmpAvg = cmp.daySalesMap[day].sales / cmp.daySalesMap[day].count;
+      if (cmpAvg > 0) {
+        const drop = ((cmpAvg - curAvg) / cmpAvg) * 100;
+        if (drop > maxDrop) {
+          maxDrop = drop;
+          worstDay = day;
+        }
+      }
+    }
+  });
+
+  if (worstDay && maxDrop > 5) {
+    reasons.push(`3. ${worstDay} average daily sales were ${maxDrop.toFixed(1)}% lower than comparison period`);
+  } else if (reasons.length < 3 && Math.abs(expensePct) > 2) {
+    reasons.push(`3. Total operational expenses ${expensePct >= 0 ? 'increased' : 'decreased'} by ${Math.abs(expensePct).toFixed(1)}%`);
+  }
+
+  return {
+    currentData: cur,
+    compareData: cmp,
+    kpis: {
+      salesPct,
+      profitPct,
+      expensePct,
+      oldExpenseRatio,
+      newExpenseRatio,
+      isRatioImproved
+    },
+    reportText,
+    reasons
+  };
+}
