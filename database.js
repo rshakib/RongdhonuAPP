@@ -2805,7 +2805,7 @@ export function calculateAndSaveDailySummary(dateStr) {
       "SELECT * FROM expenses WHERE date(created_at, 'localtime') = ?",
       [todayStr]
     );
-    const totalExpense = expensesToday.reduce((sum, e) => sum + (e.amount || 0), 0);
+    const totalExpense = expensesToday.filter(e => e.category !== 'ijara').reduce((sum, e) => sum + (e.amount || 0), 0);
 
     const deliveriesToday = db.getAllSync(
       "SELECT * FROM deliveries WHERE date(completed_at, 'localtime', '-1 hour') = ? AND status = 'COMPLETED'",

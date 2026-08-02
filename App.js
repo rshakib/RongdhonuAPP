@@ -829,7 +829,7 @@ export default function App() {
         else if (e.category === 'ijara') ijara = amt;
       });
 
-      const total_expense = dudu + akash + burger + bazar + others + ijara;
+      const total_expense = dudu + akash + burger + bazar + others;
       const net_cash = cash_payment + ijara - total_expense;
 
       setMissingSubmitDate(yesterday);
