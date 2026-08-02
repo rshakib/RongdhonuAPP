@@ -77,6 +77,36 @@ export default function AdminAnalyticsScreen({ onBack }) {
     return buildAnalyticsComparison(mode, currentKey, compareKey, currentOption?.label, compareOption?.label);
   }, [mode, currentKey, compareKey, currentOption, compareOption]);
 
+  // Business Health Score Calculation (Pure UI derived score 0-100)
+  const healthScoreInfo = useMemo(() => {
+    if (!analyticsData || !analyticsData.kpis) return null;
+
+    const { salesPct, profitPct, isRatioImproved } = analyticsData.kpis;
+
+    // Weights: Sales (50%), Profit (35%), Ratio (15%)
+    let salesScore = Math.min(100, Math.max(0, 70 + (salesPct * 1.5)));
+    let profitScore = Math.min(100, Math.max(0, 70 + (profitPct * 1.5)));
+    let ratioScore = isRatioImproved ? 90 : 40;
+
+    const rawScore = Math.round((salesScore * 0.50) + (profitScore * 0.35) + (ratioScore * 0.15));
+    const score = Math.min(100, Math.max(0, rawScore));
+
+    let badge = { text: 'EXCELLENT', color: '#10B981', icon: '🟢' };
+    if (score >= 90) {
+      badge = { text: 'EXCELLENT', color: '#10B981', icon: '🟢' };
+    } else if (score >= 75) {
+      badge = { text: 'GOOD', color: '#34D399', icon: '🟢' };
+    } else if (score >= 60) {
+      badge = { text: 'AVERAGE', color: '#F59E0B', icon: '🟡' };
+    } else if (score >= 40) {
+      badge = { text: 'NEEDS ATTENTION', color: '#F97316', icon: '🟠' };
+    } else {
+      badge = { text: 'CRITICAL', color: '#EF4444', icon: '🔴' };
+    }
+
+    return { score, badge };
+  }, [analyticsData]);
+
   // Pure Native Line Chart Renderer for React Native
   const renderNativeLineChart = (title, items, key1, label1, key2, label2, color1, color2, isPercent = false) => {
     if (!items || items.length === 0) return null;
@@ -86,7 +116,7 @@ export default function AdminAnalyticsScreen({ onBack }) {
       1
     );
 
-    const chartHeight = 140; // Increased to accommodate top tooltips without clipping
+    const chartHeight = 140;
 
     return (
       <View style={styles.chartCard}>
@@ -313,7 +343,55 @@ export default function AdminAnalyticsScreen({ onBack }) {
               </View>
             ) : (
               <>
-                {/* 4. COMPARISON KPI CARDS */}
+                {/* NEW: BUSINESS HEALTH SUMMARY CARD (PLACED DIRECTLY ABOVE KPI CARDS) */}
+                {healthScoreInfo && (
+                  <View style={styles.healthCard}>
+                    <Text style={styles.healthCardTitle}>📊 Business Health Score</Text>
+                    
+                    <View style={styles.healthScoreRow}>
+                      <View style={styles.scoreCircle}>
+                        <Text style={styles.healthScoreValue}>{healthScoreInfo.score}</Text>
+                        <Text style={styles.healthScoreMax}>/ 100</Text>
+                      </View>
+                      
+                      <View style={[styles.healthBadge, { backgroundColor: healthScoreInfo.badge.color }]}>
+                        <Text style={styles.healthBadgeText}>
+                          {healthScoreInfo.badge.icon} {healthScoreInfo.badge.text}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.healthDivider} />
+
+                    <View style={styles.healthMetricsContainer}>
+                      {/* Metric 1: Sales */}
+                      <View style={styles.healthMetricItem}>
+                        <Text style={styles.healthMetricLabel}>Sales</Text>
+                        <Text style={[styles.healthMetricValue, { color: analyticsData.kpis.salesPct >= 0 ? '#10B981' : '#EF4444' }]}>
+                          {analyticsData.kpis.salesPct >= 0 ? '▲ +' : '▼ -'}{Math.abs(analyticsData.kpis.salesPct).toFixed(2)}%
+                        </Text>
+                      </View>
+
+                      {/* Metric 2: Owner Profit */}
+                      <View style={styles.healthMetricItem}>
+                        <Text style={styles.healthMetricLabel}>Owner Profit</Text>
+                        <Text style={[styles.healthMetricValue, { color: analyticsData.kpis.profitPct >= 0 ? '#10B981' : '#EF4444' }]}>
+                          {analyticsData.kpis.profitPct >= 0 ? '▲ +' : '▼ -'}{Math.abs(analyticsData.kpis.profitPct).toFixed(2)}%
+                        </Text>
+                      </View>
+
+                      {/* Metric 3: Expense Ratio */}
+                      <View style={styles.healthMetricItem}>
+                        <Text style={styles.healthMetricLabel}>Expense Ratio</Text>
+                        <Text style={[styles.healthMetricValue, { color: analyticsData.kpis.isRatioImproved ? '#10B981' : '#EF4444' }]}>
+                          {analyticsData.kpis.isRatioImproved ? '✅ Improved' : '❌ Worse'}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                )}
+
+                {/* 4. EXISTING COMPARISON KPI CARDS (PRESERVED INTACT) */}
                 <View style={styles.kpiGrid}>
                   {/* Sales Card */}
                   <View style={styles.kpiCard}>
@@ -499,6 +577,29 @@ const styles = StyleSheet.create({
 
   emptyState: { padding: 30, alignItems: 'center' },
   emptyStateText: { color: '#71717A', fontSize: 12 },
+
+  /* NEW: HEALTH SUMMARY CARD */
+  healthCard: {
+    backgroundColor: '#18181B',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+    padding: 14,
+    marginBottom: 14
+  },
+  healthCardTitle: { color: '#F59E0B', fontWeight: 'bold', fontSize: 13, marginBottom: 12 },
+  healthScoreRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  scoreCircle: { flexDirection: 'row', alignItems: 'baseline' },
+  healthScoreValue: { color: '#FFF', fontSize: 32, fontWeight: 'bold', marginRight: 4 },
+  healthScoreMax: { color: '#71717A', fontSize: 14, fontWeight: 'bold' },
+  healthBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
+  healthBadgeText: { color: '#FFF', fontWeight: 'bold', fontSize: 11 },
+
+  healthDivider: { height: 1, backgroundColor: '#27272A', marginVertical: 10 },
+  healthMetricsContainer: { flexDirection: 'row', justifyContent: 'space-between' },
+  healthMetricItem: { flex: 1, alignItems: 'center' },
+  healthMetricLabel: { color: '#A1A1AA', fontSize: 10, marginBottom: 4 },
+  healthMetricValue: { fontSize: 12, fontWeight: 'bold' },
 
   /* KPIS */
   kpiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
