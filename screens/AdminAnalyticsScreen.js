@@ -5,7 +5,9 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  SafeAreaView
+  SafeAreaView,
+  StatusBar,
+  Platform
 } from 'react-native';
 import {
   getAvailableMonthsOverview,
@@ -84,7 +86,7 @@ export default function AdminAnalyticsScreen({ onBack }) {
       1
     );
 
-    const chartHeight = 120;
+    const chartHeight = 140; // Increased to accommodate top tooltips without clipping
 
     return (
       <View style={styles.chartCard}>
@@ -119,8 +121,8 @@ export default function AdminAnalyticsScreen({ onBack }) {
                 const val1 = item[key1] || 0;
                 const val2 = key2 ? (item[key2] || 0) : 0;
 
-                const pos1 = Math.max(8, (val1 / maxVal) * chartHeight);
-                const pos2 = key2 ? Math.max(8, (val2 / maxVal) * chartHeight) : 0;
+                const pos1 = Math.max(12, (val1 / maxVal) * (chartHeight - 30));
+                const pos2 = key2 ? Math.max(12, (val2 / maxVal) * (chartHeight - 30)) : 0;
 
                 return (
                   <View key={idx} style={styles.nodeColumn}>
@@ -156,6 +158,7 @@ export default function AdminAnalyticsScreen({ onBack }) {
 
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#18181B" />
       {/* HEADER */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={onBack}>
@@ -392,11 +395,16 @@ export default function AdminAnalyticsScreen({ onBack }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#09090B' },
+  container: {
+    flex: 1,
+    backgroundColor: '#09090B',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 24 : 0
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#27272A',
     backgroundColor: '#18181B'
@@ -404,7 +412,7 @@ const styles = StyleSheet.create({
   backButton: { marginRight: 12, padding: 4 },
   backArrow: { fontSize: 20, color: '#FFF' },
   headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#FFF' },
-  headerSub: { fontSize: 11, color: '#A1A1AA' },
+  headerSub: { fontSize: 11, color: '#A1A1AA', marginTop: 2 },
 
   scrollBody: { flex: 1 },
   scrollContent: { padding: 14, paddingBottom: 40 },
@@ -510,6 +518,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#27272A',
     padding: 12,
+    paddingTop: 16,
     marginBottom: 14
   },
   chartTitle: { color: '#FFF', fontWeight: 'bold', fontSize: 13, marginBottom: 8 },
@@ -518,15 +527,15 @@ const styles = StyleSheet.create({
   legendDot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
   legendText: { color: '#A1A1AA', fontSize: 11 },
 
-  lineChartStage: { paddingVertical: 10 },
-  gridLineContainer: { position: 'absolute', top: 10, left: 0, right: 0, bottom: 25, justifyContent: 'space-between' },
+  lineChartStage: { paddingVertical: 16, paddingTop: 20 },
+  gridLineContainer: { position: 'absolute', top: 20, left: 0, right: 0, bottom: 25, justifyContent: 'space-between' },
   gridLine: { borderBottomWidth: 1, borderBottomColor: '#27272A', width: '100%' },
 
-  nodesRow: { flexDirection: 'row', gap: 24, paddingHorizontal: 10 },
-  nodeColumn: { alignItems: 'center', width: 42 },
+  nodesRow: { flexDirection: 'row', gap: 28, paddingHorizontal: 14 },
+  nodeColumn: { alignItems: 'center', width: 50 },
   lineTrackArea: { width: '100%', alignItems: 'center' },
   lineNode: { position: 'absolute', width: 8, height: 8, borderRadius: 4, alignItems: 'center' },
-  nodeTooltip: { position: 'absolute', top: -14, color: '#FFF', fontSize: 8, fontWeight: 'bold', minWidth: 35, textAlign: 'center' },
-  nodeTooltipSecondary: { position: 'absolute', bottom: -14, color: '#A1A1AA', fontSize: 8, fontWeight: 'bold', minWidth: 35, textAlign: 'center' },
-  xAxisLabel: { color: '#71717A', fontSize: 10, fontWeight: 'bold', marginTop: 8 }
+  nodeTooltip: { position: 'absolute', top: -16, color: '#FFF', fontSize: 9, fontWeight: 'bold', minWidth: 40, textAlign: 'center' },
+  nodeTooltipSecondary: { position: 'absolute', bottom: -16, color: '#A1A1AA', fontSize: 9, fontWeight: 'bold', minWidth: 40, textAlign: 'center' },
+  xAxisLabel: { color: '#71717A', fontSize: 10, fontWeight: 'bold', marginTop: 10 }
 });
