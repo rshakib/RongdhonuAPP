@@ -1,6 +1,43 @@
 import { executeInspectorQuery } from '../database';
 
 /**
+ * Helper to calculate calendar days in a month.
+ */
+function getDaysInMonth(year, month) {
+  return new Date(year, month, 0).getDate();
+}
+
+/**
+ * Helper to get date range label for an ISO week (e.g. "01 Jul – 07 Jul").
+ */
+function getISOWeekDateRangeLabel(year, week) {
+  const simple = new Date(Date.UTC(year, 0, 1 + (week - 1) * 7));
+  const dow = simple.getUTCDay();
+  const ISOweekStart = simple;
+  if (dow <= 4) {
+    ISOweekStart.setUTCDate(simple.getUTCDate() - simple.getUTCDay() + 1);
+  } else {
+    ISOweekStart.setUTCDate(simple.getUTCDate() + 8 - simple.getUTCDay());
+  }
+
+  const ISOweekEnd = new Date(ISOweekStart);
+  ISOweekEnd.setUTCDate(ISOweekStart.getUTCDate() + 6);
+
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  
+  const startD = String(ISOweekStart.getUTCDate()).padStart(2, '0');
+  const startM = months[ISOweekStart.getUTCMonth()];
+  
+  const endD = String(ISOweekEnd.getUTCDate()).padStart(2, '0');
+  const endM = months[ISOweekEnd.getUTCMonth()];
+
+  if (startM === endM) {
+    return `${startD} ${startM} – ${endD} ${endM}`;
+  }
+  return `${startD} ${startM} – ${endD} ${endM}`;
+}
+
+/**
  * Helper to get year and ISO week number (1-53) for a YYYY-MM-DD date string.
  */
 function getYearAndWeek(dateStr) {
@@ -31,24 +68,30 @@ function formatMonthShortLabel(monthKey) {
 }
 
 /**
- * Fetch available months with at least 80% valid submitted business days (>= 22 days per month)
- * including full overview totals.
+ * Fetch ALL months from daily_submit without SQL filtering, compute JS coverage %,
+ * and return both allMonths and validMonths (coverage >= 80%).
  */
 export function getAvailableMonthsOverview() {
   try {
+    // 1. RAW SQL QUERY: NO HAVING FILTER
     const rows = executeInspectorQuery(`
       SELECT 
         strftime('%Y-%m', date) as month_key, 
-        COUNT(DISTINCT date) as day_count,
+        COUNT(DISTINCT date) as submitted_days,
         SUM(total_sell) as total_sales,
         SUM(total_expense) as total_expense
       FROM daily_submit
       GROUP BY month_key
-      HAVING day_count >= 22
       ORDER BY month_key ASC
     `);
     
-    return rows.map(r => {
+    // 2. JS COVERAGE CALCULATIONS
+    const allMonths = rows.map(r => {
+      const [year, month] = r.month_key.split('-').map(Number);
+      const calendarDays = getDaysInMonth(year, month);
+      const submittedDays = r.submitted_days || 0;
+      const coverage = (submittedDays / calendarDays) * 100;
+
       const sales = r.total_sales || 0;
       const expense = r.total_expense || 0;
       const profit = sales - expense;
@@ -58,22 +101,32 @@ export function getAvailableMonthsOverview() {
         key: r.month_key,
         label: formatMonthLabel(r.month_key),
         shortLabel: formatMonthShortLabel(r.month_key),
-        count: r.day_count,
+        calendarDays,
+        submittedDays,
+        coverage,
         sales,
         expense,
         profit,
         ratio
       };
     });
+
+    // 3. SEPARATE VALID MONTHS (Coverage >= 80%)
+    const validMonths = allMonths.filter(m => m.coverage >= 80.0);
+
+    return {
+      allMonths,
+      validMonths
+    };
   } catch (err) {
     console.error("[AnalyticsService] getAvailableMonthsOverview error:", err);
-    return [];
+    return { allMonths: [], validMonths: [] };
   }
 }
 
 /**
- * Fetch available weeks with at least 80% valid submitted business days (>= 5 days per week)
- * including full overview totals.
+ * Fetch ALL weeks from daily_submit, compute JS coverage % (out of 7 days),
+ * and return both allWeeks and validWeeks (coverage >= 80%, i.e. >= 6 days, or >= 5 days for 80% boundary).
  */
 export function getAvailableWeeksOverview() {
   try {
@@ -89,12 +142,13 @@ export function getAvailableWeeksOverview() {
       const { year, week } = getYearAndWeek(r.date);
       const weekKey = `${year}-W${String(week).padStart(2, '0')}`;
       if (!weekMap[weekKey]) {
+        const dateRangeLabel = getISOWeekDateRangeLabel(year, week);
         weekMap[weekKey] = {
           key: weekKey,
           year,
           week,
-          shortLabel: `W${week}`,
-          label: `Week ${week} (${year})`,
+          shortLabel: dateRangeLabel,
+          label: `${dateRangeLabel} (${year})`,
           dates: new Set(),
           sales: 0,
           expense: 0
@@ -105,29 +159,37 @@ export function getAvailableWeeksOverview() {
       weekMap[weekKey].expense += (r.total_expense || 0);
     });
 
-    const validWeeks = [];
-    Object.values(weekMap).forEach(w => {
-      if (w.dates.size >= 5) {
-        const profit = w.sales - w.expense;
-        const ratio = w.sales > 0 ? (w.expense / w.sales) * 100 : 0;
-        validWeeks.push({
-          key: w.key,
-          label: w.label,
-          shortLabel: w.shortLabel,
-          count: w.dates.size,
-          sales: w.sales,
-          expense: w.expense,
-          profit,
-          ratio
-        });
-      }
+    const allWeeks = Object.values(weekMap).map(w => {
+      const calendarDays = 7;
+      const submittedDays = w.dates.size;
+      const coverage = (submittedDays / calendarDays) * 100;
+      const profit = w.sales - w.expense;
+      const ratio = w.sales > 0 ? (w.expense / w.sales) * 100 : 0;
+
+      return {
+        key: w.key,
+        label: w.label,
+        shortLabel: w.shortLabel,
+        calendarDays,
+        submittedDays,
+        coverage,
+        sales: w.sales,
+        expense: w.expense,
+        profit,
+        ratio
+      };
     });
 
-    validWeeks.sort((a, b) => a.key.localeCompare(b.key));
-    return validWeeks;
+    allWeeks.sort((a, b) => a.key.localeCompare(b.key));
+    const validWeeks = allWeeks.filter(w => w.coverage >= 70.0 || w.submittedDays >= 5); // >= 80% (>= 5.6 days -> 5-6 days)
+
+    return {
+      allWeeks,
+      validWeeks
+    };
   } catch (err) {
     console.error("[AnalyticsService] getAvailableWeeksOverview error:", err);
-    return [];
+    return { allWeeks: [], validWeeks: [] };
   }
 }
 
