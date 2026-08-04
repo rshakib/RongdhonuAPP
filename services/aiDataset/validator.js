@@ -74,5 +74,12 @@ export const DATASET_VALIDATION_RULES = {
     temperature: 'ALLOW_NULL',
     humidity: 'ALLOW_NULL',
     weather_condition: 'DEFAULT_CLEAR'
+  },
+
+  // 5. Training Readiness Flag Rules
+  trainingReadiness: {
+    ruleName: 'EVALUATE_IS_TRAINING_READY',
+    description: 'is_training_ready = 1 ONLY if is_complete === 1 AND is_valid === 1 AND no severe crossFieldChecks failed. Otherwise 0.',
+    action: 'SET_BINARY_FLAG'
   }
 };

@@ -149,10 +149,27 @@ The application operates on an offline-first SQLite database containing **22 act
 ## 15. Dataset Schemas
 
 ### A. `AI_Daily_Sales_Dataset`
-* `dataset_id` (PK), `business_date`, `calendar_date`, `schema_version`, `dataset_version`, `exported_at`, `year`, `month`, `week_number`, `day_of_month`, `day_of_week`, `day_name`, `is_friday`, `is_weekend`, `temperature`, `humidity`, `weather_condition`, `is_rainy`, `wind_speed`, `is_holiday`, `holiday_name`, `holiday_source`, `is_off_day`, `off_day_reason`, `total_orders`, `total_sales`, `cash_sales`, `bkash_sales`, `nagad_sales`, `rocket_sales`, `card_sales`, `delivery_sales`, `delivery_charge`, `total_discount`, `net_sales`, `average_order_value`, `peak_hour`, `opening_ijara`, `total_expense`, `closing_cash`, `owner_deposit`, `expense_ratio`, `prev_day_sales`, `prev_week_sales`, `sales_7day_avg`, `sales_30day_avg`, `sales_growth_7d`, `is_complete`, `is_valid`, `validation_errors`, `target_sales`, `created_at`, `updated_at`.
+* `dataset_id` (PK), `business_date`, `calendar_date`, `schema_version`, `dataset_version`, `exported_at`, `year`, `month`, `week_number`, `day_of_month`, `day_of_week`, `day_name`, `is_friday`, `is_weekend`, `is_month_start`, `is_month_end`, `days_until_salary`, `days_after_salary`, `temperature`, `feels_like_temperature`, `humidity`, `rainfall_mm`, `weather_condition`, `is_rainy`, `wind_speed`, `is_holiday`, `holiday_name`, `holiday_source`, `festival_type`, `is_off_day`, `off_day_reason`, `store_open_time`, `store_close_time`, `business_hours`, `promotion_running`, `promotion_name`, `promotion_discount`, `total_orders`, `total_sales`, `cash_sales`, `bkash_sales`, `nagad_sales`, `rocket_sales`, `card_sales`, `delivery_sales`, `delivery_charge`, `total_discount`, `net_sales`, `average_order_value`, `peak_hour`, `opening_ijara`, `total_expense`, `closing_cash`, `owner_deposit`, `expense_ratio`, `is_complete`, `is_valid`, `is_training_ready`, `validation_errors`, `target_sales`, `created_at`, `updated_at`.
 
 ### B. `AI_Item_Sales_Dataset`
-* `dataset_id` (PK), `business_date`, `item_id`, `item_name`, `category_name`, `schema_version`, `dataset_version`, `exported_at`, `unit_price`, `total_quantity_sold`, `total_item_revenue`, `day_of_week`, `is_friday`, `is_holiday`, `is_rainy`, `item_prev_week_qty`, `item_7day_avg_qty`, `item_30day_avg_qty`, `is_complete`, `is_valid`, `validation_errors`, `target_quantity`, `created_at`, `updated_at`.
+* `dataset_id` (PK), `business_date`, `item_id`, `item_name`, `category_name`, `schema_version`, `dataset_version`, `exported_at`, `unit_price`, `total_quantity_sold`, `total_item_revenue`, `item_rank_today`, `item_share_percent`, `is_out_of_stock`, `available_quantity`, `day_of_week`, `is_friday`, `is_holiday`, `is_rainy`, `is_complete`, `is_valid`, `is_training_ready`, `validation_errors`, `target_quantity`, `created_at`, `updated_at`.
+
+### C. Raw Dataset Principle & Refinements Reference
+* **Raw Dataset Principle**: Window features (`prev_day_sales`, `sales_7day_avg`, `item_7day_avg_qty`, etc.) are excluded from exported SQLite payloads to ensure raw reusable features for any Python ML pipeline.
+* **New Fields Documentation**:
+  - `is_month_start` (Binary): `1` if 1st of month.
+  - `is_month_end` (Binary): `1` if last day of month.
+  - `days_until_salary` (Int): Count of days until 1st of next month.
+  - `days_after_salary` (Int): Count of days elapsed since 1st of month.
+  - `feels_like_temperature` (Float / NULL): Thermal comfort index.
+  - `rainfall_mm` (Float / NULL): Precipitation amount in mm.
+  - `festival_type` (Enum): `'Religious'`, `'National'`, `'School Holiday'`, `'Local Event'`, `'Weekend'`, `'None'`.
+  - `store_open_time`, `store_close_time`, `business_hours` (Nullable): Operational shift timings.
+  - `promotion_running`, `promotion_name`, `promotion_discount` (Nullable/Defaults): Marketing campaign signals.
+  - `is_out_of_stock`, `available_quantity` (Nullable): Inventory signals.
+  - `is_training_ready` (Binary): `1` ONLY if `is_complete == 1` and `is_valid == 1`.
+  - `item_rank_today` (Int): Item popularity rank by sales volume.
+  - `item_share_percent` (Float): Percentage share of daily items sold.
 
 ---
 
@@ -165,6 +182,7 @@ The application operates on an offline-first SQLite database containing **22 act
 5. **AI Dataset payload targets dedicated tabs (`AI_Daily_Sales_Dataset` & `AI_Item_Sales_Dataset`) ONLY**.
 6. **No modification of financial calculations or Daily Submit formulas**.
 7. **User-facing administrator branding is strictly `সাকিব`**.
+8. **Raw Dataset Principle**: Export raw unpolluted business metrics; compute rolling time-series features in Python ML preprocessing.
 
 ---
 
@@ -208,6 +226,7 @@ The application operates on an offline-first SQLite database containing **22 act
 
 | Commit Hash | Feature / Refinement | Date | Primary Files Modified | Rollback Command |
 | :--- | :--- | :---: | :--- | :--- |
+| **`994bbf9`** | Rollback Reference Section in Master Log | 2026-08-05 | `PROJECT_ARCHITECTURE_LOG.md` | `git checkout 994bbf9` |
 | **`eb0fefb`** | Master Architecture Log & AI Dataset Phase 1 | 2026-08-05 | `PROJECT_ARCHITECTURE_LOG.md`, `database.js`, `services/aiDataset/*` | `git checkout eb0fefb` |
 | **`4ce7c72`** | Runtime Offline Mode Alert Fix (`সাকিব`) | 2026-08-05 | `screens/LoginScreen.js` | `git checkout 4ce7c72` |
 | **`5f74b15`** | Bengali Branding Refinement (`Shakib` $\rightarrow$ `সাকিব`) | 2026-08-05 | `App.js`, `screens/*`, `services/deviceRegistry.js` | `git checkout 5f74b15` |

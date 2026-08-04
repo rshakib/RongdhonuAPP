@@ -8,7 +8,7 @@
 
 export const DAILY_SALES_DATASET_SCHEMA = {
   tableName: 'daily_sales_dataset',
-  description: 'One row per business date containing daily sales, weather, calendar, and financial KPIs.',
+  description: 'One row per business date containing raw daily sales, weather, calendar, and financial KPIs.',
   fields: {
     // 1. Dataset Tracking & Primary Keys
     dataset_id: { type: 'TEXT', nullable: false, primaryKey: true, description: 'Stable ID = business_date (e.g. "2026-08-05")' },
@@ -20,7 +20,7 @@ export const DAILY_SALES_DATASET_SCHEMA = {
     dataset_version: { type: 'TEXT', nullable: false, defaultValue: '1.0.0', description: 'Dataset version' },
     exported_at: { type: 'TIMESTAMP', nullable: true, defaultValue: null, description: 'ISO Timestamp when exported' },
 
-    // 3. Time & Calendar Features
+    // 3. Calendar Features
     year: { type: 'INTEGER', nullable: false, derived: true, description: 'YYYY' },
     month: { type: 'INTEGER', nullable: false, derived: true, description: '1-12' },
     week_number: { type: 'INTEGER', nullable: false, derived: true, description: '1-53 Week of year' },
@@ -29,22 +29,39 @@ export const DAILY_SALES_DATASET_SCHEMA = {
     day_name: { type: 'TEXT', nullable: false, description: 'Sunday..Saturday' },
     is_friday: { type: 'INTEGER', nullable: false, defaultValue: 0, description: '1 if Friday, 0 otherwise' },
     is_weekend: { type: 'INTEGER', nullable: false, defaultValue: 0, description: '1 if Friday or Saturday' },
+    is_month_start: { type: 'INTEGER', nullable: false, derived: true, defaultValue: 0, description: '1 if day_of_month == 1' },
+    is_month_end: { type: 'INTEGER', nullable: false, derived: true, defaultValue: 0, description: '1 if last day of month' },
+    days_until_salary: { type: 'INTEGER', nullable: true, derived: true, description: 'Days remaining until 1st of next month' },
+    days_after_salary: { type: 'INTEGER', nullable: true, derived: true, description: 'Days elapsed since 1st of month' },
 
-    // 4. Weather Features (OPTIONAL - Safe Defaults)
-    temperature: { type: 'REAL', nullable: true, defaultValue: null, description: 'Degrees Celsius (Optional)' },
-    humidity: { type: 'REAL', nullable: true, defaultValue: null, description: 'Percentage 0-100 (Optional)' },
+    // 4. Advanced Weather Features (OPTIONAL - Safe Defaults)
+    temperature: { type: 'REAL', nullable: true, defaultValue: null, description: 'Degrees Celsius' },
+    feels_like_temperature: { type: 'REAL', nullable: true, defaultValue: null, description: 'Feels like temperature Celsius' },
+    humidity: { type: 'REAL', nullable: true, defaultValue: null, description: 'Percentage 0-100' },
+    rainfall_mm: { type: 'REAL', nullable: true, defaultValue: null, description: 'Precipitation amount in mm' },
     weather_condition: { type: 'TEXT', nullable: true, defaultValue: 'UNKNOWN', description: 'Clear, Rainy, UNKNOWN' },
     is_rainy: { type: 'INTEGER', nullable: false, defaultValue: 0, description: '1 if rainy, 0 otherwise' },
-    wind_speed: { type: 'REAL', nullable: true, defaultValue: null, description: 'km/h (Optional)' },
+    wind_speed: { type: 'REAL', nullable: true, defaultValue: null, description: 'km/h' },
 
-    // 5. Calendar Events & Holiday Source Tracking
+    // 5. Calendar Events & Festival Classification
     is_holiday: { type: 'INTEGER', nullable: false, defaultValue: 0, description: '1 if government/religious holiday' },
     holiday_name: { type: 'TEXT', nullable: true, defaultValue: '', description: 'Name of holiday or festival' },
     holiday_source: { type: 'TEXT', nullable: false, defaultValue: 'none', enum: ['government', 'calendar', 'manual', 'none'], description: 'Origin of holiday flag' },
+    festival_type: { type: 'TEXT', nullable: false, defaultValue: 'None', enum: ['Religious', 'National', 'School Holiday', 'Local Event', 'Weekend', 'None'], description: 'Festival category' },
     is_off_day: { type: 'INTEGER', nullable: false, defaultValue: 0, description: '1 if restaurant was closed' },
     off_day_reason: { type: 'TEXT', nullable: true, defaultValue: '', description: 'Reason for closure' },
 
-    // 6. Sales & Order Metrics
+    // 6. Business Operation Features
+    store_open_time: { type: 'TEXT', nullable: true, defaultValue: null, description: 'Store opening time (e.g. "09:00")' },
+    store_close_time: { type: 'TEXT', nullable: true, defaultValue: null, description: 'Store closing time (e.g. "23:00")' },
+    business_hours: { type: 'REAL', nullable: true, defaultValue: null, description: 'Operating hours count' },
+
+    // 7. Promotion Features
+    promotion_running: { type: 'INTEGER', nullable: false, defaultValue: 0, description: '1 if active promotion, 0 otherwise' },
+    promotion_name: { type: 'TEXT', nullable: true, defaultValue: null, description: 'Name of campaign' },
+    promotion_discount: { type: 'REAL', nullable: false, defaultValue: 0.0, description: 'Discount percentage or amount' },
+
+    // 8. Sales & Order Metrics (RAW DATASET)
     total_orders: { type: 'INTEGER', nullable: false, defaultValue: 0, description: 'Total paid orders count' },
     total_sales: { type: 'REAL', nullable: false, defaultValue: 0.0, description: 'Gross sales (Cash+MFS+Card)' },
     cash_sales: { type: 'REAL', nullable: false, defaultValue: 0.0, description: 'Cash payment total' },
@@ -59,29 +76,23 @@ export const DAILY_SALES_DATASET_SCHEMA = {
     average_order_value: { type: 'REAL', nullable: false, derived: true, description: 'total_sales / total_orders' },
     peak_hour: { type: 'TEXT', nullable: true, defaultValue: '', description: 'Hour with maximum sales (e.g. "14:00")' },
 
-    // 7. Financial & Settlement Metrics
+    // 9. Financial & Settlement Metrics
     opening_ijara: { type: 'REAL', nullable: false, defaultValue: 0.0, description: 'Carryover Ijara / Cash in hand' },
     total_expense: { type: 'REAL', nullable: false, defaultValue: 0.0, description: 'Total operational expenses' },
     closing_cash: { type: 'REAL', nullable: false, defaultValue: 0.0, description: 'Net cash remaining' },
     owner_deposit: { type: 'REAL', nullable: false, defaultValue: 0.0, description: 'Net deposit to owner (Profit)' },
     expense_ratio: { type: 'REAL', nullable: false, derived: true, description: '(total_expense / total_sales) * 100' },
 
-    // 8. Time Series Derived Features (Window Aggregations)
-    prev_day_sales: { type: 'REAL', nullable: true, derived: true, description: 'Sales on previous business day' },
-    prev_week_sales: { type: 'REAL', nullable: true, derived: true, description: 'Sales on same day last week' },
-    sales_7day_avg: { type: 'REAL', nullable: true, derived: true, description: '7-day rolling mean sales' },
-    sales_30day_avg: { type: 'REAL', nullable: true, derived: true, description: '30-day rolling mean sales' },
-    sales_growth_7d: { type: 'REAL', nullable: true, derived: true, description: 'Percentage growth over 7-day avg' },
-
-    // 9. Data Quality & Data Validation Fields
-    is_complete: { type: 'INTEGER', nullable: false, defaultValue: 1, description: '1 if all required fields are present' },
+    // 10. Data Quality & Training Readiness
+    is_complete: { type: 'INTEGER', nullable: false, defaultValue: 1, description: '1 if all required fields present' },
     is_valid: { type: 'INTEGER', nullable: false, defaultValue: 1, description: '1 if mathematical validation checks pass' },
+    is_training_ready: { type: 'INTEGER', nullable: false, defaultValue: 1, description: '1 ONLY if complete and valid for ML model training' },
     validation_errors: { type: 'TEXT', nullable: true, defaultValue: '[]', description: 'JSON array of validation error codes' },
 
-    // 10. Future ML Target Placeholders
-    target_sales: { type: 'REAL', nullable: true, defaultValue: null, description: 'Target sales label for future ML training' },
+    // 11. Future ML Target Placeholders
+    target_sales: { type: 'REAL', nullable: true, defaultValue: null, description: 'Target sales label for ML training' },
 
-    // 11. System Timestamps
+    // 12. System Timestamps
     created_at: { type: 'TIMESTAMP', nullable: false, description: 'ISO Timestamp of creation' },
     updated_at: { type: 'TIMESTAMP', nullable: false, description: 'ISO Timestamp of last update' }
   }
@@ -89,7 +100,7 @@ export const DAILY_SALES_DATASET_SCHEMA = {
 
 export const ITEM_SALES_DATASET_SCHEMA = {
   tableName: 'item_sales_dataset',
-  description: 'One row per menu item per business date capturing quantity, revenue, and category demand.',
+  description: 'One row per menu item per business date capturing raw quantity, revenue, and popularity signals.',
   fields: {
     // 1. Dataset Tracking & Primary Keys
     dataset_id: { type: 'TEXT', nullable: false, primaryKey: true, description: 'Stable ID = business_date + "_" + item_id' },
@@ -108,26 +119,30 @@ export const ITEM_SALES_DATASET_SCHEMA = {
     total_quantity_sold: { type: 'INTEGER', nullable: false, defaultValue: 0, description: 'Quantity sold on date' },
     total_item_revenue: { type: 'REAL', nullable: false, defaultValue: 0.0, description: 'Total revenue generated by item' },
 
-    // 4. Contextual Factors
+    // 4. Item Popularity & Share Signals
+    item_rank_today: { type: 'INTEGER', nullable: false, defaultValue: 0, description: 'Popularity rank on date by quantity sold (1 = top seller)' },
+    item_share_percent: { type: 'REAL', nullable: false, defaultValue: 0.0, description: 'Percentage share of total items sold on date' },
+
+    // 5. Inventory Signals (Placeholders for future inventory tracking)
+    is_out_of_stock: { type: 'INTEGER', nullable: true, defaultValue: null, description: '1 if item became out of stock during shift' },
+    available_quantity: { type: 'INTEGER', nullable: true, defaultValue: null, description: 'Remaining stock quantity' },
+
+    // 6. Contextual Factors
     day_of_week: { type: 'INTEGER', nullable: false, description: '0-6' },
     is_friday: { type: 'INTEGER', nullable: false, defaultValue: 0, description: '1 if Friday' },
     is_holiday: { type: 'INTEGER', nullable: false, defaultValue: 0, description: '1 if holiday' },
     is_rainy: { type: 'INTEGER', nullable: false, defaultValue: 0, description: '1 if rainy' },
 
-    // 5. Time Series Item Demand Metrics
-    item_prev_week_qty: { type: 'INTEGER', nullable: true, derived: true, description: 'Quantity sold on same day last week' },
-    item_7day_avg_qty: { type: 'REAL', nullable: true, derived: true, description: '7-day rolling avg quantity' },
-    item_30day_avg_qty: { type: 'REAL', nullable: true, derived: true, description: '30-day rolling avg quantity' },
-
-    // 6. Data Quality & Validation Fields
+    // 7. Data Quality & Training Readiness
     is_complete: { type: 'INTEGER', nullable: false, defaultValue: 1, description: '1 if complete' },
     is_valid: { type: 'INTEGER', nullable: false, defaultValue: 1, description: '1 if valid' },
+    is_training_ready: { type: 'INTEGER', nullable: false, defaultValue: 1, description: '1 ONLY if complete and valid for ML model training' },
     validation_errors: { type: 'TEXT', nullable: true, defaultValue: '[]', description: 'JSON array of validation error codes' },
 
-    // 7. Future ML Target Placeholders
+    // 8. Future ML Target Placeholders
     target_quantity: { type: 'INTEGER', nullable: true, defaultValue: null, description: 'Target quantity label for ML training' },
 
-    // 8. Metadata
+    // 9. Metadata
     created_at: { type: 'TIMESTAMP', nullable: false, description: 'ISO Timestamp' },
     updated_at: { type: 'TIMESTAMP', nullable: false, description: 'ISO Timestamp' }
   }

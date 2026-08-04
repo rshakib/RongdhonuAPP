@@ -3042,10 +3042,30 @@ export function enqueueAIDatasetExport(dateStr) {
       return;
     }
 
-    const now = new Date().toISOString();
+    // 1. Compute Calendar & Salary Cycle Derivations
+    const dateObj = new Date(`${dateStr}T00:00:00`);
+    const dayOfMonth = dateObj.getDate();
+    const isMonthStart = dayOfMonth === 1 ? 1 : 0;
+    
+    // Check if month end
+    const nextDayObj = new Date(dateObj);
+    nextDayObj.setDate(dayOfMonth + 1);
+    const isMonthEnd = nextDayObj.getDate() === 1 ? 1 : 0;
 
-    // RULE 2: IMMUTABLE DATASET POLICY WITH STABLE DATASET_ID OVERWRITE
-    // dataset_id = dateStr (Stable key). INSERT OR REPLACE overwrites existing row without creating duplicates.
+    // Days until salary (1st of next month)
+    const nextMonthObj = new Date(dateObj.getFullYear(), dateObj.getMonth() + 1, 1);
+    const daysUntilSalary = Math.round((nextMonthObj - dateObj) / (1000 * 60 * 60 * 24));
+    const daysAfterSalary = dayOfMonth - 1;
+
+    // Festival Classification
+    let festivalType = 'None';
+    const note = summary.specialDayNote || '';
+    if (note.includes('Eid') || note.includes('Puja')) festivalType = 'Religious';
+    else if (note.includes('Independence') || note.includes('Victory') || note.includes('Language')) festivalType = 'National';
+    else if (note.trim().length > 0) festivalType = 'Local Event';
+    else if (summary.isFriday || summary.dayOfWeek === 'Saturday') festivalType = 'Weekend';
+
+    // 2. Enqueue AI Daily Sales Dataset payload targeting AI_Daily_Sales_Dataset (RAW DATASET)
     const summaryPayload = {
       dataset_id: dateStr,
       business_date: summary.date,
@@ -3053,16 +3073,37 @@ export function enqueueAIDatasetExport(dateStr) {
       schema_version: '1.0.0',
       dataset_version: '1.0.0',
       exported_at: now,
-      day_of_week: summary.dayOfWeek,
+      year: dateObj.getFullYear(),
+      month: dateObj.getMonth() + 1,
+      week_number: Math.ceil(dayOfMonth / 7),
+      day_of_month: dayOfMonth,
+      day_of_week: dateObj.getDay(),
+      day_name: summary.dayOfWeek,
       is_friday: summary.isFriday ? 1 : 0,
-      is_holiday: summary.isHoliday ? 1 : 0,
-      holiday_name: summary.specialDayNote || "",
-      holiday_source: summary.specialDayNote ? 'manual' : 'none',
+      is_weekend: (summary.isFriday || summary.dayOfWeek === 'Saturday') ? 1 : 0,
+      is_month_start: isMonthStart,
+      is_month_end: isMonthEnd,
+      days_until_salary: daysUntilSalary,
+      days_after_salary: daysAfterSalary,
       temperature: summary.temperature !== undefined ? summary.temperature : null,
+      feels_like_temperature: null,
       humidity: summary.humidity !== undefined ? summary.humidity : null,
+      rainfall_mm: null,
       weather_condition: summary.condition || "UNKNOWN",
       is_rainy: summary.isRainy ? 1 : 0,
       wind_speed: summary.windSpeed !== undefined ? summary.windSpeed : null,
+      is_holiday: summary.isHoliday ? 1 : 0,
+      holiday_name: summary.specialDayNote || "",
+      holiday_source: summary.specialDayNote ? 'manual' : 'none',
+      festival_type: festivalType,
+      is_off_day: 0,
+      off_day_reason: "",
+      store_open_time: null,
+      store_close_time: null,
+      business_hours: null,
+      promotion_running: 0,
+      promotion_name: null,
+      promotion_discount: 0.0,
       total_orders: summary.totalOrders || 0,
       total_sales: summary.totalSales || 0,
       cash_sales: summary.cashTotal || 0,
@@ -3083,6 +3124,7 @@ export function enqueueAIDatasetExport(dateStr) {
       expense_ratio: summary.totalSales ? ((summary.totalExpense || 0) / summary.totalSales) * 100 : 0,
       is_complete: 1,
       is_valid: 1,
+      is_training_ready: 1,
       validation_errors: "[]",
       target_sales: null,
       created_at: now,
@@ -3094,48 +3136,68 @@ export function enqueueAIDatasetExport(dateStr) {
       VALUES (?, 'AI_DAILY_SALES_DATASET', ?, ?, 'PENDING', ?, ?, 0)
     `, [dateStr, dateStr, JSON.stringify(summaryPayload), now, now]);
 
-    // 2. Enqueue AI Item Sales Dataset payload targeting AI_Item_Sales_Dataset
+    // 3. Enqueue AI Item Sales Dataset payload targeting AI_Item_Sales_Dataset
     const menuItems = db.getAllSync("SELECT id, name, category, price FROM menu_items");
     const sales = db.getAllSync(`
       SELECT itemName, SUM(quantity) as totalQty, SUM(revenue) as totalRev
       FROM order_items
       WHERE date(created_at, 'localtime') = ?
       GROUP BY itemName
+      ORDER BY totalQty DESC
     `, [dateStr]);
 
     const salesMap = {};
-    sales.forEach(s => { salesMap[s.itemName] = { qty: s.totalQty, rev: s.totalRev }; });
+    let totalItemsSoldOnDate = 0;
+    sales.forEach(s => { 
+      salesMap[s.itemName] = { qty: s.totalQty, rev: s.totalRev };
+      totalItemsSoldOnDate += Number(s.totalQty || 0);
+    });
 
-    const itemRows = menuItems.map(item => ({
-      dataset_id: `${dateStr}_${item.id || item.name}`,
-      business_date: dateStr,
-      item_id: item.id || '',
-      item_name: item.name,
-      category_name: item.category || 'Uncategorized',
-      schema_version: '1.0.0',
-      dataset_version: '1.0.0',
-      exported_at: now,
-      unit_price: item.price || 0,
-      total_quantity_sold: salesMap[item.name]?.qty || 0,
-      total_item_revenue: salesMap[item.name]?.rev || 0,
-      day_of_week: summary.dayOfWeek,
-      is_friday: summary.isFriday ? 1 : 0,
-      is_holiday: summary.isHoliday ? 1 : 0,
-      is_rainy: summary.isRainy ? 1 : 0,
-      is_complete: 1,
-      is_valid: 1,
-      validation_errors: "[]",
-      target_quantity: null,
-      created_at: now,
-      updated_at: now
-    }));
+    // Compute item ranks and share percentages
+    const sortedSalesNames = sales.map(s => s.itemName);
+
+    const itemRows = menuItems.map(item => {
+      const qtySold = salesMap[item.name]?.qty || 0;
+      const rankIdx = sortedSalesNames.indexOf(item.name);
+      const rank = qtySold > 0 && rankIdx !== -1 ? rankIdx + 1 : 0;
+      const sharePercent = totalItemsSoldOnDate > 0 ? (qtySold / totalItemsSoldOnDate) * 100 : 0;
+
+      return {
+        dataset_id: `${dateStr}_${item.id || item.name}`,
+        business_date: dateStr,
+        item_id: item.id || '',
+        item_name: item.name,
+        category_name: item.category || 'Uncategorized',
+        schema_version: '1.0.0',
+        dataset_version: '1.0.0',
+        exported_at: now,
+        unit_price: item.price || 0,
+        total_quantity_sold: qtySold,
+        total_item_revenue: salesMap[item.name]?.rev || 0,
+        item_rank_today: rank,
+        item_share_percent: sharePercent,
+        is_out_of_stock: null,
+        available_quantity: null,
+        day_of_week: dateObj.getDay(),
+        is_friday: summary.isFriday ? 1 : 0,
+        is_holiday: summary.isHoliday ? 1 : 0,
+        is_rainy: summary.isRainy ? 1 : 0,
+        is_complete: 1,
+        is_valid: 1,
+        is_training_ready: 1,
+        validation_errors: "[]",
+        target_quantity: null,
+        created_at: now,
+        updated_at: now
+      };
+    });
 
     db.runSync(`
       INSERT OR REPLACE INTO ai_dataset_queue (id, type, business_date, payload, status, created_at, updated_at, is_synced)
       VALUES (?, 'AI_ITEM_SALES_DATASET', ?, ?, 'PENDING', ?, ?, 0)
     `, [`ITEM_${dateStr}`, dateStr, JSON.stringify(itemRows), now, now]);
 
-    console.log(`[AI Dataset Sync] Enqueued dataset payloads for ${dateStr}`);
+    console.log(`[AI Dataset Sync] Enqueued raw dataset payloads for ${dateStr}`);
     
     // Process queue immediately using existing HTTP transport dispatcher
     processAIDatasetQueue();

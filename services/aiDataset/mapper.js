@@ -72,6 +72,12 @@ export const DAILY_SALES_FIELD_MAPPING = {
     transformation: 'CASE WHEN strftime("%w", date) IN ("5", "6") THEN 1 ELSE 0 END'
   },
 
+  // Calendar & Salary Cycle Features
+  is_month_start: { transformation: 'CASE WHEN strftime("%d", date) = "01" THEN 1 ELSE 0 END' },
+  is_month_end: { transformation: 'CASE WHEN date = date(date, "start of month", "+1 month", "-1 day") THEN 1 ELSE 0 END' },
+  days_until_salary: { transformation: 'CAST(julianday(date(date, "start of month", "+1 month")) - julianday(date) AS INTEGER)' },
+  days_after_salary: { transformation: 'CAST(strftime("%d", date) AS INTEGER) - 1' },
+
   // Weather Features (OPTIONAL - SAFE DEFAULTS)
   temperature: {
     sourceTable: 'weather_data',
@@ -80,11 +86,21 @@ export const DAILY_SALES_FIELD_MAPPING = {
     fallbackColumn: 'temperature',
     defaultIfMissing: null
   },
+  feels_like_temperature: {
+    sourceTable: 'weather_data',
+    sourceColumn: 'feels_like',
+    defaultIfMissing: null
+  },
   humidity: {
     sourceTable: 'weather_data',
     sourceColumn: 'humidity',
     fallbackTable: 'daily_summary',
     fallbackColumn: 'humidity',
+    defaultIfMissing: null
+  },
+  rainfall_mm: {
+    sourceTable: 'weather_data',
+    sourceColumn: 'precipitation',
     defaultIfMissing: null
   },
   weather_condition: {
@@ -109,7 +125,7 @@ export const DAILY_SALES_FIELD_MAPPING = {
     defaultIfMissing: null
   },
 
-  // Holidays & Holiday Source Tracking
+  // Holidays & Festival Classification
   is_holiday: {
     sourceTable: 'daily_summary',
     sourceColumn: 'isHoliday',
@@ -125,6 +141,11 @@ export const DAILY_SALES_FIELD_MAPPING = {
     sourceColumn: 'specialDayNote',
     transformation: 'CASE WHEN specialDayNote LIKE "%Government%" THEN "government" WHEN specialDayNote LIKE "%Calendar%" THEN "calendar" WHEN specialDayNote IS NOT NULL AND specialDayNote != "" THEN "manual" ELSE "none" END'
   },
+  festival_type: {
+    sourceTable: 'daily_summary',
+    sourceColumn: 'specialDayNote',
+    transformation: 'CASE WHEN specialDayNote LIKE "%Eid%" OR specialDayNote LIKE "%Puja%" THEN "Religious" WHEN specialDayNote LIKE "%Independence%" OR specialDayNote LIKE "%Victory%" THEN "National" WHEN specialDayNote IS NOT NULL AND specialDayNote != "" THEN "Local Event" WHEN strftime("%w", date) IN ("5","6") THEN "Weekend" ELSE "None" END'
+  },
   is_off_day: {
     sourceTable: 'off_days',
     sourceColumn: 'date',
@@ -136,7 +157,15 @@ export const DAILY_SALES_FIELD_MAPPING = {
     transformation: 'COALESCE(off_days.reason, "")'
   },
 
-  // Financial & Sales Aggregations
+  // Business Operations & Promotion Features (Placeholders for future operational logs)
+  store_open_time: { defaultIfMissing: null },
+  store_close_time: { defaultIfMissing: null },
+  business_hours: { defaultIfMissing: null },
+  promotion_running: { defaultIfMissing: 0 },
+  promotion_name: { defaultIfMissing: null },
+  promotion_discount: { defaultIfMissing: 0.0 },
+
+  // Financial & Sales Aggregations (RAW DATASET)
   total_orders: {
     sourceTable: 'daily_summary',
     sourceColumn: 'totalOrders',
@@ -238,26 +267,10 @@ export const DAILY_SALES_FIELD_MAPPING = {
     transformation: '(total_expense / NULLIF(total_sell, 0)) * 100'
   },
 
-  // Time Series Window Derived Fields
-  prev_day_sales: {
-    transformation: 'LAG(total_sell, 1) OVER (ORDER BY date)'
-  },
-  prev_week_sales: {
-    transformation: 'LAG(total_sell, 7) OVER (ORDER BY date)'
-  },
-  sales_7day_avg: {
-    transformation: 'AVG(total_sell) OVER (ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)'
-  },
-  sales_30day_avg: {
-    transformation: 'AVG(total_sell) OVER (ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW)'
-  },
-  sales_growth_7d: {
-    transformation: '((total_sell - sales_7day_avg) / NULLIF(sales_7day_avg, 0)) * 100'
-  },
-
   // Data Quality & Validation Fields
   is_complete: { transformation: '1 if required fields present, 0 otherwise' },
   is_valid: { transformation: '1 if crossField validation passes, 0 otherwise' },
+  is_training_ready: { transformation: '1 ONLY if is_complete == 1 AND is_valid == 1' },
   validation_errors: { transformation: 'JSON array of validation error codes e.g. ["PAYMENT_MISMATCH"]' },
 
   // Target Placeholders
@@ -276,15 +289,17 @@ export const ITEM_SALES_FIELD_MAPPING = {
   unit_price: { sourceTable: 'order_items', sourceColumn: 'unit_price', fallbackColumn: 'menu_items.price' },
   total_quantity_sold: { sourceTable: 'order_items', sourceColumn: 'quantity', transformation: 'SUM(order_items.quantity)' },
   total_item_revenue: { sourceTable: 'order_items', sourceColumn: 'revenue', transformation: 'SUM(order_items.revenue)' },
+  item_rank_today: { transformation: 'DENSE_RANK() OVER (PARTITION BY business_date ORDER BY SUM(quantity) DESC)' },
+  item_share_percent: { transformation: '(SUM(quantity) / NULLIF(SUM(SUM(quantity)) OVER (PARTITION BY business_date), 0)) * 100' },
+  is_out_of_stock: { defaultIfMissing: null },
+  available_quantity: { defaultIfMissing: null },
   day_of_week: { sourceTable: 'daily_summary', sourceColumn: 'dayOfWeek' },
   is_friday: { sourceTable: 'daily_summary', sourceColumn: 'isFriday' },
   is_holiday: { sourceTable: 'daily_summary', sourceColumn: 'isHoliday' },
   is_rainy: { sourceTable: 'daily_summary', sourceColumn: 'isRainy' },
-  item_prev_week_qty: { transformation: 'LAG(total_quantity_sold, 7) OVER (PARTITION BY item_name ORDER BY date)' },
-  item_7day_avg_qty: { transformation: 'AVG(total_quantity_sold) OVER (PARTITION BY item_name ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)' },
-  item_30day_avg_qty: { transformation: 'AVG(total_quantity_sold) OVER (PARTITION BY item_name ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW)' },
   is_complete: { transformation: '1 if required fields present, 0 otherwise' },
   is_valid: { transformation: '1 if valid' },
+  is_training_ready: { transformation: '1 ONLY if is_complete == 1 AND is_valid == 1' },
   validation_errors: { transformation: 'JSON array of validation error codes' },
   target_quantity: { transformation: 'NULL placeholder until ML training' }
 };
