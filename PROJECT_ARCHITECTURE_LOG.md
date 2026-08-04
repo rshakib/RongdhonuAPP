@@ -200,16 +200,23 @@ The application operates on an offline-first SQLite database containing **22 act
 
 ---
 
-## 19. Feature Timeline / Changelog
+## 19. Rollback & Commit History Reference
 
-| Date | Feature / Refinement | Files Modified | Commit Hash | Summary / Notes |
-| :--- | :--- | :--- | :--- | :--- |
-| 2026-08-05 | Login UI Refinements | `LoginScreen.js` | `22f6891`, `b25bf8c`, `c2967cf` | Compact logo, top-right mode toggle pill, created by footer, 88% width controls. |
-| 2026-08-05 | RNStatusBar Crash Fix | `LoginScreen.js` | `ca9a4c6` | Fixed `ReferenceError: Property 'RNStatusBar' doesn't exist`. |
-| 2026-08-05 | System Alert Localization | `App.js`, `pdfHelper.js`, `AdminDB.js`, `DailyItemSalesReport.js`, `DeviceManagementScreen.js` | `760f21b`, `088eb6e` | Localized system alerts and removed parenthetical mixed language text (`(Cancel)`, `(Confirm)`). |
-| 2026-08-05 | Bengali Branding `সাকিব` | `App.js`, `DeviceBlockedScreen.js`, `DeviceManagementScreen.js`, `DevicePendingScreen.js`, `LoginScreen.js`, `SystemInfoScreen.js`, `services/deviceRegistry.js` | `5f74b15`, `4ce7c72` | Converted all user-facing `Admin` / `Shakib` references to Bengali spelling **`সাকিব`**. Fixed runtime `handleModeChange` alert. |
-| 2026-08-05 | AI Dataset Sync Module Architecture | `services/aiDataset/schema.js`, `mapper.js`, `validator.js`, `README.md` | — | Created isolated AI Dataset module with frozen ML schemas, zero Firestore reads, dedicated AI tabs (`AI_Daily_Sales_Dataset`, `AI_Item_Sales_Dataset`), status lifecycle, and transaction-safe submit triggers. |
-| 2026-08-05 | Master Architecture Log Created | `PROJECT_ARCHITECTURE_LOG.md` | — | Established single master architecture log for the project. |
+> ⚠️ **ROLLBACK EMERGENCY PROTOCOL**
+> 
+> To restore or revert the repository to any verified feature state, execute `git checkout <commit_hash>` or `git revert <commit_hash>`.
+
+| Commit Hash | Feature / Refinement | Date | Primary Files Modified | Rollback Command |
+| :--- | :--- | :---: | :--- | :--- |
+| **`eb0fefb`** | Master Architecture Log & AI Dataset Phase 1 | 2026-08-05 | `PROJECT_ARCHITECTURE_LOG.md`, `database.js`, `services/aiDataset/*` | `git checkout eb0fefb` |
+| **`4ce7c72`** | Runtime Offline Mode Alert Fix (`সাকিব`) | 2026-08-05 | `screens/LoginScreen.js` | `git checkout 4ce7c72` |
+| **`5f74b15`** | Bengali Branding Refinement (`Shakib` $\rightarrow$ `সাকিব`) | 2026-08-05 | `App.js`, `screens/*`, `services/deviceRegistry.js` | `git checkout 5f74b15` |
+| **`088eb6e`** | Complete Localization & Parenthetical Cleanup | 2026-08-05 | `App.js`, `pdfHelper.js`, `screens/*` | `git checkout 088eb6e` |
+| **`760f21b`** | Initial Bengali Text Localization | 2026-08-05 | `App.js`, `screens/*` | `git checkout 760f21b` |
+| **`c2967cf`** | Login UI Centering & 88% Control Width | 2026-08-05 | `screens/LoginScreen.js` | `git checkout c2967cf` |
+| **`b25bf8c`** | Compact Restaurant Logo Restoration | 2026-08-05 | `screens/LoginScreen.js` | `git checkout b25bf8c` |
+| **`ca9a4c6`** | RNStatusBar Import Crash Fix | 2026-08-05 | `screens/LoginScreen.js` | `git checkout ca9a4c6` |
+| **`22f6891`** | Login UI Ring Removal & Top-Right Toggle | 2026-08-05 | `screens/LoginScreen.js` | `git checkout 22f6891` |
 
 ---
 
