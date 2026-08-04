@@ -171,7 +171,7 @@ export default function LoginScreen({ onLoginSuccess }) {
           if (!isAllowed) {
             Alert.alert(
               "অফলাইন মোড নিষ্ক্রিয়",
-              "অফলাইন মোড Shakib কর্তৃক নিষ্ক্রিয় করা হয়েছে।\n\nঅনুগ্রহ করে অনলাইন মোড ব্যবহার করুন।",
+              "অফলাইন মোড সাকিব কর্তৃক নিষ্ক্রিয় করা হয়েছে।\n\nঅনুগ্রহ করে অনলাইন মোড ব্যবহার করুন।",
               [{ text: "ঠিক আছে", onPress: () => setPin('') }]
             );
             setSyncMode('online_only');

@@ -236,7 +236,7 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
   // Confirm PIN and execute Admin Lock
   const handleConfirmPinAndLock = () => {
     if (!pinInput.trim()) {
-      setPinError('Shakib PIN দিন');
+      setPinError('সাকিব PIN দিন');
       return;
     }
 
@@ -254,18 +254,18 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
     setTargetLockDevice(null);
 
     if (success) {
-      Alert.alert('সফল', 'Shakib এক্সেস স্থায়ীভাবে ব্লক করা হয়েছে।');
+      Alert.alert('সফল', 'সাকিব এক্সেস স্থায়ীভাবে ব্লক করা হয়েছে।');
       loadDevices();
     } else {
-      Alert.alert('ত্রুটি', 'Shakib ব্লক ব্যর্থ হয়েছে।');
+      Alert.alert('ত্রুটি', 'সাকিব ব্লক ব্যর্থ হয়েছে।');
     }
   };
 
   // Remove Admin Lock Action
   const handleRemoveAdminLock = (device) => {
     Alert.alert(
-      '🔓 Shakib লক অপসারণ',
-      `আপনি কি নিশ্চিত যে '${device.device_name || device.device_id}' ডিভাইসটির Shakib লক সরাতে চান?`,
+      '🔓 সাকিব লক অপসারণ',
+      `আপনি কি নিশ্চিত যে '${device.device_name || device.device_id}' ডিভাইসটির সাকিব লক সরাতে চান?`,
       [
         { text: 'বাতিল', style: 'cancel' },
         {
@@ -273,10 +273,10 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
           onPress: () => {
             const success = setAdminDeviceLock(device.device_id, false, 'admin');
             if (success) {
-              Alert.alert('সফল', 'Shakib লক সফলভাবে অপসারিত হয়েছে।');
+              Alert.alert('সফল', 'সাকিব লক সফলভাবে অপসারিত হয়েছে।');
               loadDevices();
             } else {
-              Alert.alert('ত্রুটি', 'Shakib লক অপসারণ ব্যর্থ হয়েছে।');
+              Alert.alert('ত্রুটি', 'সাকিব লক অপসারণ ব্যর্থ হয়েছে।');
             }
           }
         }
@@ -711,9 +711,9 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
           onPress={() => setPinModalVisible(false)}
         >
           <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
-            <Text style={styles.modalTitle}>🔒 Shakib নিরাপত্তা যাচাই</Text>
+            <Text style={styles.modalTitle}>🔒 সাকিব নিরাপত্তা যাচাই</Text>
             <Text style={styles.modalDesc}>
-              Shakib এক্সেস স্থায়ীভাবে লক করতে আপনার Shakib PIN লিখুন:
+              সাকিব এক্সেস স্থায়ীভাবে লক করতে আপনার সাকিব PIN লিখুন:
             </Text>
 
             {pinError ? (
@@ -724,7 +724,7 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
 
             <TextInput
               style={styles.pinInput}
-              placeholder="Shakib PIN লিখুন"
+              placeholder="সাকিব PIN লিখুন"
               placeholderTextColor="#71717a"
               keyboardType="number-pad"
               secureTextEntry={true}

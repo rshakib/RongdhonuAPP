@@ -59,10 +59,10 @@ export default function DevicePendingScreen({ deviceId, onApproved, onExit }) {
         {/* Body Message */}
         <View style={styles.bodyCard}>
           <Text style={styles.bodyText}>
-            এই ডিভাইসটি এখনো Shakib কর্তৃক অনুমোদিত হয়নি।
+            এই ডিভাইসটি এখনো সাকিব কর্তৃক অনুমোদিত হয়নি।
           </Text>
           <Text style={[styles.bodyText, { marginTop: 10 }]}>
-            অনুগ্রহ করে Shakib-এর সাথে যোগাযোগ করুন।
+            অনুগ্রহ করে সাকিব-এর সাথে যোগাযোগ করুন।
           </Text>
         </View>
 

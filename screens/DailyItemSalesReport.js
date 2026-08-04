@@ -228,7 +228,7 @@ export default function DailyItemSalesReport({ onBack }) {
     
     const currentCount = getDailyDownloadCount('ITEM_SALES');
     if (currentCount >= 7) {
-      Alert.alert("সীমা অতিক্রম হয়েছে", "আজকের ক্লাউড ডাউনলোড সীমা অতিক্রম হয়েছে। প্রয়োজনে Shakib-এর সাথে যোগাযোগ করুন।");
+      Alert.alert("সীমা অতিক্রম হয়েছে", "আজকের ক্লাউড ডাউনলোড সীমা অতিক্রম হয়েছে। প্রয়োজনে সাকিব-এর সাথে যোগাযোগ করুন।");
       return;
     }
 

@@ -27,7 +27,7 @@ export default function DeviceBlockedScreen({ deviceId, isAdminLock = false, onE
         {/* Status Pill */}
         <View style={styles.statusPill}>
           <Text style={styles.statusPillText}>
-            {isAdminLock ? '✖ স্ট্যাটাস: Shakib লকড (হারানো/চুরি ডিভাইস)' : '✖ স্ট্যাটাস: ব্লকড'}
+            {isAdminLock ? '✖ স্ট্যাটাস: সাকিব লকড (হারানো/চুরি ডিভাইস)' : '✖ স্ট্যাটাস: ব্লকড'}
           </Text>
         </View>
 
@@ -36,25 +36,25 @@ export default function DeviceBlockedScreen({ deviceId, isAdminLock = false, onE
           {isAdminLock ? (
             <>
               <Text style={styles.bodyText}>
-                এই ডিভাইসের Shakib এক্সেস নিষ্ক্রিয় করা হয়েছে।
+                এই ডিভাইসের সাকিব এক্সেস নিষ্ক্রিয় করা হয়েছে।
               </Text>
               <Text style={[styles.bodyText, { marginTop: 8 }]}>
                 ডিভাইসটি হারানো অথবা চুরি হিসেবে চিহ্নিত করা হয়েছে।
               </Text>
               <Text style={[styles.bodyText, { marginTop: 10, color: '#a1a1aa' }]}>
-                অনুগ্রহ করে অন্য Shakib-এর সাথে যোগাযোগ করুন।
+                অনুগ্রহ করে অন্য সাকিব-এর সাথে যোগাযোগ করুন।
               </Text>
             </>
           ) : (
             <>
               <Text style={styles.bodyText}>
-                এই ডিভাইসটি Shakib ব্লক করেছেন।
+                এই ডিভাইসটি সাকিব ব্লক করেছেন।
               </Text>
               <Text style={[styles.bodyText, { marginTop: 8 }]}>
                 এই ডিভাইস থেকে লগইন করা যাবে না।
               </Text>
               <Text style={[styles.bodyText, { marginTop: 10, color: '#a1a1aa' }]}>
-                অনুগ্রহ করে Shakib-এর সাথে যোগাযোগ করুন।
+                অনুগ্রহ করে সাকিব-এর সাথে যোগাযোগ করুন।
               </Text>
             </>
           )}
