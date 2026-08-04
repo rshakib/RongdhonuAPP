@@ -214,14 +214,40 @@ export default function LoginScreen({ onLoginSuccess }) {
       <View style={styles.container}>
         <StatusBar style="light" />
 
-        {/* Outline doodles mimicking the visual references background vectors */}
+        {/* Outline doodles background */}
         <View style={styles.doodleOverlay} pointerEvents="none">
           <Text style={[styles.doodle, { top: 60, left: 35 }]}>🍔</Text>
-          <Text style={[styles.doodle, { top: 90, right: 35 }]}>🍕</Text>
+          <Text style={[styles.doodle, { top: 90, right: 140 }]}>🍕</Text>
           <Text style={[styles.doodle, { top: 200, left: 25 }]}>🥤</Text>
           <Text style={[styles.doodle, { top: 220, right: 25 }]}>🍟</Text>
           <Text style={[styles.doodle, { top: 340, left: 30 }]}>🍜</Text>
           <Text style={[styles.doodle, { top: 380, right: 30 }]}>☕</Text>
+        </View>
+
+        {/* Top Header Bar with Compact Top-Right Sync Mode Segmented Control */}
+        <View style={styles.topHeaderBar}>
+          <View style={styles.topHeaderSpacer} />
+          <View style={styles.compactSyncPill}>
+            <TouchableOpacity 
+              style={[styles.compactSyncBtn, syncMode === 'online_only' && styles.compactSyncBtnActive]}
+              onPress={() => handleModeChange('online_only')}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.compactSyncText, syncMode === 'online_only' && styles.compactSyncTextActive]}>
+                Online
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.compactSyncBtn, syncMode === 'hybrid' && styles.compactSyncBtnActive]}
+              onPress={() => handleModeChange('hybrid')}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.compactSyncText, syncMode === 'hybrid' && styles.compactSyncTextActive]}>
+                Offline
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <KeyboardAvoidingView
@@ -233,193 +259,153 @@ export default function LoginScreen({ onLoginSuccess }) {
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
-            
-            {/* 1. Header (Logo & Brand Names) */}
-            <View style={styles.headerBlock}>
-              <View style={styles.logoRingOuter}>
-                <View style={styles.logoRingInner}>
-                  <Image
-                    source={require('../image/logo.jpeg')}
-                    style={styles.logoImg}
-                    resizeMode="cover"
-                  />
-                </View>
+            <View style={styles.centerCardArea}>
+              {/* 1. Brand Header (App Name & Subtitle - Logo removed) */}
+              <View style={styles.headerBlock}>
+                <Text style={styles.brandTitle}>রংধনু</Text>
+                <Text style={styles.brandSubtitle}>ক্যাফে এন্ড রেস্টুরেন্ট</Text>
               </View>
 
-              <Text style={styles.brandTitle}>রংধনু</Text>
-              <Text style={styles.brandSubtitle}>ক্যাফে এন্ড রেস্টুরেন্ট</Text>
+              {/* 2. Crossed Fork & Spoon Divider */}
+              <View style={styles.dividerRow}>
+                <View style={styles.dividerLine} />
+                <View style={styles.dividerIconContainer}>
+                  <Text style={styles.dividerIcon}>🍴</Text>
+                </View>
+                <View style={styles.dividerLine} />
+              </View>
+
+              {/* 3. Login Section Area */}
+              {isFirstLogin ? (
+                /* USERNAME FORM STEP (First Login) */
+                <View style={styles.usernameForm}>
+                  <Text style={styles.promptText}>ইউজারনেম দিন (Username)</Text>
+
+                  {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+                  <View style={styles.inputWrapper}>
+                    <Text style={styles.inputIcon}>👤</Text>
+                    <TextInput
+                      style={styles.inputField}
+                      placeholder="ইউজারনেম লিখুন"
+                      placeholderTextColor="#555555"
+                      value={username}
+                      onChangeText={(t) => {
+                        setUsername(t);
+                        setError('');
+                      }}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      returnKeyType="next"
+                      onSubmitEditing={handleUsernameNext}
+                    />
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.nextBtn}
+                    onPress={handleUsernameNext}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.nextBtnText}>পরবর্তী ধাপ (Next)</Text>
+                    <Text style={styles.nextBtnIcon}>➔</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                /* PIN CODE KEYPAD STEP (Returning Login / PIN Unlock) */
+                <View style={styles.keypadForm}>
+                  <Text style={styles.promptText}>PIN দিন</Text>
+
+                  {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+                  {/* 4-Dot PIN Indicator */}
+                  <View style={styles.pinDotsRow}>
+                    {[1, 2, 3, 4].map((dotIndex) => {
+                      const isFilled = pin.length >= dotIndex;
+                      return (
+                        <View
+                          key={dotIndex}
+                          style={[
+                            styles.pinDot,
+                            isFilled ? styles.pinDotFilled : styles.pinDotEmpty,
+                          ]}
+                        />
+                      );
+                    })}
+                  </View>
+
+                  {/* Grid Keypad */}
+                  <View style={styles.keypadGrid}>
+                    {/* Row 1 */}
+                    <View style={styles.keypadRow}>
+                      <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('1')}>
+                        <Text style={styles.keypadNumber}>1</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('2')}>
+                        <Text style={styles.keypadNumber}>2</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('3')}>
+                        <Text style={styles.keypadNumber}>3</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Row 2 */}
+                    <View style={styles.keypadRow}>
+                      <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('4')}>
+                        <Text style={styles.keypadNumber}>4</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('5')}>
+                        <Text style={styles.keypadNumber}>5</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('6')}>
+                        <Text style={styles.keypadNumber}>6</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Row 3 */}
+                    <View style={styles.keypadRow}>
+                      <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('7')}>
+                        <Text style={styles.keypadNumber}>7</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('8')}>
+                        <Text style={styles.keypadNumber}>8</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('9')}>
+                        <Text style={styles.keypadNumber}>9</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Row 4 */}
+                    <View style={styles.keypadRow}>
+                      {/* Dummy Cell */}
+                      <View style={[styles.keypadCell, { borderColor: 'transparent', backgroundColor: 'transparent' }]} />
+                      
+                      <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('0')}>
+                        <Text style={styles.keypadNumber}>0</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity style={styles.keypadCell} onPress={handleBackspace}>
+                        <Text style={styles.backspaceIcon}>⌫</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Bottom Switch User button */}
+                  <TouchableOpacity
+                    style={styles.switchUserBtn}
+                    onPress={handleSwitchUser}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.switchUserIcon}>👥</Text>
+                    <Text style={styles.switchUserText}>Switch User</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
 
-            {/* 2. Crossed Fork & Spoon Divider */}
-            <View style={styles.dividerRow}>
-              <View style={styles.dividerLine} />
-              <View style={styles.dividerIconContainer}>
-                <Text style={styles.dividerIcon}>🍴</Text>
-              </View>
-              <View style={styles.dividerLine} />
+            {/* Footer / Created By */}
+            <View style={styles.footerBlock}>
+              <Text style={styles.createdText}>Created by <Text style={styles.createdName}>রিয়াজুল হাসান সাকিব</Text></Text>
             </View>
-
-            {/* 3. Login Section Area */}
-            {isFirstLogin ? (
-              /* USERNAME FORM STEP (First Login) */
-              <View style={styles.usernameForm}>
-                <Text style={styles.promptText}>ইউজারনেম দিন (Username)</Text>
-
-                {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-                <View style={styles.inputWrapper}>
-                  <Text style={styles.inputIcon}>👤</Text>
-                  <TextInput
-                    style={styles.inputField}
-                    placeholder="ইউজারনেম লিখুন"
-                    placeholderTextColor="#555555"
-                    value={username}
-                    onChangeText={(t) => {
-                      setUsername(t);
-                      setError('');
-                    }}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    returnKeyType="next"
-                    onSubmitEditing={handleUsernameNext}
-                  />
-                </View>
-
-                <TouchableOpacity
-                  style={styles.nextBtn}
-                  onPress={handleUsernameNext}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.nextBtnText}>পরবর্তী ধাপ (Next)</Text>
-                  <Text style={styles.nextBtnIcon}>➔</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              /* PIN CODE KEYPAD STEP (Returning Login / PIN Unlock) */
-              <View style={styles.keypadForm}>
-                <Text style={styles.promptText}>PIN দিন</Text>
-
-
-                {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-                {/* 4-Dot PIN Indicator */}
-                <View style={styles.pinDotsRow}>
-                  {[1, 2, 3, 4].map((dotIndex) => {
-                    const isFilled = pin.length >= dotIndex;
-                    return (
-                      <View
-                        key={dotIndex}
-                        style={[
-                          styles.pinDot,
-                          isFilled ? styles.pinDotFilled : styles.pinDotEmpty,
-                        ]}
-                      />
-                    );
-                  })}
-                </View>
-
-                {/* Grid Keypad */}
-                <View style={styles.keypadGrid}>
-                  {/* Row 1 */}
-                  <View style={styles.keypadRow}>
-                    <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('1')}>
-                      <Text style={styles.keypadNumber}>1</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('2')}>
-                      <Text style={styles.keypadNumber}>2</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('3')}>
-                      <Text style={styles.keypadNumber}>3</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Row 2 */}
-                  <View style={styles.keypadRow}>
-                    <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('4')}>
-                      <Text style={styles.keypadNumber}>4</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('5')}>
-                      <Text style={styles.keypadNumber}>5</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('6')}>
-                      <Text style={styles.keypadNumber}>6</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Row 3 */}
-                  <View style={styles.keypadRow}>
-                    <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('7')}>
-                      <Text style={styles.keypadNumber}>7</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('8')}>
-                      <Text style={styles.keypadNumber}>8</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('9')}>
-                      <Text style={styles.keypadNumber}>9</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Row 4 */}
-                  <View style={styles.keypadRow}>
-                    {/* Dummy Cell */}
-                    <View style={[styles.keypadCell, { borderColor: 'transparent', backgroundColor: 'transparent' }]} />
-                    
-                    <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('0')}>
-                      <Text style={styles.keypadNumber}>0</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity style={styles.keypadCell} onPress={handleBackspace}>
-                      <Text style={styles.backspaceIcon}>⌫</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* Bottom Switch User button */}
-                <TouchableOpacity
-                  style={styles.switchUserBtn}
-                  onPress={handleSwitchUser}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.switchUserIcon}>👥</Text>
-                  <Text style={styles.switchUserText}>Switch User</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {/* Mode Selector Card */}
-            <View style={styles.modeSelectorCard}>
-              <Text style={styles.modeSelectorTitle}>সিঙ্ক মোড নির্বাচন করুন (Select Sync Mode)</Text>
-              <View style={styles.modeSelectorRow}>
-                <TouchableOpacity 
-                  style={[styles.modeOption, syncMode === 'online_only' && styles.modeOptionActive]}
-                  onPress={() => handleModeChange('online_only')}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.modeOptionCheck, syncMode === 'online_only' && styles.modeOptionCheckActive]}>
-                    {syncMode === 'online_only' ? '☑' : '☐'}
-                  </Text>
-                  <Text style={[styles.modeOptionText, syncMode === 'online_only' && styles.modeOptionTextActive]}>
-                    Online Only
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity 
-                  style={[styles.modeOption, syncMode === 'hybrid' && styles.modeOptionActive]}
-                  onPress={() => handleModeChange('hybrid')}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.modeOptionCheck, syncMode === 'hybrid' && styles.modeOptionCheckActive]}>
-                    {syncMode === 'hybrid' ? '☑' : '☐'}
-                  </Text>
-                  <Text style={[styles.modeOptionText, syncMode === 'hybrid' && styles.modeOptionTextActive]}>
-                    Online + Offline
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Footer */}
-            <Text style={styles.footerText}>ধন্যবাদ আমাদের সাথে থাকার জন্য 💛</Text>
           </ScrollView>
         </KeyboardAvoidingView>
       </View>
@@ -435,13 +421,49 @@ const styles = StyleSheet.create({
   keyboardView: {
     flex: 1,
   },
-  scrollContainer: {
-    flexGrow: 1,
+  topHeaderBar: {
+    width: '100%',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 28,
-    paddingTop: Platform.OS === 'ios' ? 60 : 40,
-    paddingBottom: 24,
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 54 : (RNStatusBar?.currentHeight ? RNStatusBar.currentHeight + 8 : 40),
+    paddingBottom: 4,
+    zIndex: 10,
+  },
+  topHeaderSpacer: {
+    flex: 1,
+  },
+  compactSyncPill: {
+    flexDirection: 'row',
+    backgroundColor: '#121212',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#262626',
+    padding: 3,
+  },
+  compactSyncBtn: {
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+  },
+  compactSyncBtnActive: {
+    backgroundColor: '#FFD700',
+  },
+  compactSyncText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#888888',
+  },
+  compactSyncTextActive: {
+    color: '#000000',
+    fontWeight: 'bold',
+  },
+  centerCardArea: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 'auto',
   },
   doodleOverlay: {
     position: 'absolute',
@@ -460,35 +482,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
   },
-  logoRingOuter: {
-    width: 110,
-    height: 110,
-    borderRadius: 55,
-    borderWidth: 1.5,
-    borderColor: '#FFD700', // Premium Gold boundary
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 3,
-  },
-  logoRingInner: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 50,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#262626',
-    backgroundColor: '#0D0D0D',
-  },
-  logoImg: {
-    width: '100%',
-    height: '100%',
-  },
   brandTitle: {
-    fontSize: 34,
+    fontSize: 36,
     fontWeight: 'bold',
     color: '#FFD700', // True golden color
     letterSpacing: 1.5,
-    marginTop: 14,
+    marginTop: 0,
     textShadowColor: 'rgba(255, 215, 0, 0.2)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 6,
@@ -613,7 +612,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 20,
   },
   pinDot: {
     width: 14,
@@ -640,7 +639,7 @@ const styles = StyleSheet.create({
   keypadRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 14,
+    marginBottom: 12,
   },
   keypadCell: {
     width: BUTTON_SIZE,
@@ -664,7 +663,7 @@ const styles = StyleSheet.create({
   switchUserBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: 16,
     paddingVertical: 8,
     paddingHorizontal: 16,
   },
@@ -678,68 +677,19 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     letterSpacing: 0.5,
   },
-  footerText: {
-    color: '#555555',
-    fontSize: 10,
-    textAlign: 'center',
-    marginTop: 18,
-    letterSpacing: 0.5,
-  },
-  modeSelectorCard: {
-    width: '100%',
-    backgroundColor: '#0D0D0D',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#1F1F1F',
-    padding: 16,
-    marginTop: 20,
-    marginBottom: 10,
-    alignItems: 'center',
-  },
-  modeSelectorTitle: {
-    color: '#888888',
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 12,
-    letterSpacing: 0.5,
-  },
-  modeSelectorRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-    gap: 10,
-  },
-  modeOption: {
-    flex: 1,
-    flexDirection: 'row',
+  footerBlock: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#161616',
-    borderWidth: 1,
-    borderColor: '#262626',
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
+    paddingVertical: 12,
+    marginTop: 8,
   },
-  modeOptionActive: {
-    backgroundColor: 'rgba(255, 215, 0, 0.08)',
-    borderColor: '#FFD700',
-  },
-  modeOptionCheck: {
-    fontSize: 16,
+  createdText: {
     color: '#555555',
-    marginRight: 6,
-  },
-  modeOptionCheckActive: {
-    color: '#FFD700',
-  },
-  modeOptionText: {
     fontSize: 11,
-    color: '#888888',
-    fontWeight: '500',
+    letterSpacing: 0.3,
   },
-  modeOptionTextActive: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
+  createdName: {
+    color: '#777777',
+    fontWeight: '600',
   },
 });
