@@ -213,6 +213,7 @@ The application operates on an offline-first SQLite database containing **22 act
         ├── schema.js              # Production frozen ML dataset schemas
         ├── mapper.js              # SQL source mappings & window function derivations
         ├── validator.js           # Anomaly checks & cross-field mathematical rules
+        ├── builder.js            # Pure Dataset Builder (buildDailyDataset, buildItemDataset)
         └── README.md              # Architectural directives & phase roadmap
 ```
 
@@ -226,6 +227,7 @@ The application operates on an offline-first SQLite database containing **22 act
 
 | Commit Hash | Feature / Refinement | Date | Primary Files Modified | Rollback Command |
 | :--- | :--- | :---: | :--- | :--- |
+| **`5d7a72d`** | Raw Dataset & Calendar Refinements | 2026-08-05 | `services/aiDataset/*`, `database.js` | `git checkout 5d7a72d` |
 | **`994bbf9`** | Rollback Reference Section in Master Log | 2026-08-05 | `PROJECT_ARCHITECTURE_LOG.md` | `git checkout 994bbf9` |
 | **`eb0fefb`** | Master Architecture Log & AI Dataset Phase 1 | 2026-08-05 | `PROJECT_ARCHITECTURE_LOG.md`, `database.js`, `services/aiDataset/*` | `git checkout eb0fefb` |
 | **`4ce7c72`** | Runtime Offline Mode Alert Fix (`সাকিব`) | 2026-08-05 | `screens/LoginScreen.js` | `git checkout 4ce7c72` |
@@ -247,5 +249,5 @@ The application operates on an offline-first SQLite database containing **22 act
 
 ## 21. Future Roadmap
 
-* **Phase 2**: Implement read-only SQL query builders & data exporters inside `services/aiDataset/` (Admin App CSV generator).
+* **Phase 2 (Completed)**: Pure Dataset Builder (`services/aiDataset/builder.js` exposing `buildDailyDataset` and `buildItemDataset`).
 * **Phase 3**: Connect Admin App UI export trigger to Google Sheets WebApp using `processAIDatasetQueue()`.
