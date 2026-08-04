@@ -1,0 +1,290 @@
+/**
+ * AI Dataset Sync - Production Data Mapping Documentation & Reference
+ * 
+ * Target Profile: ADMIN APP ONLY
+ * Purpose: Document source table origins, SQL extraction rules, and derivation logic
+ * for every field in the ML dataset schemas.
+ * 
+ * ZERO RUNTIME IMPACT: Pure architecture documentation and mapper references.
+ */
+
+export const DAILY_SALES_FIELD_MAPPING = {
+  // Field Name <--- Source Origin & Extraction Logic
+  dataset_id: {
+    sourceTable: 'daily_submit',
+    sourceColumn: 'date',
+    transformation: 'Stable ID = business_date (e.g. "2026-08-05")'
+  },
+  business_date: {
+    sourceTable: 'daily_submit',
+    sourceColumn: 'date',
+    fallbackTable: 'daily_summary',
+    fallbackColumn: 'date',
+    transformation: 'Direct YYYY-MM-DD string'
+  },
+  calendar_date: {
+    sourceTable: 'daily_submit',
+    sourceColumn: 'submitted_at',
+    transformation: 'substr(submitted_at, 1, 10) or date'
+  },
+  schema_version: { transformation: 'Fixed string "1.0.0"' },
+  dataset_version: { transformation: 'Fixed string "1.0.0"' },
+  exported_at: { transformation: 'ISO Timestamp generated at export time' },
+
+  year: {
+    sourceTable: 'daily_submit',
+    sourceColumn: 'date',
+    transformation: "CAST(strftime('%Y', date) AS INTEGER)"
+  },
+  month: {
+    sourceTable: 'daily_submit',
+    sourceColumn: 'date',
+    transformation: "CAST(strftime('%m', date) AS INTEGER)"
+  },
+  week_number: {
+    sourceTable: 'daily_submit',
+    sourceColumn: 'date',
+    transformation: "CAST(strftime('%W', date) AS INTEGER)"
+  },
+  day_of_month: {
+    sourceTable: 'daily_submit',
+    sourceColumn: 'date',
+    transformation: "CAST(strftime('%d', date) AS INTEGER)"
+  },
+  day_of_week: {
+    sourceTable: 'daily_summary',
+    sourceColumn: 'dayOfWeek',
+    transformation: "Map string or strftime('%w', date) -> 0..6"
+  },
+  day_name: {
+    sourceTable: 'daily_summary',
+    sourceColumn: 'dayOfWeek',
+    transformation: "Direct string value e.g. 'Friday'"
+  },
+  is_friday: {
+    sourceTable: 'daily_summary',
+    sourceColumn: 'isFriday',
+    transformation: 'CASE WHEN strftime("%w", date) = "5" THEN 1 ELSE 0 END'
+  },
+  is_weekend: {
+    sourceTable: 'daily_summary',
+    sourceColumn: 'dayOfWeek',
+    transformation: 'CASE WHEN strftime("%w", date) IN ("5", "6") THEN 1 ELSE 0 END'
+  },
+
+  // Weather Features (OPTIONAL - SAFE DEFAULTS)
+  temperature: {
+    sourceTable: 'weather_data',
+    sourceColumn: 'temperature',
+    fallbackTable: 'daily_summary',
+    fallbackColumn: 'temperature',
+    defaultIfMissing: null
+  },
+  humidity: {
+    sourceTable: 'weather_data',
+    sourceColumn: 'humidity',
+    fallbackTable: 'daily_summary',
+    fallbackColumn: 'humidity',
+    defaultIfMissing: null
+  },
+  weather_condition: {
+    sourceTable: 'weather_data',
+    sourceColumn: 'condition',
+    fallbackTable: 'daily_summary',
+    fallbackColumn: 'condition',
+    defaultIfMissing: 'UNKNOWN'
+  },
+  is_rainy: {
+    sourceTable: 'weather_data',
+    sourceColumn: 'isRainy',
+    fallbackTable: 'daily_summary',
+    fallbackColumn: 'isRainy',
+    defaultIfMissing: 0
+  },
+  wind_speed: {
+    sourceTable: 'weather_data',
+    sourceColumn: 'windSpeed',
+    fallbackTable: 'daily_summary',
+    fallbackColumn: 'windSpeed',
+    defaultIfMissing: null
+  },
+
+  // Holidays & Holiday Source Tracking
+  is_holiday: {
+    sourceTable: 'daily_summary',
+    sourceColumn: 'isHoliday',
+    transformation: 'COALESCE(isHoliday, 0)'
+  },
+  holiday_name: {
+    sourceTable: 'daily_summary',
+    sourceColumn: 'specialDayNote',
+    transformation: 'COALESCE(specialDayNote, "")'
+  },
+  holiday_source: {
+    sourceTable: 'daily_summary',
+    sourceColumn: 'specialDayNote',
+    transformation: 'CASE WHEN specialDayNote LIKE "%Government%" THEN "government" WHEN specialDayNote LIKE "%Calendar%" THEN "calendar" WHEN specialDayNote IS NOT NULL AND specialDayNote != "" THEN "manual" ELSE "none" END'
+  },
+  is_off_day: {
+    sourceTable: 'off_days',
+    sourceColumn: 'date',
+    transformation: '1 IF exists in off_days table ELSE 0'
+  },
+  off_day_reason: {
+    sourceTable: 'off_days',
+    sourceColumn: 'reason',
+    transformation: 'COALESCE(off_days.reason, "")'
+  },
+
+  // Financial & Sales Aggregations
+  total_orders: {
+    sourceTable: 'daily_summary',
+    sourceColumn: 'totalOrders',
+    transformation: 'COUNT(orders.id) WHERE payment_status = "Paid"'
+  },
+  total_sales: {
+    sourceTable: 'daily_submit',
+    sourceColumn: 'total_sell',
+    fallbackTable: 'daily_summary',
+    fallbackColumn: 'totalSales'
+  },
+  cash_sales: {
+    sourceTable: 'daily_submit',
+    sourceColumn: 'cash_payment',
+    fallbackTable: 'daily_summary',
+    fallbackColumn: 'cashTotal'
+  },
+  bkash_sales: {
+    sourceTable: 'daily_submit',
+    sourceColumn: 'bkash_payment',
+    fallbackTable: 'daily_summary',
+    fallbackColumn: 'bkashTotal'
+  },
+  nagad_sales: {
+    sourceTable: 'daily_submit',
+    sourceColumn: 'nagad_payment',
+    fallbackTable: 'daily_summary',
+    fallbackColumn: 'nagadTotal'
+  },
+  rocket_sales: {
+    sourceTable: 'daily_submit',
+    sourceColumn: 'rocket_payment',
+    fallbackTable: 'daily_summary',
+    fallbackColumn: 'rocketTotal'
+  },
+  card_sales: {
+    sourceTable: 'orders',
+    sourceColumn: 'card_amount',
+    transformation: 'SUM(card_amount) grouped by business date'
+  },
+  delivery_sales: {
+    sourceTable: 'daily_submit',
+    sourceColumn: 'delivery_sell',
+    fallbackTable: 'daily_summary',
+    fallbackColumn: 'totalDelivery'
+  },
+  delivery_charge: {
+    sourceTable: 'daily_submit',
+    sourceColumn: 'delivery_charge',
+    fallbackTable: 'daily_summary',
+    fallbackColumn: 'total_delivery_charge'
+  },
+  total_discount: {
+    sourceTable: 'daily_summary',
+    sourceColumn: 'totalDiscount',
+    transformation: 'SUM(orders.discount)'
+  },
+  net_sales: {
+    sourceTable: 'daily_submit',
+    sourceColumn: 'total_sell',
+    transformation: 'total_sales - total_discount'
+  },
+  average_order_value: {
+    sourceTable: 'daily_summary',
+    sourceColumn: 'averageOrderValue',
+    transformation: 'total_sales / NULLIF(total_orders, 0)'
+  },
+  peak_hour: {
+    sourceTable: 'daily_summary',
+    sourceColumn: 'peakHour',
+    transformation: 'Hour interval with maximum order count'
+  },
+
+  // Ijara, Expense & Profit
+  opening_ijara: {
+    sourceTable: 'daily_submit',
+    sourceColumn: 'eja',
+    fallbackTable: 'eja_history',
+    fallbackColumn: 'amount'
+  },
+  total_expense: {
+    sourceTable: 'daily_submit',
+    sourceColumn: 'total_expense',
+    fallbackTable: 'daily_summary',
+    fallbackColumn: 'totalExpense'
+  },
+  closing_cash: {
+    sourceTable: 'daily_submit',
+    sourceColumn: 'net_cash'
+  },
+  owner_deposit: {
+    sourceTable: 'daily_submit',
+    sourceColumn: 'net_deposit',
+    fallbackTable: 'daily_summary',
+    fallbackColumn: 'ownerDeposit'
+  },
+  expense_ratio: {
+    sourceTable: 'daily_submit',
+    transformation: '(total_expense / NULLIF(total_sell, 0)) * 100'
+  },
+
+  // Time Series Window Derived Fields
+  prev_day_sales: {
+    transformation: 'LAG(total_sell, 1) OVER (ORDER BY date)'
+  },
+  prev_week_sales: {
+    transformation: 'LAG(total_sell, 7) OVER (ORDER BY date)'
+  },
+  sales_7day_avg: {
+    transformation: 'AVG(total_sell) OVER (ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)'
+  },
+  sales_30day_avg: {
+    transformation: 'AVG(total_sell) OVER (ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW)'
+  },
+  sales_growth_7d: {
+    transformation: '((total_sell - sales_7day_avg) / NULLIF(sales_7day_avg, 0)) * 100'
+  },
+
+  // Data Quality & Validation Fields
+  is_complete: { transformation: '1 if required fields present, 0 otherwise' },
+  is_valid: { transformation: '1 if crossField validation passes, 0 otherwise' },
+  validation_errors: { transformation: 'JSON array of validation error codes e.g. ["PAYMENT_MISMATCH"]' },
+
+  // Target Placeholders
+  target_sales: { transformation: 'NULL placeholder until ML training' }
+};
+
+export const ITEM_SALES_FIELD_MAPPING = {
+  dataset_id: { transformation: 'Stable ID = business_date + "_" + item_id (e.g. "2026-08-05_item_123")' },
+  business_date: { sourceTable: 'orders', sourceColumn: 'created_at', transformation: 'substr(created_at, 1, 10)' },
+  item_id: { sourceTable: 'menu_items', sourceColumn: 'id', transformation: 'JOIN ON menu_items.name = order_items.itemName' },
+  item_name: { sourceTable: 'order_items', sourceColumn: 'itemName' },
+  category_name: { sourceTable: 'menu_items', sourceColumn: 'category', transformation: 'COALESCE(menu_items.category, "Uncategorized")' },
+  schema_version: { transformation: 'Fixed string "1.0.0"' },
+  dataset_version: { transformation: 'Fixed string "1.0.0"' },
+  exported_at: { transformation: 'ISO Timestamp generated at export time' },
+  unit_price: { sourceTable: 'order_items', sourceColumn: 'unit_price', fallbackColumn: 'menu_items.price' },
+  total_quantity_sold: { sourceTable: 'order_items', sourceColumn: 'quantity', transformation: 'SUM(order_items.quantity)' },
+  total_item_revenue: { sourceTable: 'order_items', sourceColumn: 'revenue', transformation: 'SUM(order_items.revenue)' },
+  day_of_week: { sourceTable: 'daily_summary', sourceColumn: 'dayOfWeek' },
+  is_friday: { sourceTable: 'daily_summary', sourceColumn: 'isFriday' },
+  is_holiday: { sourceTable: 'daily_summary', sourceColumn: 'isHoliday' },
+  is_rainy: { sourceTable: 'daily_summary', sourceColumn: 'isRainy' },
+  item_prev_week_qty: { transformation: 'LAG(total_quantity_sold, 7) OVER (PARTITION BY item_name ORDER BY date)' },
+  item_7day_avg_qty: { transformation: 'AVG(total_quantity_sold) OVER (PARTITION BY item_name ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)' },
+  item_30day_avg_qty: { transformation: 'AVG(total_quantity_sold) OVER (PARTITION BY item_name ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW)' },
+  is_complete: { transformation: '1 if required fields present, 0 otherwise' },
+  is_valid: { transformation: '1 if valid' },
+  validation_errors: { transformation: 'JSON array of validation error codes' },
+  target_quantity: { transformation: 'NULL placeholder until ML training' }
+};

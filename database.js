@@ -440,24 +440,26 @@ const TABLE_SCHEMAS = {
       is_synced INTEGER DEFAULT 0
     );
   `,
-  ml_export_history: `
-    CREATE TABLE IF NOT EXISTS ml_export_history (
+  ai_dataset_history: `
+    CREATE TABLE IF NOT EXISTS ai_dataset_history (
       id TEXT PRIMARY KEY, -- Type_Date_Hour_Item
       date TEXT,
-      type TEXT, -- SUMMARY, ITEM_SALES, WEATHER
+      type TEXT, -- AI_DAILY_SALES_DATASET, AI_ITEM_SALES_DATASET
       exported_at TEXT,
       created_at TEXT,
       updated_at TEXT,
       is_synced INTEGER DEFAULT 0
     );
   `,
-  ml_export_queue: `
-    CREATE TABLE IF NOT EXISTS ml_export_queue (
-      id TEXT PRIMARY KEY, -- Type_Date_Timestamp
-      type TEXT, -- SUMMARY, ITEM_SALES, WEATHER
+  ai_dataset_queue: `
+    CREATE TABLE IF NOT EXISTS ai_dataset_queue (
+      id TEXT PRIMARY KEY, -- dataset_id
+      type TEXT, -- AI_DAILY_SALES_DATASET, AI_ITEM_SALES_DATASET
       business_date TEXT,
       payload TEXT, -- JSON payload for the export
-      status TEXT DEFAULT 'PENDING',
+      status TEXT DEFAULT 'PENDING', -- PENDING, IN_PROGRESS, SUCCESS, FAILED, RETRY
+      retry_count INTEGER DEFAULT 0,
+      last_error TEXT DEFAULT NULL,
       created_at TEXT,
       updated_at TEXT,
       is_synced INTEGER DEFAULT 0
@@ -854,24 +856,32 @@ export function migrateSupplierDue() {
   }
 }
 
-export function migrateMLExportTables() {
+export function migrateAIDatasetTables() {
   try {
-    const queueCols = db.getAllSync("PRAGMA table_info(ml_export_queue)");
+    const queueCols = db.getAllSync("PRAGMA table_info(ai_dataset_queue)");
     if (queueCols && queueCols.length > 0) {
       if (!queueCols.some(c => c.name === 'is_synced')) {
-        console.log("[DB Migration] Adding is_synced to ml_export_queue...");
-        db.execSync("ALTER TABLE ml_export_queue ADD COLUMN is_synced INTEGER DEFAULT 0");
+        console.log("[DB Migration] Adding is_synced to ai_dataset_queue...");
+        db.execSync("ALTER TABLE ai_dataset_queue ADD COLUMN is_synced INTEGER DEFAULT 0");
+      }
+      if (!queueCols.some(c => c.name === 'retry_count')) {
+        console.log("[DB Migration] Adding retry_count to ai_dataset_queue...");
+        db.execSync("ALTER TABLE ai_dataset_queue ADD COLUMN retry_count INTEGER DEFAULT 0");
+      }
+      if (!queueCols.some(c => c.name === 'last_error')) {
+        console.log("[DB Migration] Adding last_error to ai_dataset_queue...");
+        db.execSync("ALTER TABLE ai_dataset_queue ADD COLUMN last_error TEXT DEFAULT NULL");
       }
     }
-    const historyCols = db.getAllSync("PRAGMA table_info(ml_export_history)");
+    const historyCols = db.getAllSync("PRAGMA table_info(ai_dataset_history)");
     if (historyCols && historyCols.length > 0) {
       if (!historyCols.some(c => c.name === 'is_synced')) {
-        console.log("[DB Migration] Adding is_synced to ml_export_history...");
-        db.execSync("ALTER TABLE ml_export_history ADD COLUMN is_synced INTEGER DEFAULT 0");
+        console.log("[DB Migration] Adding is_synced to ai_dataset_history...");
+        db.execSync("ALTER TABLE ai_dataset_history ADD COLUMN is_synced INTEGER DEFAULT 0");
       }
     }
   } catch (err) {
-    console.error("[DB Migration] ML Export tables migration failed:", err);
+    console.error("[DB Migration] AI Dataset tables migration failed:", err);
   }
 }
 
@@ -889,7 +899,7 @@ export function initDatabase(skipSeeding = false) {
     migrateDailySubmitUnified();
     migrateSupplierDue();
     migrateDeleteHistory();
-    migrateMLExportTables();
+    migrateAIDatasetTables();
 
     // 1. Create tables
     for (const [tableName, sql] of Object.entries(TABLE_SCHEMAS)) {
@@ -1029,7 +1039,7 @@ export function initDatabase(skipSeeding = false) {
     // 6. Audit & Migration: Add unit_price to order_items if missing and fix Water sales
     try {
       // PURGE FORBIDDEN QUEUE ITEMS (Fixes 403 errors)
-      const forbiddenTables = ['ml_export_queue', 'ml_export_history', 'weather_timeline_queue'];
+      const forbiddenTables = ['ai_dataset_queue', 'ai_dataset_history', 'weather_timeline_queue'];
       const placeholders = forbiddenTables.map(() => '?').join(',');
       db.runSync(`DELETE FROM sync_queue WHERE table_name IN (${placeholders})`, forbiddenTables);
       console.log("[DB Audit] Purged forbidden local-only items from sync_queue.");
@@ -1217,7 +1227,7 @@ export function cleanupDuplicateMenuItems() {
 export function enqueueSync(tableName, recordId, action) {
   try {
     // IGNORE local-only tables to prevent Firestore 403 errors
-    const forbiddenTables = ['ml_export_queue', 'ml_export_history', 'weather_timeline_queue'];
+    const forbiddenTables = ['ai_dataset_queue', 'ai_dataset_history', 'weather_timeline_queue'];
     if (forbiddenTables.includes(tableName)) return;
 
     // Delete any pending write for this specific record in the queue to avoid stale runs
@@ -1538,7 +1548,7 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
         if (!queueId) continue;
 
         // SURGICAL CLEANUP: Remove local-only tables from sync queue (Prevents 403 blocks)
-        const forbiddenTables = ['ml_export_queue', 'ml_export_history', 'weather_timeline_queue'];
+        const forbiddenTables = ['ai_dataset_queue', 'ai_dataset_history', 'weather_timeline_queue'];
         if (forbiddenTables.includes(tableName)) {
           console.log(`[Queue Cleanup] Removing forbidden local-only item queueId=${queueId} collection=${tableName}`);
           dbInstance.runSync("DELETE FROM sync_queue WHERE id = ?", [Number(queueId)]);
@@ -1590,7 +1600,7 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
           } else {
             let row = null;
             const rIdStr = String(recordId);
-            if (tableName === 'daily_submit' || tableName === 'daily_summary' || tableName === 'ml_export_history') {
+            if (tableName === 'daily_submit' || tableName === 'daily_summary' || tableName === 'ai_dataset_history') {
               row = dbInstance.getFirstSync(`SELECT * FROM ${tableName} WHERE date = ?`, [rIdStr]);
             } else if (tableName === 'daily_submit_priority') {
               row = dbInstance.getFirstSync(`SELECT * FROM ${tableName} WHERE business_date = ?`, [rIdStr]);
@@ -1655,7 +1665,7 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
               firestoreWritesToday++;
               syncUploadsToday++;
               
-              if (tableName === 'daily_submit' || tableName === 'daily_summary' || tableName === 'ml_export_history') {
+              if (tableName === 'daily_submit' || tableName === 'daily_summary' || tableName === 'ai_dataset_history') {
                 dbInstance.runSync(`UPDATE ${tableName} SET is_synced = 1 WHERE date = ?`, [rIdStr]);
               } else if (tableName === 'daily_submit_priority') {
                 dbInstance.runSync(`UPDATE ${tableName} SET is_synced = 1 WHERE business_date = ?`, [rIdStr]);
@@ -1898,7 +1908,7 @@ async function syncCollections(collectionsList, cycleName = 'Unnamed Cycle') {
           const targetId = row.record_id;
           console.log(`[Pull Sync app_config] Remote deletion pulled for table "${targetTable}", record ID/Date "${targetId}"`);
           try {
-            if (targetTable === 'daily_submit' || targetTable === 'daily_summary' || targetTable === 'ml_export_history') {
+            if (targetTable === 'daily_submit' || targetTable === 'daily_summary' || targetTable === 'ai_dataset_history') {
               db.runSync(`DELETE FROM ${targetTable} WHERE date = ?`, [String(targetId)]);
             } else {
               db.runSync(`DELETE FROM ${targetTable} WHERE id = ?`, [String(targetId)]);
@@ -1955,7 +1965,7 @@ async function syncCollections(collectionsList, cycleName = 'Unnamed Cycle') {
             const targetId = row.record_id;
             console.log(`[Pull Sync] Remote deletion pulled for table "${targetTable}", record ID/Date "${targetId}"`);
             try {
-              if (targetTable === 'daily_submit' || targetTable === 'daily_summary' || targetTable === 'ml_export_history') {
+              if (targetTable === 'daily_submit' || targetTable === 'daily_summary' || targetTable === 'ai_dataset_history') {
                 db.runSync(`DELETE FROM ${targetTable} WHERE date = ?`, [String(targetId)]);
               } else {
                 db.runSync(`DELETE FROM ${targetTable} WHERE id = ?`, [String(targetId)]);
@@ -2938,12 +2948,12 @@ export async function triggerWeatherTimelineService() {
     await captureHourlyWeather();
     
     // 2. Process Queue
-    await processMLExportQueue();
+    await processAIDatasetQueue();
     
     // 3. Register a timer to run this every 30 minutes (to catch up on hours)
-    registerSyncTimer('ml-export-service', 1800000, 'triggerWeatherTimelineService');
+    registerSyncTimer('ai-dataset-service', 1800000, 'triggerWeatherTimelineService');
   } catch (err) {
-    console.error("[ML Export] Service tick failed:", err);
+    console.error("[AI Dataset Sync] Service tick failed:", err);
   }
 }
 
@@ -2958,7 +2968,7 @@ async function captureHourlyWeather() {
   const queueId = `WEATHER_${todayStr}_${String(hour).padStart(2, '0')}`;
   
   // 1. Duplicate Prevention: Check if already in queue or exported
-  const existing = db.getFirstSync("SELECT id FROM ml_export_queue WHERE id = ?", [queueId]);
+  const existing = db.getFirstSync("SELECT id FROM ai_dataset_queue WHERE id = ?", [queueId]);
   if (existing) return;
 
   try {
@@ -3004,117 +3014,178 @@ async function captureHourlyWeather() {
     // 3. Persistent Queue Entry (Local Only)
     const isoNow = now.toISOString();
     db.runSync(`
-      INSERT OR REPLACE INTO ml_export_queue (id, type, business_date, payload, status, created_at, updated_at, is_synced)
+      INSERT OR REPLACE INTO ai_dataset_queue (id, type, business_date, payload, status, created_at, updated_at, is_synced)
       VALUES (?, 'WEATHER', ?, ?, 'PENDING', ?, ?, 0)
     `, [queueId, todayStr, JSON.stringify(timelineRow), isoNow, isoNow]);
     
-    console.log(`[ML Weather] Captured hourly weather for ${displayTime}`);
+    console.log(`[AI Weather] Captured hourly weather for ${displayTime}`);
     
   } catch (err) {
     console.error("[ML Weather] Capture failed:", err.message);
   }
 }
 
-export function enqueueDailyMLExports(dateStr) {
+export function enqueueAIDatasetExport(dateStr) {
   try {
+    // RULE 1: EXPORT ONLY FINALIZED BUSINESS DAYS
+    // Verify that a committed daily_submit record exists for this business date.
+    // Never export draft, unsubmitted, or temporary data.
+    const committedSubmit = db.getFirstSync("SELECT * FROM daily_submit WHERE date = ?", [dateStr]);
+    if (!committedSubmit) {
+      console.warn(`[AI Dataset Sync] Business date ${dateStr} is not finalized in daily_submit. Skipping export.`);
+      return;
+    }
+
     const summary = db.getFirstSync("SELECT * FROM daily_summary WHERE date = ?", [dateStr]);
     if (!summary) {
-      console.warn(`[ML Export] No summary found for ${dateStr}. Skipping export.`);
+      console.warn(`[AI Dataset Sync] No daily_summary record found for ${dateStr}. Skipping export.`);
       return;
     }
 
     const now = new Date().toISOString();
 
-    // 1. Enqueue DailySummary
+    // RULE 2: IMMUTABLE DATASET POLICY WITH STABLE DATASET_ID OVERWRITE
+    // dataset_id = dateStr (Stable key). INSERT OR REPLACE overwrites existing row without creating duplicates.
     const summaryPayload = {
-      Date: summary.date,
-      DayOfWeek: summary.dayOfWeek,
-      WeekOfMonth: summary.weekOfMonth,
-      IsFriday: summary.isFriday ? "TRUE" : "FALSE",
-      IsHoliday: summary.isHoliday ? "TRUE" : "FALSE",
-      SpecialDay: summary.specialDayNote || "",
-      Temperature: summary.temperature,
-      Humidity: summary.humidity,
-      WeatherCondition: summary.condition,
-      IsRainy: summary.isRainy ? "TRUE" : "FALSE",
-      WindSpeed: summary.windSpeed,
-      TotalOrders: summary.totalOrders,
-      TotalSales: summary.totalSales,
-      TotalDiscount: summary.totalDiscount,
-      TotalExpense: summary.totalExpense,
-      TotalDelivery: summary.totalDelivery,
-      AverageOrderValue: summary.averageOrderValue,
-      PeakHour: summary.peakHour || "",
-      FirstOrderTime: summary.firstOrderTime || "",
-      LastOrderTime: summary.lastOrderTime || "",
-      CashTotal: summary.cashTotal,
-      BkashTotal: summary.bkashTotal,
-      NagadTotal: summary.nagadTotal,
-      RocketTotal: summary.rocketTotal || 0,
-      EjaAmount: summary.ejaAmount,
-      NetCash: summary.netCash,
-      OwnerDeposit: summary.ownerDeposit
+      dataset_id: dateStr,
+      business_date: summary.date,
+      calendar_date: summary.date,
+      schema_version: '1.0.0',
+      dataset_version: '1.0.0',
+      exported_at: now,
+      day_of_week: summary.dayOfWeek,
+      is_friday: summary.isFriday ? 1 : 0,
+      is_holiday: summary.isHoliday ? 1 : 0,
+      holiday_name: summary.specialDayNote || "",
+      holiday_source: summary.specialDayNote ? 'manual' : 'none',
+      temperature: summary.temperature !== undefined ? summary.temperature : null,
+      humidity: summary.humidity !== undefined ? summary.humidity : null,
+      weather_condition: summary.condition || "UNKNOWN",
+      is_rainy: summary.isRainy ? 1 : 0,
+      wind_speed: summary.windSpeed !== undefined ? summary.windSpeed : null,
+      total_orders: summary.totalOrders || 0,
+      total_sales: summary.totalSales || 0,
+      cash_sales: summary.cashTotal || 0,
+      bkash_sales: summary.bkashTotal || 0,
+      nagad_sales: summary.nagadTotal || 0,
+      rocket_sales: summary.rocketTotal || 0,
+      card_sales: 0,
+      delivery_sales: summary.totalDelivery || 0,
+      delivery_charge: summary.total_delivery_charge || 0,
+      total_discount: summary.totalDiscount || 0,
+      net_sales: (summary.totalSales || 0) - (summary.totalDiscount || 0),
+      average_order_value: summary.averageOrderValue || 0,
+      peak_hour: summary.peakHour || "",
+      opening_ijara: summary.ejaAmount || 0,
+      total_expense: summary.totalExpense || 0,
+      closing_cash: summary.netCash || 0,
+      owner_deposit: summary.ownerDeposit || 0,
+      expense_ratio: summary.totalSales ? ((summary.totalExpense || 0) / summary.totalSales) * 100 : 0,
+      is_complete: 1,
+      is_valid: 1,
+      validation_errors: "[]",
+      target_sales: null,
+      created_at: now,
+      updated_at: now
     };
 
     db.runSync(`
-      INSERT OR REPLACE INTO ml_export_queue (id, type, business_date, payload, status, created_at, updated_at, is_synced)
-      VALUES (?, 'SUMMARY', ?, ?, 'PENDING', ?, ?, 0)
-    `, [`SUMMARY_${dateStr}`, dateStr, JSON.stringify(summaryPayload), now, now]);
+      INSERT OR REPLACE INTO ai_dataset_queue (id, type, business_date, payload, status, created_at, updated_at, is_synced)
+      VALUES (?, 'AI_DAILY_SALES_DATASET', ?, ?, 'PENDING', ?, ?, 0)
+    `, [dateStr, dateStr, JSON.stringify(summaryPayload), now, now]);
 
-    // 2. Enqueue Item Sales (All menu items, aggregated)
-    const menuItems = db.getAllSync("SELECT name, category FROM menu_items");
+    // 2. Enqueue AI Item Sales Dataset payload targeting AI_Item_Sales_Dataset
+    const menuItems = db.getAllSync("SELECT id, name, category, price FROM menu_items");
     const sales = db.getAllSync(`
-      SELECT itemName, SUM(quantity) as totalQty
+      SELECT itemName, SUM(quantity) as totalQty, SUM(revenue) as totalRev
       FROM order_items
       WHERE date(created_at, 'localtime') = ?
       GROUP BY itemName
     `, [dateStr]);
 
     const salesMap = {};
-    sales.forEach(s => { salesMap[s.itemName] = s.totalQty; });
+    sales.forEach(s => { salesMap[s.itemName] = { qty: s.totalQty, rev: s.totalRev }; });
 
     const itemRows = menuItems.map(item => ({
-      BusinessDate: dateStr,
-      ItemName: item.name,
-      Category: item.category,
-      QuantitySold: salesMap[item.name] || 0
+      dataset_id: `${dateStr}_${item.id || item.name}`,
+      business_date: dateStr,
+      item_id: item.id || '',
+      item_name: item.name,
+      category_name: item.category || 'Uncategorized',
+      schema_version: '1.0.0',
+      dataset_version: '1.0.0',
+      exported_at: now,
+      unit_price: item.price || 0,
+      total_quantity_sold: salesMap[item.name]?.qty || 0,
+      total_item_revenue: salesMap[item.name]?.rev || 0,
+      day_of_week: summary.dayOfWeek,
+      is_friday: summary.isFriday ? 1 : 0,
+      is_holiday: summary.isHoliday ? 1 : 0,
+      is_rainy: summary.isRainy ? 1 : 0,
+      is_complete: 1,
+      is_valid: 1,
+      validation_errors: "[]",
+      target_quantity: null,
+      created_at: now,
+      updated_at: now
     }));
 
     db.runSync(`
-      INSERT OR REPLACE INTO ml_export_queue (id, type, business_date, payload, status, created_at, updated_at, is_synced)
-      VALUES (?, 'ITEM_SALES', ?, ?, 'PENDING', ?, ?, 0)
-    `, [`ITEM_SALES_${dateStr}`, dateStr, JSON.stringify(itemRows), now, now]);
+      INSERT OR REPLACE INTO ai_dataset_queue (id, type, business_date, payload, status, created_at, updated_at, is_synced)
+      VALUES (?, 'AI_ITEM_SALES_DATASET', ?, ?, 'PENDING', ?, ?, 0)
+    `, [`ITEM_${dateStr}`, dateStr, JSON.stringify(itemRows), now, now]);
 
-    console.log(`[ML Export] Enqueued exports for ${dateStr}`);
+    console.log(`[AI Dataset Sync] Enqueued dataset payloads for ${dateStr}`);
     
-    // Process queue immediately to try and export
-    processMLExportQueue();
+    // Process queue immediately using existing HTTP transport dispatcher
+    processAIDatasetQueue();
   } catch (err) {
-    console.error("[ML Export] Failed to enqueue daily exports:", err);
+    console.error("[AI Dataset Sync] Failed to enqueue daily dataset exports:", err);
   }
 }
 
-async function processMLExportQueue() {
+export async function processAIDatasetQueue() {
   const webappUrl = cleanEnvVar(process.env.EXPO_PUBLIC_GOOGLE_SHEETS_WEBAPP_URL);
   if (!webappUrl) return;
 
-  const pending = db.getAllSync("SELECT * FROM ml_export_queue WHERE status = 'PENDING' LIMIT 5");
+  // Crash Recovery: Reset stale IN_PROGRESS records back to RETRY if stuck from app termination
+  try {
+    const staleTime = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    db.runSync(
+      "UPDATE ai_dataset_queue SET status = 'RETRY', updated_at = ? WHERE status = 'IN_PROGRESS' AND updated_at < ?",
+      [new Date().toISOString(), staleTime]
+    );
+  } catch (e) {
+    console.error("[AI Dataset Sync] Stale recovery check failed:", e.message);
+  }
+
+  // Fetch pending or retryable queue items
+  const pending = db.getAllSync(
+    "SELECT * FROM ai_dataset_queue WHERE status IN ('PENDING', 'RETRY', 'FAILED') ORDER BY created_at ASC LIMIT 5"
+  );
   if (pending.length === 0) return;
 
   for (const record of pending) {
+    const nowIso = new Date().toISOString();
+    const currentRetry = Number(record.retry_count || 0);
+
     try {
+      // Transition: PENDING / RETRY -> IN_PROGRESS
+      db.runSync(
+        "UPDATE ai_dataset_queue SET status = 'IN_PROGRESS', updated_at = ? WHERE id = ?",
+        [nowIso, record.id]
+      );
+
       const payload = JSON.parse(record.payload);
       const body = { spreadsheetName: "Rongdhonu_ML_Dataset" };
 
-      if (record.type === 'SUMMARY') {
-        body.sheet1 = "DailySummary";
+      // TARGET EXCLUSIVELY NEW DEDICATED AI WORKSHEET TABS
+      if (record.type === 'AI_DAILY_SALES_DATASET') {
+        body.sheet1 = "AI_Daily_Sales_Dataset";
         body.dailyRow = payload;
-      } else if (record.type === 'ITEM_SALES') {
-        body.sheet2 = "ItemSales";
+      } else if (record.type === 'AI_ITEM_SALES_DATASET') {
+        body.sheet2 = "AI_Item_Sales_Dataset";
         body.itemRows = payload;
-      } else if (record.type === 'WEATHER') {
-        body.sheet3 = "WeatherTimeline";
-        body.timelineRow = payload;
       }
 
       const res = await fetch(webappUrl, {
@@ -3124,41 +3195,66 @@ async function processMLExportQueue() {
       });
 
       if (res.ok) {
-        const now = new Date().toISOString();
+        const successTime = new Date().toISOString();
         
+        // Transition: IN_PROGRESS -> SUCCESS
         try {
-          db.runSync("UPDATE ml_export_queue SET status = 'SUCCESS', updated_at = ?, is_synced = 0 WHERE id = ?", [now, record.id]);
+          db.runSync(
+            "UPDATE ai_dataset_queue SET status = 'SUCCESS', updated_at = ?, last_error = NULL, is_synced = 0 WHERE id = ?",
+            [successTime, record.id]
+          );
         } catch (e) {
-          console.error(`[ML Export DB Error] Failed to update queue for ${record.id}:`, e.message);
+          console.error(`[AI Dataset DB Error] Failed to update SUCCESS status for ${record.id}:`, e.message);
           throw e;
         }
         
         try {
-          // Mark in history for duplicate prevention audit
+          // Record in history log for audit and duplicate prevention
           db.runSync(`
-            INSERT OR REPLACE INTO ml_export_history (id, date, type, exported_at, created_at, updated_at, is_synced)
+            INSERT OR REPLACE INTO ai_dataset_history (id, date, type, exported_at, created_at, updated_at, is_synced)
             VALUES (?, ?, ?, ?, ?, ?, 0)
-          `, [record.id, record.business_date || '', record.type || '', now, record.created_at || now, now]);
+          `, [record.id, record.business_date || '', record.type || '', successTime, record.created_at || successTime, successTime]);
         } catch (e) {
-          console.error(`[ML Export DB Error] Failed to insert history for ${record.id}:`, e.message);
+          console.error(`[AI Dataset DB Error] Failed to insert history for ${record.id}:`, e.message);
           throw e;
         }
         
-        console.log(`[ML Export] Successfully exported record: ${record.id}`);
+        console.log(`[AI Dataset Sync] Successfully exported dataset record (id=${record.id})`);
       } else {
         const errText = await res.text();
-        console.error(`[ML Export] HTTP Error for ${record.id}: ${res.status} ${errText}`);
+        const failMsg = `HTTP Error ${res.status}: ${errText}`;
+        console.error(`[AI Dataset Sync] ${failMsg} for record ${record.id}`);
+
+        // Transition: IN_PROGRESS -> FAILED / RETRY
+        const nextRetry = currentRetry + 1;
+        const nextStatus = nextRetry >= 5 ? 'FAILED' : 'RETRY';
+        db.runSync(
+          "UPDATE ai_dataset_queue SET status = ?, retry_count = ?, last_error = ?, updated_at = ? WHERE id = ?",
+          [nextStatus, nextRetry, failMsg, new Date().toISOString(), record.id]
+        );
       }
     } catch (err) {
-      console.error(`[ML Export] POST failed for ${record.id}:`, err.message);
+      const errMsg = `Network / Execution Exception: ${err.message}`;
+      console.error(`[AI Dataset Sync] Exception for ${record.id}:`, err.message);
+
+      // Transition: IN_PROGRESS -> RETRY / FAILED
+      const nextRetry = currentRetry + 1;
+      const nextStatus = nextRetry >= 5 ? 'FAILED' : 'RETRY';
+      try {
+        db.runSync(
+          "UPDATE ai_dataset_queue SET status = ?, retry_count = ?, last_error = ?, updated_at = ? WHERE id = ?",
+          [nextStatus, nextRetry, errMsg, new Date().toISOString(), record.id]
+        );
+      } catch (e) {
+        console.error(`[AI Dataset DB Error] Failed to update RETRY status for ${record.id}:`, e.message);
+      }
     }
   }
 }
 
 export async function triggerGoogleSheetExportCheck() {
-  // Logic migrated to triggerWeatherTimelineService and enqueueDailyMLExports
-  // We perform one final check for any PENDING items on start
-  processMLExportQueue();
+  // Process any pending AI Dataset items on start
+  processAIDatasetQueue();
 }
 
 // ==========================================
@@ -4215,99 +4311,12 @@ export function submitDailySheet(summary, submittedBy, submissionType = 'MANUAL'
 
     calculateAndSaveDailySummary(todayStr);
 
-    // --- ML EXPORT TRIGGER ---
-    enqueueDailyMLExports(todayStr);
-
-    // --- PENDING NEXT-DAY IJARA ---
-    const cash = Number(summary.breakdown?.cash || 0);
-    const bkash = Number(summary.breakdown?.bkash || 0);
-    const nagad = Number(summary.breakdown?.nagad || 0);
-    const rocket = Number(summary.breakdown?.rocket || 0);
-    const card = Number(summary.breakdown?.card || 0);
-
-    const currentIjara = Number(summary.breakdown?.ijara || 0);
-    const totalExpense = Number(summary.expense || 0);
-    const ownerDeposit = Number(summary.deposit || 0);
-
-    const totalSales = (summary.sell !== undefined && summary.sell !== null && summary.sell > 0)
-      ? Number(summary.sell)
-      : (cash + bkash + nagad + rocket + card);
-
-    const calculatedIjara = (totalSales + currentIjara - totalExpense) - ownerDeposit;
-    const nextDayIjara = Math.max(0, calculatedIjara);
-
-    const [bY, bM, bD] = todayStr.split('-').map(Number);
-    const submittedDateObj = new Date(bY, bM - 1, bD);
-    submittedDateObj.setDate(submittedDateObj.getDate() + 1);
-
-    const nY = submittedDateObj.getFullYear();
-    const nM = String(submittedDateObj.getMonth() + 1).padStart(2, '0');
-    const nDay = String(submittedDateObj.getDate()).padStart(2, '0');
-    const nextBizDateStr = `${nY}-${nM}-${nDay}`;
-
-    console.log("[FORENSIC DEBUG] Calculated nextDayIjara:", nextDayIjara, "nextBizDateStr:", nextBizDateStr, "(totalSales:", totalSales, "currentIjara:", currentIjara, "totalExpense:", totalExpense, "ownerDeposit:", ownerDeposit, ")");
-
-    // 1. Immediately create/update tomorrow's Ijara records in SQLite & Sync Queue
-    const targetIso = `${nextBizDateStr}T00:00:00.000Z`;
-
-    // Process expenses table for nextBizDateStr
-    const stableExpId = `exp_${nextBizDateStr}_ijara`;
-    const existingExp = db.getFirstSync(
-      "SELECT * FROM expenses WHERE id = ? OR (category = 'ijara' AND date(created_at, 'localtime') = ?)",
-      [stableExpId, nextBizDateStr]
-    );
-
-    if (!existingExp) {
-      console.log(`[Submit Daily] Inserting new expense ৳${nextDayIjara} for ${nextBizDateStr}`);
-      db.runSync(
-        "INSERT OR REPLACE INTO expenses (id, category, amount, note, is_due, given_amount, used_amount, returned_amount, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, ?, 0)",
-        [stableExpId, 'ijara', nextDayIjara, 'Auto Carry Forward', targetIso, targetIso]
-      );
-      enqueueSync("expenses", stableExpId, "INSERT");
-      syncRecordImmediately("expenses", stableExpId);
-    } else if (Number(existingExp.amount) !== nextDayIjara) {
-      console.log(`[Submit Daily] Expense amount mismatch. Updating expense ID ${existingExp.id} to ৳${nextDayIjara}`);
-      db.runSync(
-        "UPDATE expenses SET amount = ?, updated_at = ?, is_synced = 0 WHERE id = ?",
-        [nextDayIjara, targetIso, existingExp.id]
-      );
-      enqueueSync("expenses", existingExp.id, "UPDATE");
-      syncRecordImmediately("expenses", existingExp.id);
-    }
-
-    // Process eja_history table for nextBizDateStr
-    const ejaId = `eja_${nextBizDateStr}`;
-    const existingEja = db.getFirstSync(
-      "SELECT * FROM eja_history WHERE id = ? OR date = ?",
-      [ejaId, nextBizDateStr]
-    );
-
-    if (!existingEja) {
-      console.log(`[Submit Daily] Inserting new eja_history ৳${nextDayIjara} for ${nextBizDateStr}`);
-      db.runSync(
-        "INSERT OR REPLACE INTO eja_history (id, date, eja_amount, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, 0)",
-        [ejaId, nextBizDateStr, nextDayIjara, targetIso, targetIso]
-      );
-      enqueueSync("eja_history", ejaId, "INSERT");
-      syncRecordImmediately("eja_history", ejaId);
-    } else if (Number(existingEja.eja_amount) !== nextDayIjara) {
-      console.log(`[Submit Daily] EJA amount mismatch. Updating eja_history ID ${existingEja.id} to ৳${nextDayIjara}`);
-      db.runSync(
-        "UPDATE eja_history SET eja_amount = ?, updated_at = ?, is_synced = 0 WHERE id = ?",
-        [nextDayIjara, targetIso, existingEja.id]
-      );
-      enqueueSync("eja_history", existingEja.id, "UPDATE");
-      syncRecordImmediately("eja_history", existingEja.id);
-    }
-
-    // 2. Store pending keys in app_config as RECOVERY / FALLBACK layer
-    db.runSync("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)", ['pending_ijara_amount', nextDayIjara.toString()]);
-    db.runSync("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)", ['pending_ijara_date', nextBizDateStr]);
-    
-    enqueueSync("app_config", "pending_ijara_amount", "UPDATE");
-    enqueueSync("app_config", "pending_ijara_date", "UPDATE");
-
     checkAndApplyIjaraRollover();
+
+    // --- TRANSACTION-SAFE AI DATASET SYNC TRIGGER ---
+    // Triggered ONLY after all SQLite writes, daily_submit records, supplier ledgers, 
+    // summaries, and ijara rollovers have completed and committed cleanly.
+    enqueueAIDatasetExport(todayStr);
 
     return true;
   } catch (err) {
@@ -5143,14 +5152,14 @@ export async function executeManualPush() {
       'users', 'restaurant_tables', 'orders', 'order_items', 'payments', 
       'expenses', 'deliveries', 'daily_submit', 'daily_summary', 
       'due_payments', 'eja_history', 'off_days', 'weather_data', 
-      'supplier_payment_ledger', 'notifications', 'app_config', 'ml_export_history', 'deletions', 'delete_history', 'owner_employees', 'owner_salary_ledger', 'owner_expenses', 'owner_deposits'
+      'supplier_payment_ledger', 'notifications', 'app_config', 'ai_dataset_history', 'deletions', 'delete_history', 'owner_employees', 'owner_salary_ledger', 'owner_expenses', 'owner_deposits'
     ];
     
     let countEnqueued = 0;
     for (const table of tables) {
       try {
         let rows = [];
-        if (table === 'daily_submit' || table === 'daily_summary' || table === 'ml_export_history') {
+        if (table === 'daily_submit' || table === 'daily_summary' || table === 'ai_dataset_history') {
           rows = db.getAllSync(`SELECT date FROM ${table} WHERE is_synced = 0`);
           for (const r of rows) {
             enqueueSync(table, r.date, 'INSERT');
