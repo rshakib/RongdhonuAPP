@@ -263,9 +263,9 @@ export default function App() {
           setPendingLoginInfo(null);
           setCurrentScreen('LOGIN');
           Alert.alert(
-            'অ্যাডমিন সাইন-আউট (Administrator Signed You Out)',
-            forceRes.message || 'Administrator has signed you out.\nPlease login again using your Username and PIN.',
-            [{ text: 'ঠিক আছে (OK)' }]
+            'অ্যাডমিন সাইন-আউট',
+            forceRes.message || 'অ্যাডমিন আপনাকে সাইন-আউট করিয়েছেন।\nঅনুগ্রহ করে আপনার ইউজারনেম এবং PIN ব্যবহার করে আবার লগইন করুন।',
+            [{ text: 'ঠিক আছে' }]
           );
         }
       } catch (e) {}
@@ -357,9 +357,9 @@ export default function App() {
             setPendingLoginInfo(null);
             setCurrentScreen('LOGIN');
             Alert.alert(
-              'অ্যাডমিন সাইন-আউট (Administrator Signed You Out)',
-              forceRes.message || 'Administrator has signed you out.\nPlease login again using your Username and PIN.',
-              [{ text: 'ঠিক আছে (OK)' }]
+              'অ্যাডমিন সাইন-আউট',
+              forceRes.message || 'অ্যাডমিন আপনাকে সাইন-আউট করিয়েছেন।\nঅনুগ্রহ করে আপনার ইউজারনেম এবং PIN ব্যবহার করে আবার লগইন করুন।',
+              [{ text: 'ঠিক আছে' }]
             );
           }
         } catch (devErr) {

@@ -215,7 +215,7 @@ export function checkDeviceLoginPermission(userRole) {
       status: 'DELETED',
       isAdminLock: false,
       deviceId,
-      message: 'This device has been removed by Administrator.\nPlease contact Admin.'
+      message: 'এই ডিভাইসটি অ্যাডমিন মুছে ফেলেছেন।\nঅনুগ্রহ করে অ্যাডমিনের সাথে যোগাযোগ করুন।'
     };
   }
 
@@ -229,7 +229,7 @@ export function checkDeviceLoginPermission(userRole) {
       status: 'BLOCKED',
       isAdminLock: true,
       deviceId,
-      message: 'Administrator access has been disabled for this device. This device has been marked as lost/stolen. Please contact another Administrator.'
+      message: 'এই ডিভাইসটির এক্সেস অ্যাডমিন নিষ্ক্রিয় করেছেন। ডিভাইসটি হারানো/চুরি হিসেবে চিহ্নিত করা হয়েছে। অনুগ্রহ করে অ্যাডমিনের সাথে যোগাযোগ করুন।'
     };
   }
 
@@ -251,7 +251,7 @@ export function checkDeviceLoginPermission(userRole) {
         status: 'BLOCKED',
         isAdminLock: false,
         deviceId,
-        message: 'এই ডিভাইসটি Administrator ব্লক করেছেন। এই ডিভাইস থেকে Login করা যাবে না।'
+        message: 'এই ডিভাইসটি অ্যাডমিন ব্লক করেছেন। এই ডিভাইস থেকে Login করা যাবে না।'
       };
     }
     return {
@@ -269,7 +269,7 @@ export function checkDeviceLoginPermission(userRole) {
       status: 'PENDING',
       isAdminLock: false,
       deviceId,
-      message: 'এই ডিভাইসটি এখনো Administrator কর্তৃক অনুমোদিত হয়নি।'
+      message: 'এই ডিভাইসটি এখনো অ্যাডমিন কর্তৃক অনুমোদিত হয়নি।'
     };
   }
 
@@ -279,7 +279,7 @@ export function checkDeviceLoginPermission(userRole) {
       status: 'BLOCKED',
       isAdminLock: false,
       deviceId,
-      message: 'এই ডিভাইসটি Administrator ব্লক করেছেন। এই ডিভাইস থেকে Login করা যাবে না।'
+      message: 'এই ডিভাইসটি অ্যাডমিন ব্লক করেছেন। এই ডিভাইস থেকে Login করা যাবে না।'
     };
   }
 

@@ -49,20 +49,20 @@ export default function DevicePendingScreen({ deviceId, onApproved, onExit }) {
         </View>
 
         {/* Title */}
-        <Text style={styles.title}>Device Approval Required</Text>
+        <Text style={styles.title}>ডিভাইস অনুমোদন আবশ্যক</Text>
 
         {/* Status Pill */}
         <View style={styles.statusPill}>
-          <Text style={styles.statusPillText}>● STATUS: PENDING</Text>
+          <Text style={styles.statusPillText}>● স্ট্যাটাস: অপেক্ষমাণ (PENDING)</Text>
         </View>
 
         {/* Body Message */}
         <View style={styles.bodyCard}>
           <Text style={styles.bodyText}>
-            এই ডিভাইসটি এখনো Administrator কর্তৃক অনুমোদিত হয়নি।
+            এই ডিভাইসটি এখনো অ্যাডমিন কর্তৃক অনুমোদিত হয়নি।
           </Text>
           <Text style={[styles.bodyText, { marginTop: 10 }]}>
-            অনুগ্রহ করে Administrator-এর সাথে যোগাযোগ করুন।
+            অনুগ্রহ করে অ্যাডমিনের সাথে যোগাযোগ করুন।
           </Text>
         </View>
 
