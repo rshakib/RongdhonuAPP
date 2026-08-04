@@ -140,7 +140,7 @@ export async function registerDeviceIfNeeded() {
   );
 
   if (!existingRecord) {
-    const recordId = `dreg_${deviceId.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 24)}_${Date.now()}`;
+    const recordId = deviceId;
 
     db.runSync(`
       INSERT INTO device_registry (
