@@ -24,7 +24,11 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "build:apk": "eas build -p android --profile preview",
-    "build:previe": "eas build -p android --profile previe"
+    "build:previe": "eas build -p android --profile previe",
+    "test:builder": "node tests/builder.test.js",
+    "test:validator": "node tests/validator.test.js",
+    "test:mapper": "node tests/mapper.test.js",
+    "test:all": "node tests/builder.test.js && node tests/validator.test.js && node tests/mapper.test.js"
   },
   "private": true,
   "devDependencies": {

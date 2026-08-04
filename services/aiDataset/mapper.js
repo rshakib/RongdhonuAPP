@@ -44,7 +44,7 @@ export const DAILY_SALES_FIELD_MAPPING = {
   week_number: {
     sourceTable: 'daily_submit',
     sourceColumn: 'date',
-    transformation: "CAST(strftime('%W', date) AS INTEGER)"
+    transformation: 'ISO-8601 Week Number: Week 1 = week containing first Thursday of year. Weeks start Monday. Range 1–53. Formula: nearest-Thursday method.'
   },
   day_of_month: {
     sourceTable: 'daily_submit',

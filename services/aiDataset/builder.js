@@ -18,6 +18,26 @@ import { DAILY_SALES_FIELD_MAPPING, ITEM_SALES_FIELD_MAPPING } from './mapper';
 import { validateDailyDataset, validateItemDataset } from './validator';
 
 /**
+ * Returns the ISO-8601 week number for a given Date object.
+ * ISO-8601: Week 1 is the week containing the first Thursday of the year.
+ * Weeks start on Monday. Range: 1–53.
+ * @param {Date} dateObj
+ * @returns {number} ISO week number (1–53)
+ */
+function getISOWeekNumber(dateObj) {
+  // Copy date to avoid mutation
+  const d = new Date(Date.UTC(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()));
+  // Set to nearest Thursday: current date + 4 - current ISO day number
+  // ISO day: Mon=1 … Sun=7
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  // Get first day of year
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  // Calculate full weeks to nearest Thursday
+  return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+}
+
+/**
  * Builds a frozen, validated Daily Dataset object for a given business date.
  * @param {string} businessDate - Business date string (YYYY-MM-DD)
  * @returns {Object} Frozen daily dataset object or structured error object
@@ -78,7 +98,7 @@ export function buildDailyDataset(businessDate) {
       exported_at: now,
       year: dateObj.getFullYear(),
       month: dateObj.getMonth() + 1,
-      week_number: Math.ceil(dayOfMonth / 7),
+      week_number: getISOWeekNumber(dateObj),
       day_of_month: dayOfMonth,
       day_of_week: dateObj.getDay(),
       day_name: summary?.dayOfWeek || 'Unknown',

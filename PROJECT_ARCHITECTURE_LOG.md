@@ -251,6 +251,7 @@ The application operates on an offline-first SQLite database containing **22 act
 
 * **Phase 2 (Completed)**: Pure Dataset Builder (`services/aiDataset/builder.js` exposing `buildDailyDataset` and `buildItemDataset`).
 * **Phase 2.5 (Completed)**: Read-only Verification Suite — 8/8 PASS, zero regressions.
+* **Phase Post-2.5 (Completed)**: ISO-8601 week fix, schema version lock, unit test suite (143/143 PASS), preview tool.
 * **Phase 3**: Connect Admin App UI export trigger to Google Sheets WebApp using `processAIDatasetQueue()`.
 
 ---
@@ -264,17 +265,111 @@ The application operates on an offline-first SQLite database containing **22 act
 | 1 | Schema Completeness (62 daily + 27 item fields) | ✅ PASS |
 | 2 | Determinism (3 runs, same date) | ✅ PASS |
 | 3 | Financial Consistency (payment sum = total_sales) | ✅ PASS |
-| 4 | Immutability (Object.freeze — mutation silently rejected) | ✅ PASS |
+| 4 | Immutability (Object.freeze — mutation blocked) | ✅ PASS |
 | 5 | Item Rank & Share (1 item / many / zero sales) | ✅ PASS |
 | 6 | Calendar Features (month start/end, salary cycle) | ✅ PASS |
 | 7 | Missing Data Defaults (weather/holiday/off_day all safe) | ✅ PASS |
 | 8 | Performance (365 days @ 0.005ms/record, 0 failures) | ✅ PASS |
 
-**Verdict:** 8/8 PASS — Zero failures — Zero regressions — READY FOR PHASE 3
+**Verdict:** 8/8 PASS — Zero failures — Zero regressions
 
-**Known Non-Breaking Observations:**
-1. `card_sales` hardcoded `0.0` — no card terminal infra yet. Acceptable placeholder.
-2. `store_open_time / close_time / business_hours` all `null` — future operational log placeholder.
-3. `week_number` uses `ceil(day/7)` approximation instead of ISO-8601. Acceptable for ML features.
-4. `exported_at` timestamp is non-deterministic by design (export timestamp, not business data).
+---
+
+## 23. Phase Post-2.5 — Architecture Refinements
+
+**Date:** 2026-08-05
+
+### 23.1 ISO-8601 Week Number
+
+Replaced the old `ceil(day_of_month / 7)` approximation with the correct ISO-8601 algorithm.
+
+```
+ISO-8601 Rule: Week 1 = week containing the first Thursday of the year. Weeks start on Monday.
+Algorithm: nearest-Thursday method via UTC Date arithmetic.
+Range: 1–53.
+```
+
+Verified against 10 reference dates — all pass.
+
+### 23.2 Schema Version Lock
+
+```
+schema_version = "1.0.0" — LOCKED
+dataset_version = "1.0.0" — LOCKED
+```
+
+**Rule:** Any future field change (add/remove/rename/type/default) MUST increment `schema_version`. Historical exported datasets must remain compatible with the schema version they were exported with. Never modify historical datasets.
+
+### 23.3 Unit Test Suite
+
+Three standalone test files — zero external dependencies — run with plain `node`:
+
+```bash
+npm run test:builder     # 63 tests
+npm run test:validator   # 37 tests
+npm run test:mapper      # 43 tests
+npm run test:all         # 143 tests total
+```
+
+**Result: 143/143 PASS — Zero failures.**
+
+### 23.4 Dataset Preview Tool
+
+Created `services/aiDataset/preview.js` — developer/QA read-only inspection helper.
+
+```javascript
+import { generateDatasetPreview, printDatasetPreview } from './services/aiDataset/preview';
+
+const preview = generateDatasetPreview('2026-08-05');
+// preview.dailyDataset   → frozen daily dataset
+// preview.itemDatasets   → frozen item dataset array
+// preview.summary        → frozen summary with top sellers, financial KPIs
+
+printDatasetPreview('2026-08-05'); // Formatted console output
+```
+
+**Strict rules:** Read-only. SQLite only. No writes. No queue. No Firestore. No Google Sheets.
+
+---
+
+## 24. Dataset Schema Version History
+
+| Version | Date | Changes |
+|---------|------|---------|
+| `1.0.0` | 2026-08-05 | Initial production schema. 62 daily fields + 27 item fields. Calendar, weather, festival, financial, quality flags. |
+
+**Versioning Rule:** Increment `schema_version` for any field add/remove/rename/type change. Never mutate historical exported rows.
+
+---
+
+## 25. Updated File Structure
+
+```
+/
+├── App.js                         # Root application navigator & global alerts
+├── database.js                    # Core SQLite schemas, migrations, & sync queue engines
+├── pdfHelper.js                   # PDF report generator
+├── screens/
+│   ├── LoginScreen.js             # Authentication, 88% width layout, mode toggle
+│   ├── DailySubmitScreen.js       # Daily financial settlement screen
+│   ├── DeviceManagementScreen.js  # Client device registry & সাকিব security locks
+│   ├── DevicePendingScreen.js     # Pending device access screen
+│   ├── DeviceBlockedScreen.js     # Blocked device screen
+│   └── SystemInfoScreen.js        # Environment notice screen
+├── services/
+│   ├── deviceRegistry.js          # Device registration & permission checking
+│   └── aiDataset/                 # ISOLATED AI DATASET MODULE
+│       ├── schema.js              # Production frozen ML dataset schemas (v1.0.0)
+│       ├── mapper.js              # SQL source mappings & derivation documentation
+│       ├── validator.js           # Anomaly checks & cross-field mathematical rules
+│       ├── builder.js             # Pure Dataset Builder (buildDailyDataset, buildItemDataset)
+│       ├── preview.js             # Read-only Dev/QA Dataset Preview Tool
+│       └── README.md              # Architectural directives & phase roadmap
+└── tests/
+    ├── builder.test.js            # 63 unit tests — builder logic, ISO week, ranking
+    ├── validator.test.js          # 37 unit tests — validation rules, immutability
+    └── mapper.test.js             # 43 unit tests — mapper coverage, source tables
+```
+
+
 
