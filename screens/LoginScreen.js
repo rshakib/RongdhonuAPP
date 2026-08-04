@@ -583,9 +583,12 @@ const styles = StyleSheet.create({
   },
   usernameForm: {
     width: '100%',
-    paddingVertical: 10,
+    alignItems: 'center',
+    paddingVertical: 4,
   },
   inputWrapper: {
+    width: '88%',
+    maxWidth: 320,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#0D0D0D',
@@ -593,7 +596,7 @@ const styles = StyleSheet.create({
     borderColor: '#262626',
     borderRadius: 14,
     height: 52,
-    marginBottom: 18,
+    marginBottom: 16,
     paddingHorizontal: 16,
   },
   inputIcon: {
@@ -608,6 +611,8 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   nextBtn: {
+    width: '88%',
+    maxWidth: 320,
     flexDirection: 'row',
     backgroundColor: '#FFD700', // Gold filled button
     height: 50,
