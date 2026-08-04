@@ -4219,12 +4219,21 @@ export function submitDailySheet(summary, submittedBy, submissionType = 'MANUAL'
     enqueueDailyMLExports(todayStr);
 
     // --- PENDING NEXT-DAY IJARA ---
-    const cashSales = summary.breakdown?.cash || 0;
-    const currentIjara = summary.breakdown?.ijara || 0;
-    const totalExpense = summary.expense || 0;
-    const ownerDeposit = summary.deposit || 0;
+    const cash = Number(summary.breakdown?.cash || 0);
+    const bkash = Number(summary.breakdown?.bkash || 0);
+    const nagad = Number(summary.breakdown?.nagad || 0);
+    const rocket = Number(summary.breakdown?.rocket || 0);
+    const card = Number(summary.breakdown?.card || 0);
 
-    const calculatedIjara = (cashSales + currentIjara - totalExpense) - ownerDeposit;
+    const currentIjara = Number(summary.breakdown?.ijara || 0);
+    const totalExpense = Number(summary.expense || 0);
+    const ownerDeposit = Number(summary.deposit || 0);
+
+    const totalSales = (summary.sell !== undefined && summary.sell !== null && summary.sell > 0)
+      ? Number(summary.sell)
+      : (cash + bkash + nagad + rocket + card);
+
+    const calculatedIjara = (totalSales + currentIjara - totalExpense) - ownerDeposit;
     const nextDayIjara = Math.max(0, calculatedIjara);
 
     const [bY, bM, bD] = todayStr.split('-').map(Number);
@@ -4236,7 +4245,7 @@ export function submitDailySheet(summary, submittedBy, submissionType = 'MANUAL'
     const nDay = String(submittedDateObj.getDate()).padStart(2, '0');
     const nextBizDateStr = `${nY}-${nM}-${nDay}`;
 
-    console.log("[FORENSIC DEBUG] Calculated nextDayIjara:", nextDayIjara, "nextBizDateStr:", nextBizDateStr, "(cashSales:", cashSales, "currentIjara:", currentIjara, "totalExpense:", totalExpense, "ownerDeposit:", ownerDeposit, ")");
+    console.log("[FORENSIC DEBUG] Calculated nextDayIjara:", nextDayIjara, "nextBizDateStr:", nextBizDateStr, "(totalSales:", totalSales, "currentIjara:", currentIjara, "totalExpense:", totalExpense, "ownerDeposit:", ownerDeposit, ")");
 
     // 1. Immediately create/update tomorrow's Ijara records in SQLite & Sync Queue
     const targetIso = `${nextBizDateStr}T00:00:00.000Z`;
