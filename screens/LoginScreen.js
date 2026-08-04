@@ -12,7 +12,8 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
   Vibration,
-  Alert
+  Alert,
+  StatusBar as RNStatusBar
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import NetInfo from '@react-native-community/netinfo';
