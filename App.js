@@ -1382,9 +1382,9 @@ export default function App() {
     const { resetHistoryDownloadLimits } = require('./database');
     const success = resetHistoryDownloadLimits();
     if (success) {
-      Alert.alert("Success", "Daily historical download limits have been reset.");
+      Alert.alert("সফল", "দৈনিক ইতিহাস ডাউনলোডের সীমা রিসেট করা হয়েছে।");
     } else {
-      Alert.alert("Error", "Failed to reset limits.");
+      Alert.alert("ত্রুটি", "সীমা রিসেট করতে ব্যর্থ হয়েছে।");
     }
   };
 

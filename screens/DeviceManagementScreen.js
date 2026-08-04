@@ -118,9 +118,9 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
       '🗑️ ডিভাইস ডিলিট নিশ্চিতকরণ',
       `আপনি কি নিশ্চিত যে '${device.device_name || device.device_id}' ডিভাইসটি মুছে ফেলতে চান?\n\nএটি মুছে ফেললে ডিভাইসটি সাধারণ তালিকা থেকে সরিয়ে ফেলা হবে, তবে 'Deleted Devices' থেকে পুনরায় রিকভার করা যাবে।`,
       [
-        { text: 'বাতিল (Cancel)', style: 'cancel' },
+        { text: 'বাতিল', style: 'cancel' },
         {
-          text: 'হ্যাঁ, মুছে ফেলুন (Delete)',
+          text: 'হ্যাঁ, মুছে ফেলুন',
           style: 'destructive',
           onPress: () => {
             const success = softDeleteDevice(device.device_id, 'admin');
@@ -143,9 +143,9 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
       '🔄 ডিভাইস রিকভার নিশ্চিতকরণ',
       `আপনি কি '${device.device_name || device.device_id}' ডিভাইসটি পুনরায় পূর্ববর্তী অবস্থায় রিকভার করতে চান?`,
       [
-        { text: 'বাতিল (Cancel)', style: 'cancel' },
+        { text: 'বাতিল', style: 'cancel' },
         {
-          text: 'রিকভার করুন (Restore)',
+          text: 'রিকভার করুন',
           onPress: () => {
             const success = restoreDevice(device.device_id, 'admin');
             if (success) {
@@ -161,15 +161,15 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
   };
 
   const handleStatusChange = (deviceId, deviceName, newStatus) => {
-    const actionText = newStatus === 'ACTIVE' ? 'অনুমোদন (Approve)' : newStatus === 'BLOCKED' ? 'ব্লক (Block)' : 'পুনরায় পেন্ডিং';
+    const actionText = newStatus === 'ACTIVE' ? 'অনুমোদন' : newStatus === 'BLOCKED' ? 'ব্লক' : 'পুনরায় পেন্ডিং';
     
     Alert.alert(
       'ডিভাইস স্ট্যাটাস পরিবর্তন',
       `আপনি কি নিশ্চিত যে '${deviceName || deviceId}' ডিভাইসটি ${actionText} করতে চান?`,
       [
-        { text: 'বাতিল (Cancel)', style: 'cancel' },
+        { text: 'বাতিল', style: 'cancel' },
         {
-          text: 'হ্যাঁ (Confirm)',
+          text: 'হ্যাঁ',
           style: newStatus === 'BLOCKED' ? 'destructive' : 'default',
           onPress: () => {
             const success = updateDeviceStatus(deviceId, newStatus, 'admin');
@@ -189,15 +189,15 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
   const handleToggleOfflinePermission = (device) => {
     const currentAllowed = Number(device.allow_offline || 0) === 1;
     const nextAllowed = !currentAllowed;
-    const actionText = nextAllowed ? 'ON (অনুমোদিত)' : 'OFF (নিষ্ক্রিয়)';
+    const actionText = nextAllowed ? 'চালু (ON)' : 'বন্ধ (OFF)';
 
     Alert.alert(
       'অফলাইন পারমিশন পরিবর্তন',
       `আপনি কি '${device.device_name || device.device_id}' ডিভাইসটির জন্য Offline Mode ${actionText} করতে চান?`,
       [
-        { text: 'বাতিল (Cancel)', style: 'cancel' },
+        { text: 'বাতিল', style: 'cancel' },
         {
-          text: 'হ্যাঁ (Confirm)',
+          text: 'হ্যাঁ',
           onPress: () => {
             const success = updateDeviceOfflinePermission(device.device_id, nextAllowed, 'admin');
             if (success) {
@@ -236,13 +236,13 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
   // Confirm PIN and execute Admin Lock
   const handleConfirmPinAndLock = () => {
     if (!pinInput.trim()) {
-      setPinError('Shakib পিন কোড দিন (Enter Shakib PIN)');
+      setPinError('Shakib PIN দিন');
       return;
     }
 
     const isValidPin = verifyPinCode(pinInput.trim(), 'admin');
     if (!isValidPin) {
-      setPinError('ভুল পিন কোড! পুনরায় চেষ্টা করুন (Invalid Shakib PIN)');
+      setPinError('ভুল PIN নম্বর! পুনরায় চেষ্টা করুন');
       return;
     }
 
@@ -254,7 +254,7 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
     setTargetLockDevice(null);
 
     if (success) {
-      Alert.alert('সফল', 'Shakib এক্সেস স্থায়ীভাবে ব্লক করা হয়েছে (Shakib Lock Enabled).');
+      Alert.alert('সফল', 'Shakib এক্সেস স্থায়ীভাবে ব্লক করা হয়েছে।');
       loadDevices();
     } else {
       Alert.alert('ত্রুটি', 'Shakib ব্লক ব্যর্থ হয়েছে।');
@@ -264,12 +264,12 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
   // Remove Admin Lock Action
   const handleRemoveAdminLock = (device) => {
     Alert.alert(
-      '🔓 Remove Shakib Lock',
+      '🔓 Shakib লক অপসারণ',
       `আপনি কি নিশ্চিত যে '${device.device_name || device.device_id}' ডিভাইসটির Shakib লক সরাতে চান?`,
       [
-        { text: 'বাতিল (Cancel)', style: 'cancel' },
+        { text: 'বাতিল', style: 'cancel' },
         {
-          text: 'আনব্লক করুন (Confirm)',
+          text: 'আনব্লক করুন',
           onPress: () => {
             const success = setAdminDeviceLock(device.device_id, false, 'admin');
             if (success) {
@@ -633,11 +633,11 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
             </TouchableOpacity>
 
             <TouchableOpacity style={[styles.contextOptionBtn, styles.contextOptionDelete]} onPress={handleInitiateSoftDelete}>
-              <Text style={styles.contextOptionDeleteText}>🗑️ Delete Device (মুছে ফেলুন)</Text>
+              <Text style={styles.contextOptionDeleteText}>🗑️ ডিভাইস মুছুন</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.contextCancelBtn} onPress={() => setContextMenuVisible(false)}>
-              <Text style={styles.contextCancelText}>বাতিল (Cancel)</Text>
+              <Text style={styles.contextCancelText}>বাতিল</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -656,9 +656,9 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
           onPress={() => setRenameModalVisible(false)}
         >
           <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
-            <Text style={styles.modalTitle}>✏️ Rename Device</Text>
+            <Text style={styles.modalTitle}>✏️ ডিভাইসের নাম পরিবর্তন</Text>
             <Text style={styles.modalDesc}>
-              ডিভাইসের জন্য একটি নতুন প্রদর্শন নাম লিখুন:
+              ডিভাইসটির জন্য একটি নতুন পরিচিতি নাম লিখুন:
             </Text>
 
             {renameError ? (
@@ -684,7 +684,7 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
                 style={styles.modalCancelBtn}
                 onPress={() => setRenameModalVisible(false)}
               >
-                <Text style={styles.modalCancelText}>বাতিল (Cancel)</Text>
+                <Text style={styles.modalCancelText}>বাতিল</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -711,7 +711,7 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
           onPress={() => setPinModalVisible(false)}
         >
           <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
-            <Text style={styles.modalTitle}>🔒 Shakib Security Verification</Text>
+            <Text style={styles.modalTitle}>🔒 Shakib নিরাপত্তা যাচাই</Text>
             <Text style={styles.modalDesc}>
               Shakib এক্সেস স্থায়ীভাবে লক করতে আপনার Shakib PIN লিখুন:
             </Text>
@@ -724,7 +724,7 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
 
             <TextInput
               style={styles.pinInput}
-              placeholder="Enter Shakib PIN"
+              placeholder="Shakib PIN লিখুন"
               placeholderTextColor="#71717a"
               keyboardType="number-pad"
               secureTextEntry={true}
@@ -741,7 +741,7 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
                 style={styles.modalCancelBtn}
                 onPress={() => setPinModalVisible(false)}
               >
-                <Text style={styles.modalCancelText}>বাতিল (Cancel)</Text>
+                <Text style={styles.modalCancelText}>বাতিল</Text>
               </TouchableOpacity>
 
               <TouchableOpacity

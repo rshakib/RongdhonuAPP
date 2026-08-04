@@ -13,7 +13,7 @@ async function generateAndSharePDF(html, fileName) {
     return true;
   } catch (err) {
     console.error("PDF Generation error:", err);
-    Alert.alert("Error", "Could not generate or share PDF report.");
+    Alert.alert("ত্রুটি", "PDF রিপোর্ট তৈরি বা শেয়ার করতে ব্যর্থ হয়েছে।");
     return false;
   }
 }

@@ -458,26 +458,26 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
         syncQueue: countSyncQueue
       });
     } catch (e) {
-      Alert.alert("Audit Error", e.message);
+      Alert.alert("অডিট ত্রুটি", e.message);
     }
   };
 
   const handleConfirmCleanup = () => {
     Alert.alert(
-      "Warning",
-      `Are you sure you want to permanently delete all local data for ${cleanupTargetDate}?`,
+      "সতর্কতা",
+      `আপনি কি নিশ্চিত যে ${cleanupTargetDate} তারিখের সকল লোকাল ডাটা স্থায়ীভাবে ডিলিট করতে চান?`,
       [
-        { text: "Cancel", style: "cancel" },
+        { text: "বাতিল", style: "cancel" },
         { 
-          text: "Delete Data", 
+          text: "ডাটা ডিলিট করুন", 
           style: "destructive",
           onPress: () => {
             const res = deleteDataByDate(cleanupTargetDate);
             if (res.success) {
-              Alert.alert("Success", "Data deleted successfully. Restarting dashboard...");
+              Alert.alert("সফল", "ডাটা সফলভাবে ডিলিট করা হয়েছে। ড্যাশবোর্ড রিস্টার্ট হচ্ছে...");
               setCleanupModalVisible(false);
             } else {
-              Alert.alert("Error", res.error);
+              Alert.alert("ত্রুটি", res.error);
             }
           }
         }

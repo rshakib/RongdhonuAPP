@@ -75,7 +75,7 @@ export default function DeviceBlockedScreen({ deviceId, isAdminLock = false, onE
             onPress={onExit}
             activeOpacity={0.85}
           >
-            <Text style={styles.btnExitText}>🚪 Exit / Back to Login</Text>
+            <Text style={styles.btnExitText}>🚪 প্রস্থান / লগইনে ফিরে যান</Text>
           </TouchableOpacity>
         </View>
       </View>

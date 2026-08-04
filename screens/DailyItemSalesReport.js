@@ -228,7 +228,7 @@ export default function DailyItemSalesReport({ onBack }) {
     
     const currentCount = getDailyDownloadCount('ITEM_SALES');
     if (currentCount >= 7) {
-      Alert.alert("Limit Reached", "Daily historical download limit reached. Contact Admin if additional downloads are required.");
+      Alert.alert("সীমা অতিক্রম হয়েছে", "আজকের ক্লাউড ডাউনলোড সীমা অতিক্রম হয়েছে। প্রয়োজনে Shakib-এর সাথে যোগাযোগ করুন।");
       return;
     }
 
@@ -243,7 +243,7 @@ export default function DailyItemSalesReport({ onBack }) {
       setEndDate(pendingDate);
       loadReport();
     } catch (err) {
-      Alert.alert("Download Failed", "Could not fetch historical data from cloud.");
+      Alert.alert("ডাউনলোড ব্যর্থ", "ক্লাউড থেকে তথ্য সংগ্রহ করা সম্ভব হয়নি।");
     } finally {
       setDownloadingCloud(false);
       setPendingDate(null);

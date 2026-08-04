@@ -92,7 +92,7 @@ export default function DevicePendingScreen({ deviceId, onApproved, onExit }) {
             {checking ? (
               <ActivityIndicator color="#000" size="small" />
             ) : (
-              <Text style={styles.btnRefreshText}>🔄 Refresh (রিফ্রেশ করুন)</Text>
+              <Text style={styles.btnRefreshText}>🔄 রিফ্রেশ করুন</Text>
             )}
           </TouchableOpacity>
 
@@ -101,7 +101,7 @@ export default function DevicePendingScreen({ deviceId, onApproved, onExit }) {
             onPress={onExit}
             activeOpacity={0.85}
           >
-            <Text style={styles.btnExitText}>🚪 Exit / Back to Login</Text>
+            <Text style={styles.btnExitText}>🚪 প্রস্থান / লগইনে ফিরে যান</Text>
           </TouchableOpacity>
         </View>
       </View>
