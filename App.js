@@ -263,8 +263,8 @@ export default function App() {
           setPendingLoginInfo(null);
           setCurrentScreen('LOGIN');
           Alert.alert(
-            'অ্যাডমিন সাইন-আউট',
-            forceRes.message || 'অ্যাডমিন আপনাকে সাইন-আউট করিয়েছেন।\nঅনুগ্রহ করে আপনার ইউজারনেম এবং PIN ব্যবহার করে আবার লগইন করুন।',
+            'Shakib সাইন-আউট',
+            forceRes.message || 'Shakib আপনাকে সাইন-আউট করিয়েছেন।\nঅনুগ্রহ করে আপনার ইউজারনেম এবং PIN ব্যবহার করে আবার লগইন করুন।',
             [{ text: 'ঠিক আছে' }]
           );
         }
@@ -357,8 +357,8 @@ export default function App() {
             setPendingLoginInfo(null);
             setCurrentScreen('LOGIN');
             Alert.alert(
-              'অ্যাডমিন সাইন-আউট',
-              forceRes.message || 'অ্যাডমিন আপনাকে সাইন-আউট করিয়েছেন।\nঅনুগ্রহ করে আপনার ইউজারনেম এবং PIN ব্যবহার করে আবার লগইন করুন।',
+              'Shakib সাইন-আউট',
+              forceRes.message || 'Shakib আপনাকে সাইন-আউট করিয়েছেন।\nঅনুগ্রহ করে আপনার ইউজারনেম এবং PIN ব্যবহার করে আবার লগইন করুন।',
               [{ text: 'ঠিক আছে' }]
             );
           }
@@ -874,9 +874,9 @@ export default function App() {
         setPendingLoginInfo(null);
         setCurrentScreen('LOGIN');
         Alert.alert(
-          'অ্যাডমিন সাইন-আউট (Administrator Signed You Out)',
-          forceRes.message || 'Administrator has signed you out.\nPlease login again using your Username and PIN.',
-          [{ text: 'ঠিক আছে (OK)' }]
+          'Shakib সাইন-আউট',
+          forceRes.message || 'Shakib আপনাকে সাইন-আউট করিয়েছেন।\nঅনুগ্রহ করে আপনার ইউজারনেম এবং PIN ব্যবহার করে আবার লগইন করুন।',
+          [{ text: 'ঠিক আছে' }]
         );
         return;
       }
@@ -1396,7 +1396,7 @@ export default function App() {
 
     // Check limit
     if (getDailyDownloadCount('DEPOSIT_REPORT') >= 2) {
-      Alert.alert("সীমা অতিক্রম হয়েছে", "আজকের ক্লাউড ডাউনলোড সীমা অতিক্রম হয়েছে। অ্যাডমিনের সাথে যোগাযোগ করুন।");
+      Alert.alert("সীমা অতিক্রম হয়েছে", "আজকের ক্লাউড ডাউনলোড সীমা অতিক্রম হয়েছে। Shakib-এর সাথে যোগাযোগ করুন।");
       return;
     }
 

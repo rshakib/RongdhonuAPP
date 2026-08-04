@@ -215,7 +215,7 @@ export function checkDeviceLoginPermission(userRole) {
       status: 'DELETED',
       isAdminLock: false,
       deviceId,
-      message: 'এই ডিভাইসটি অ্যাডমিন মুছে ফেলেছেন।\nঅনুগ্রহ করে অ্যাডমিনের সাথে যোগাযোগ করুন।'
+      message: 'এই ডিভাইসটি Shakib মুছে ফেলেছেন।\nঅনুগ্রহ করে Shakib-এর সাথে যোগাযোগ করুন।'
     };
   }
 
@@ -229,7 +229,7 @@ export function checkDeviceLoginPermission(userRole) {
       status: 'BLOCKED',
       isAdminLock: true,
       deviceId,
-      message: 'এই ডিভাইসটির এক্সেস অ্যাডমিন নিষ্ক্রিয় করেছেন। ডিভাইসটি হারানো/চুরি হিসেবে চিহ্নিত করা হয়েছে। অনুগ্রহ করে অ্যাডমিনের সাথে যোগাযোগ করুন।'
+      message: 'এই ডিভাইসটির এক্সেস Shakib নিষ্ক্রিয় করেছেন। ডিভাইসটি হারানো/চুরি হিসেবে চিহ্নিত করা হয়েছে। অনুগ্রহ করে Shakib-এর সাথে যোগাযোগ করুন।'
     };
   }
 
@@ -251,7 +251,7 @@ export function checkDeviceLoginPermission(userRole) {
         status: 'BLOCKED',
         isAdminLock: false,
         deviceId,
-        message: 'এই ডিভাইসটি অ্যাডমিন ব্লক করেছেন। এই ডিভাইস থেকে Login করা যাবে না।'
+        message: 'এই ডিভাইসটি Shakib ব্লক করেছেন। এই ডিভাইস থেকে Login করা যাবে না।'
       };
     }
     return {
@@ -269,7 +269,7 @@ export function checkDeviceLoginPermission(userRole) {
       status: 'PENDING',
       isAdminLock: false,
       deviceId,
-      message: 'এই ডিভাইসটি এখনো অ্যাডমিন কর্তৃক অনুমোদিত হয়নি।'
+      message: 'এই ডিভাইসটি এখনো Shakib কর্তৃক অনুমোদিত হয়নি।'
     };
   }
 
@@ -279,7 +279,7 @@ export function checkDeviceLoginPermission(userRole) {
       status: 'BLOCKED',
       isAdminLock: false,
       deviceId,
-      message: 'এই ডিভাইসটি অ্যাডমিন ব্লক করেছেন। এই ডিভাইস থেকে Login করা যাবে না।'
+      message: 'এই ডিভাইসটি Shakib ব্লক করেছেন। এই ডিভাইস থেকে Login করা যাবে না।'
     };
   }
 

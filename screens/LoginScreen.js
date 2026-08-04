@@ -170,9 +170,9 @@ export default function LoginScreen({ onLoginSuccess }) {
           const isAllowed = checkDeviceOfflinePermission(user.role);
           if (!isAllowed) {
             Alert.alert(
-              "Offline Mode Disabled",
-              "Offline Mode has been disabled by Administrator.\n\nPlease use Online Mode.",
-              [{ text: "ঠিক আছে (OK)", onPress: () => setPin('') }]
+              "অফলাইন মোড নিষ্ক্রিয়",
+              "অফলাইন মোড Shakib কর্তৃক নিষ্ক্রিয় করা হয়েছে।\n\nঅনুগ্রহ করে অনলাইন মোড ব্যবহার করুন।",
+              [{ text: "ঠিক আছে", onPress: () => setPin('') }]
             );
             setSyncMode('online_only');
             setAppConfig('sync_mode', 'online_only');

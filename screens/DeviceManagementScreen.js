@@ -236,13 +236,13 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
   // Confirm PIN and execute Admin Lock
   const handleConfirmPinAndLock = () => {
     if (!pinInput.trim()) {
-      setPinError('অ্যাডমিন পিন কোড দিন (Enter Admin PIN)');
+      setPinError('Shakib পিন কোড দিন (Enter Shakib PIN)');
       return;
     }
 
     const isValidPin = verifyPinCode(pinInput.trim(), 'admin');
     if (!isValidPin) {
-      setPinError('ভুল পিন কোড! পুনরায় চেষ্টা করুন (Invalid Admin PIN)');
+      setPinError('ভুল পিন কোড! পুনরায় চেষ্টা করুন (Invalid Shakib PIN)');
       return;
     }
 
@@ -254,18 +254,18 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
     setTargetLockDevice(null);
 
     if (success) {
-      Alert.alert('সফল', 'অ্যাডমিন এক্সেস স্থায়ীভাবে ব্লক করা হয়েছে (Admin Lock Enabled).');
+      Alert.alert('সফল', 'Shakib এক্সেস স্থায়ীভাবে ব্লক করা হয়েছে (Shakib Lock Enabled).');
       loadDevices();
     } else {
-      Alert.alert('ত্রুটি', 'অ্যাডমিন ব্লক ব্যর্থ হয়েছে।');
+      Alert.alert('ত্রুটি', 'Shakib ব্লক ব্যর্থ হয়েছে।');
     }
   };
 
   // Remove Admin Lock Action
   const handleRemoveAdminLock = (device) => {
     Alert.alert(
-      '🔓 Remove Admin Lock',
-      `আপনি কি নিশ্চিত যে '${device.device_name || device.device_id}' ডিভাইসটির অ্যাডমিন লক সরাতে চান?`,
+      '🔓 Remove Shakib Lock',
+      `আপনি কি নিশ্চিত যে '${device.device_name || device.device_id}' ডিভাইসটির Shakib লক সরাতে চান?`,
       [
         { text: 'বাতিল (Cancel)', style: 'cancel' },
         {
@@ -273,10 +273,10 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
           onPress: () => {
             const success = setAdminDeviceLock(device.device_id, false, 'admin');
             if (success) {
-              Alert.alert('সফল', 'অ্যাডমিন লক সফলভাবে অপসারিত হয়েছে।');
+              Alert.alert('সফল', 'Shakib লক সফলভাবে অপসারিত হয়েছে।');
               loadDevices();
             } else {
-              Alert.alert('ত্রুটি', 'অ্যাডমিন লক অপসারণ ব্যর্থ হয়েছে।');
+              Alert.alert('ত্রুটি', 'Shakib লক অপসারণ ব্যর্থ হয়েছে।');
             }
           }
         }
@@ -711,9 +711,9 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
           onPress={() => setPinModalVisible(false)}
         >
           <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
-            <Text style={styles.modalTitle}>🔒 Admin Security Verification</Text>
+            <Text style={styles.modalTitle}>🔒 Shakib Security Verification</Text>
             <Text style={styles.modalDesc}>
-              অ্যাডমিন এক্সেস স্থায়ীভাবে লক করতে আপনার Administrator PIN লিখুন:
+              Shakib এক্সেস স্থায়ীভাবে লক করতে আপনার Shakib PIN লিখুন:
             </Text>
 
             {pinError ? (
@@ -724,7 +724,7 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
 
             <TextInput
               style={styles.pinInput}
-              placeholder="Enter Admin PIN"
+              placeholder="Enter Shakib PIN"
               placeholderTextColor="#71717a"
               keyboardType="number-pad"
               secureTextEntry={true}
