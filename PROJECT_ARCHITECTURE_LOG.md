@@ -5,9 +5,10 @@
 > *Last Updated: 2026-08-05*  
 > *Target Profiles: `ADMIN` (`com.riajulshakib.rongdhonu`), `OWNER` (`com.riajulshakib.rongdhonu.owner`), `MANAGER` (`com.riajulshakib.rongdhonu.manager`)*
 > 
-> 📋 **Release History**: See [`CHANGELOG.md`](./CHANGELOG.md) for chronological version history.
+> 📋 **Release History**: See [`CHANGELOG.md`](./CHANGELOG.md) for chronological version history.  
+> 📐 **Architecture Decisions**: See [`DECISIONS.md`](./DECISIONS.md) for ADRs.
 > 
-> **Mandatory Update Policy**: Every commit must update both this file and `CHANGELOG.md`.
+> **Mandatory Update Policy**: Every commit must update this file, `CHANGELOG.md`, and `DECISIONS.md` (if applicable).
 
 ---
 

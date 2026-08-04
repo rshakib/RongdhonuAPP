@@ -244,5 +244,5 @@
 
 ---
 
-*This changelog is maintained alongside `PROJECT_ARCHITECTURE_LOG.md`.*
-*Future policy: every commit → update code + PROJECT_ARCHITECTURE_LOG.md + CHANGELOG.md + git commit.*
+*This changelog is maintained alongside `PROJECT_ARCHITECTURE_LOG.md` and `DECISIONS.md`.*
+*Future policy: every commit → update code + PROJECT_ARCHITECTURE_LOG.md + CHANGELOG.md + DECISIONS.md (if applicable) + git commit.*
