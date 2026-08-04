@@ -261,8 +261,15 @@ export default function LoginScreen({ onLoginSuccess }) {
             keyboardShouldPersistTaps="handled"
           >
             <View style={styles.centerCardArea}>
-              {/* 1. Brand Header (App Name & Subtitle - Logo removed) */}
+              {/* 1. Brand Header (Logo, App Name & Subtitle) */}
               <View style={styles.headerBlock}>
+                <View style={styles.logoContainer}>
+                  <Image
+                    source={require('../image/logo.jpeg')}
+                    style={styles.logoImg}
+                    resizeMode="cover"
+                  />
+                </View>
                 <Text style={styles.brandTitle}>রংধনু</Text>
                 <Text style={styles.brandSubtitle}>ক্যাফে এন্ড রেস্টুরেন্ট</Text>
               </View>
@@ -483,8 +490,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
   },
+  logoContainer: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: '#FFD700',
+    backgroundColor: '#0D0D0D',
+    marginBottom: 10,
+    shadowColor: '#FFD700',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  logoImg: {
+    width: '100%',
+    height: '100%',
+  },
   brandTitle: {
-    fontSize: 36,
+    fontSize: 32,
     fontWeight: 'bold',
     color: '#FFD700', // True golden color
     letterSpacing: 1.5,
