@@ -13,7 +13,6 @@
  * 6. 100% deterministic & non-crashing error handling.
  */
 
-import { db } from '../../database';
 import { DAILY_SALES_FIELD_MAPPING, ITEM_SALES_FIELD_MAPPING } from './mapper';
 import { validateDailyDataset, validateItemDataset } from './validator';
 
@@ -39,11 +38,22 @@ function getISOWeekNumber(dateObj) {
 
 /**
  * Builds a frozen, validated Daily Dataset object for a given business date.
+ * Dependency Injection: Accepts SQLite database instance as first parameter.
+ *
+ * @param {Object} dbInstance - Expo SQLite database instance
  * @param {string} businessDate - Business date string (YYYY-MM-DD)
  * @returns {Object} Frozen daily dataset object or structured error object
  */
-export function buildDailyDataset(businessDate) {
+export function buildDailyDataset(dbInstance, businessDate) {
   console.log(`[AI Dataset Builder] Building Daily Dataset for ${businessDate}`);
+
+  if (!dbInstance) {
+    console.error("[AI Dataset Builder] Error: Database instance parameter is required.");
+    return Object.freeze({
+      error: 'MISSING_DB_INSTANCE_PARAMETER',
+      message: 'SQLite database instance must be provided as the first parameter.'
+    });
+  }
 
   if (!businessDate || typeof businessDate !== 'string') {
     console.error("[AI Dataset Builder] Error: Invalid businessDate parameter supplied.");
@@ -54,10 +64,10 @@ export function buildDailyDataset(businessDate) {
   }
 
   try {
-    // 1. Fetch source records strictly from local SQLite
-    const summary = db.getFirstSync("SELECT * FROM daily_summary WHERE date = ?", [businessDate]);
-    const submit = db.getFirstSync("SELECT * FROM daily_submit WHERE date = ?", [businessDate]);
-    const offDay = db.getFirstSync("SELECT * FROM off_days WHERE date = ?", [businessDate]);
+    // 1. Fetch source records strictly from local SQLite via injected dbInstance
+    const summary = dbInstance.getFirstSync("SELECT * FROM daily_summary WHERE date = ?", [businessDate]);
+    const submit = dbInstance.getFirstSync("SELECT * FROM daily_submit WHERE date = ?", [businessDate]);
+    const offDay = dbInstance.getFirstSync("SELECT * FROM off_days WHERE date = ?", [businessDate]);
 
     if (!summary && !submit) {
       console.warn(`[AI Dataset Builder] Warning: No finalized daily records found for business date ${businessDate}`);
@@ -177,11 +187,22 @@ export function buildDailyDataset(businessDate) {
 
 /**
  * Builds an array of frozen, validated Item Dataset objects for a given business date.
+ * Dependency Injection: Accepts SQLite database instance as first parameter.
+ *
+ * @param {Object} dbInstance - Expo SQLite database instance
  * @param {string} businessDate - Business date string (YYYY-MM-DD)
  * @returns {Array<Object>} Array of frozen item dataset objects or structured error object
  */
-export function buildItemDataset(businessDate) {
+export function buildItemDataset(dbInstance, businessDate) {
   console.log(`[AI Dataset Builder] Building Item Dataset for ${businessDate}`);
+
+  if (!dbInstance) {
+    console.error("[AI Dataset Builder] Error: Database instance parameter is required.");
+    return Object.freeze({
+      error: 'MISSING_DB_INSTANCE_PARAMETER',
+      message: 'SQLite database instance must be provided as the first parameter.'
+    });
+  }
 
   if (!businessDate || typeof businessDate !== 'string') {
     console.error("[AI Dataset Builder] Error: Invalid businessDate parameter supplied.");
@@ -192,9 +213,9 @@ export function buildItemDataset(businessDate) {
   }
 
   try {
-    const summary = db.getFirstSync("SELECT * FROM daily_summary WHERE date = ?", [businessDate]);
-    const menuItems = db.getAllSync("SELECT id, name, category, price FROM menu_items");
-    const sales = db.getAllSync(`
+    const summary = dbInstance.getFirstSync("SELECT * FROM daily_summary WHERE date = ?", [businessDate]);
+    const menuItems = dbInstance.getAllSync("SELECT id, name, category, price FROM menu_items");
+    const sales = dbInstance.getAllSync(`
       SELECT itemName, SUM(quantity) as totalQty, SUM(revenue) as totalRev
       FROM order_items
       WHERE date(created_at, 'localtime') = ?

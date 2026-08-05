@@ -13,11 +13,13 @@
  */
 
 import { buildDailyDataset, buildItemDataset } from './builder';
+import { getDb } from '../../database';
 
 /**
  * Generates a read-only dataset preview for inspection and debugging.
  *
  * @param {string} businessDate - Business date string (YYYY-MM-DD)
+ * @param {Object} [dbInstance] - Optional Expo SQLite database instance override
  * @returns {Object} Frozen preview object containing dailyDataset and itemDatasets
  *
  * @example
@@ -26,8 +28,10 @@ import { buildDailyDataset, buildItemDataset } from './builder';
  * console.log(preview.itemDatasets.length);
  * console.log(preview.summary);
  */
-export function generateDatasetPreview(businessDate) {
+export function generateDatasetPreview(businessDate, dbInstance) {
   console.log(`[AI Dataset Preview] Generating preview for ${businessDate}`);
+
+  const activeDb = dbInstance || getDb();
 
   if (!businessDate || typeof businessDate !== 'string') {
     return Object.freeze({
@@ -40,10 +44,10 @@ export function generateDatasetPreview(businessDate) {
   }
 
   // ── Build Daily Dataset ──────────────────────────────────────────────
-  const dailyDataset = buildDailyDataset(businessDate);
+  const dailyDataset = buildDailyDataset(activeDb, businessDate);
 
   // ── Build Item Datasets ──────────────────────────────────────────────
-  const itemDatasets = buildItemDataset(businessDate);
+  const itemDatasets = buildItemDataset(activeDb, businessDate);
 
   // ── Handle build errors ──────────────────────────────────────────────
   if (dailyDataset.error) {

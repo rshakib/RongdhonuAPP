@@ -3073,7 +3073,7 @@ export function enqueueAIDatasetExport(dateStr) {
   // ── STEP 1: Build Daily Dataset via Phase 2 builder ─────────────────
   let dailyDataset;
   try {
-    dailyDataset = buildDailyDataset(dateStr);
+    dailyDataset = buildDailyDataset(db, dateStr);
   } catch (builderErr) {
     console.error(`[AI Queue] buildDailyDataset(${dateStr}) threw:`, builderErr);
     return { success: false, reason: 'BUILDER_EXCEPTION', error: builderErr.message };
@@ -3134,7 +3134,7 @@ export function enqueueAIDatasetExport(dateStr) {
   // ── STEP 3: Build Item Datasets via Phase 2 builder ─────────────────
   let itemDatasets;
   try {
-    itemDatasets = buildItemDataset(dateStr);
+    itemDatasets = buildItemDataset(db, dateStr);
   } catch (itemBuilderErr) {
     console.error(`[AI Queue] buildItemDataset(${dateStr}) threw:`, itemBuilderErr);
     return { success: false, reason: 'ITEM_BUILDER_EXCEPTION', error: itemBuilderErr.message };

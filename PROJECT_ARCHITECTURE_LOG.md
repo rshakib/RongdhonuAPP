@@ -264,6 +264,7 @@ The application operates on an offline-first SQLite database containing **22 act
 * **Phase 5 (Completed)**: AI Dataset Monitor (`screens/AIDatasetMonitorScreen.js`) — Admin-only monitoring and management dashboard. Reads strictly from local SQLite. Zero Firestore reads. Zero direct Google Sheets operations.
 * **Phase 5.1 (Completed)**: AI Dataset Monitor Enhancements — Added Dataset Health Summary Card, Monthly Completion Scores, Dataset Drift Detection, Export Timeline, Data Completeness Metrics, CSV Export Modal, and Queue Health Indicator.
 * **Phase 5.2 (Completed)**: AI Dataset Audit Center (`screens/AIDatasetAuditCenterScreen.js`) — Admin-only end-to-end lifecycle trace, export audit log, error center, consistency engine, and one-click report generator.
+* **Refactoring — Circular Dependency Removal**: Replaced internal `import { db } from '../../database'` in `services/aiDataset/builder.js` with Dependency Injection (`buildDailyDataset(dbInstance, businessDate)` & `buildItemDataset(dbInstance, businessDate)`). Metro Require cycle warning completely eliminated.
 * **SYSTEM STATUS**: **DATA COLLECTION MODE (ARCHITECTURAL FREEZE v1.0.0 ACTIVE)**.
 
 ---

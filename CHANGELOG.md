@@ -4,6 +4,22 @@
 > Maintained alongside `PROJECT_ARCHITECTURE_LOG.md`.
 > Every commit that changes the project MUST update this file.
 
+## v2.0.1 — Circular Dependency Removal & Builder Dependency Injection
+
+**Release Date:** 2026-08-05  
+**Git Commit:** `a465f0e`
+
+### Changed
+- Removed `import { db } from '../../database'` from `services/aiDataset/builder.js`
+- Refactored `buildDailyDataset(dbInstance, businessDate)` and `buildItemDataset(dbInstance, businessDate)` to use Dependency Injection
+- Updated caller invocations in `database.js` and `services/aiDataset/preview.js` to pass active SQLite database instance
+- Completely eliminated Metro "Require cycle: database.js -> services/aiDataset/builder.js -> database.js" warning
+
+### Documentation
+- Updated `PROJECT_ARCHITECTURE_LOG.md` detailing Dependency Injection refactoring
+
+---
+
 ## v2.0.0 — AI Dataset Phase 5.2 Audit Center & Transition to Data Collection Mode
 
 **Release Date:** 2026-08-05  
