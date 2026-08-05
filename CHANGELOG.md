@@ -4,6 +4,22 @@
 > Maintained alongside `PROJECT_ARCHITECTURE_LOG.md`.
 > Every commit that changes the project MUST update this file.
 
+## v2.0.3 — Production Strict JSON Contract Enforcement
+
+**Release Date:** 2026-08-05  
+**Git Commit:** `a3e282a`
+
+### Changed
+- Removed temporary production plain-text fallback in `transmitBatchToGoogleSheets()`
+- Enforced strict JSON response contract (`{"success": true, ...}`)
+- Non-JSON strings (`OK`, `Success`, `Error`, `<HTML>`) are classified as `JSON_PARSE_FAILURE` and enqueued for standard retry
+- Retained fallback disabled behind `ENABLE_DEV_PLAIN_TEXT_FALLBACK = false` for development testing only
+
+### Documentation
+- Updated `PROJECT_ARCHITECTURE_LOG.md` with Strict JSON Contract details
+
+---
+
 ## v2.0.2 — Google Apps Script Transport Layer Audit & Multi-Stage Classification
 
 **Release Date:** 2026-08-05  

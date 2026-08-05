@@ -127,7 +127,7 @@ export async function transmitBatchToGoogleSheets(webappUrl, batchPayload, optio
   };
 
   try {
-    console.log(`[AI Transport Audit] Transmitting batch of ${batchPayload.recordIds.length} records to Google Sheets WebApp...`);
+    console.log(`[AI Apps Script Audit] Transmitting batch of ${batchPayload.recordIds.length} records... Target URL: ${webappUrl}`);
 
     const response = await fetch(webappUrl, {
       method: 'POST',
@@ -135,10 +135,36 @@ export async function transmitBatchToGoogleSheets(webappUrl, batchPayload, optio
       body: jsonBody,
     });
 
-    console.log(`[AI Transport Audit] HTTP Response Status: ${response.status} (ok=${response.ok})`);
+    // Extract headers for diagnostic audit
+    const responseHeaders = {};
+    if (response.headers && typeof response.headers.forEach === 'function') {
+      response.headers.forEach((val, key) => { responseHeaders[key] = val; });
+    }
 
+    const contentType = responseHeaders['content-type'] || responseHeaders['Content-Type'] || 'UNKNOWN';
     const rawText = await response.text().catch(() => '');
-    console.log(`[AI Transport Audit] Raw HTTP Response Body FULL:`, rawText);
+    const trimmedText = (rawText || '').trim();
+
+    // Determine prefix type
+    let prefixType = 'OTHER';
+    if (trimmedText.startsWith('{') || trimmedText.startsWith('[')) prefixType = 'JSON_STRUCTURE';
+    else if (trimmedText.startsWith('<')) prefixType = 'HTML_OR_XML';
+    else if (trimmedText.startsWith('Error') || trimmedText.startsWith('error')) prefixType = 'ERROR_STRING';
+    else if (trimmedText.startsWith('Exception') || trimmedText.startsWith('exception')) prefixType = 'EXCEPTION_STRING';
+
+    console.log(`==================== APPS SCRIPT RESPONSE AUDIT ====================`);
+    console.log(`1. HTTP Status Code: ${response.status} (ok=${response.ok})`);
+    console.log(`2. Response URL: ${response.url || webappUrl}`);
+    console.log(`3. Content-Type Header: ${contentType}`);
+    console.log(`4. Response Headers:`, JSON.stringify(responseHeaders));
+    console.log(`5. Prefix Detection: ${prefixType} (starts with "${trimmedText.substring(0, 15)}")`);
+    console.log(`6. FULL RAW RESPONSE BODY:\n${rawText}`);
+    console.log(`====================================================================`);
+
+    if (prefixType === 'ERROR_STRING' || prefixType === 'EXCEPTION_STRING' || prefixType === 'HTML_OR_XML') {
+      console.error(`[AI Apps Script Audit] CRITICAL: Apps Script returned non-JSON body prefix (${prefixType}):`);
+      console.error(rawText);
+    }
 
     if (!response.ok) {
       console.error(`[AI Transport Audit] Classification: HTTP_FAILURE (Status ${response.status})`);
@@ -146,6 +172,8 @@ export async function transmitBatchToGoogleSheets(webappUrl, batchPayload, optio
         success: false,
         classification: 'HTTP_FAILURE',
         status: response.status,
+        url: response.url || webappUrl,
+        contentType,
         rawText,
         error: `HTTP Error ${response.status}: ${rawText.substring(0, 200)}`,
       };
@@ -156,29 +184,32 @@ export async function transmitBatchToGoogleSheets(webappUrl, batchPayload, optio
       parsedBody = JSON.parse(rawText);
       console.log(`[AI Transport Audit] Parsed JSON Body:`, JSON.stringify(parsedBody).substring(0, 300));
     } catch (parseErr) {
-      console.warn(`[AI Transport Audit] JSON Parse error: ${parseErr.message}. Checking rawText string fallback...`);
+      console.warn(`[AI Transport Audit] JSON Parse error: ${parseErr.message}`);
 
-      // Check if rawText indicates plain text success (e.g., "Success", "OK", "200", etc.)
-      const trimmedText = (rawText || '').trim().toLowerCase();
-      if (trimmedText.includes('success') || trimmedText === 'ok' || trimmedText === 'done') {
-        console.log(`[AI Transport Audit] Classification: PLAIN_TEXT_SUCCESS. Google Apps Script returned plain text success string: "${rawText.trim()}"`);
-        parsedBody = {
-          success: true,
-          processed: batchPayload.recordIds.length,
-          results: batchPayload.recordIds.map(id => ({
-            dataset_id: id,
-            status: 'SUCCESS',
-            message: rawText.trim() || 'Plain text success'
-          }))
-        };
-      } else {
-        console.warn(`[AI Transport Audit] Classification: JSON_PARSE_FAILURE. Raw text body is not valid JSON nor plain text success: "${rawText.substring(0, 150)}"`);
+      // Optional Development-only Debug Fallback (STRICTLY DISABLED IN PRODUCTION)
+      const ENABLE_DEV_PLAIN_TEXT_FALLBACK = false;
+      if (ENABLE_DEV_PLAIN_TEXT_FALLBACK && __DEV__) {
+        if (trimmedText.toLowerCase().includes('success') || trimmedText.toLowerCase() === 'ok') {
+          console.warn(`[AI Transport Audit DEV ONLY] Fallback accepted plain text success: "${trimmedText}"`);
+          parsedBody = {
+            success: true,
+            processed: batchPayload.recordIds.length,
+            results: batchPayload.recordIds.map(id => ({ dataset_id: id, status: 'SUCCESS', message: trimmedText }))
+          };
+        }
+      }
+
+      if (!parsedBody) {
+        console.error(`[AI Transport Audit] STRICT JSON CONTRACT ENFORCED. Rejecting non-JSON body (Prefix: ${prefixType}): "${trimmedText.substring(0, 100)}"`);
         return {
           success: false,
           classification: 'JSON_PARSE_FAILURE',
           status: response.status,
+          url: response.url || webappUrl,
+          contentType,
+          prefixType,
           rawText,
-          error: `JSON Parse Failure: ${parseErr.message} (Raw: "${rawText.substring(0, 100)}")`,
+          error: `JSON Parse Failure: ${parseErr.message} (Prefix: ${prefixType})`,
         };
       }
     }
