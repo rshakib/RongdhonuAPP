@@ -30,7 +30,8 @@
     "test:mapper": "node tests/mapper.test.js",
     "test:queue": "node tests/queue.test.js",
     "test:transport": "node tests/transport.test.js",
-    "test:all": "node tests/builder.test.js && node tests/validator.test.js && node tests/mapper.test.js && node tests/queue.test.js && node tests/transport.test.js"
+    "test:e2e": "node tests/e2ePipeline.test.js",
+    "test:all": "node tests/builder.test.js && node tests/validator.test.js && node tests/mapper.test.js && node tests/queue.test.js && node tests/transport.test.js && node tests/e2ePipeline.test.js"
   },
   "private": true,
   "devDependencies": {

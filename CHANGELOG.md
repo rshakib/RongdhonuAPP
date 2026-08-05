@@ -4,6 +4,21 @@
 > Maintained alongside `PROJECT_ARCHITECTURE_LOG.md`.
 > Every commit that changes the project MUST update this file.
 
+## v2.0.4 — End-to-End (E2E) Pipeline Validation Suite & Final Release Certification
+
+**Release Date:** 2026-08-05  
+**Git Commit:** `3e1c1c0`
+
+### Added
+- Created `tests/e2ePipeline.test.js` simulating complete production lifecycle (Daily Submit → SQLite → Builder → Validator → Queue → Transport → Mock Apps Script → Queue/History Update)
+- Added `npm run test:e2e` script to `package.json`
+- Generated official `AI_DATASET_E2E_REPORT.md` certifying 10/10 E2E scenarios PASS (198/198 total tests PASS overall)
+
+### Documentation
+- Updated `PROJECT_ARCHITECTURE_LOG.md` and `CHANGELOG.md`
+
+---
+
 ## v2.0.3 — Production Strict JSON Contract Enforcement
 
 **Release Date:** 2026-08-05  
