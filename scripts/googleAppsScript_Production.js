@@ -58,6 +58,21 @@ function doPost(e) {
     var dailyRows = payload.sheets.dailySales.rows || [];
     var itemRows = payload.sheets.itemSales.rows || [];
 
+    // --- TEMPORARY DIAGNOSTIC LOGS FOR RUNTIME PAYLOAD SHAPE PROOF ---
+    Logger.log(JSON.stringify({
+      dailyRowsIsArray: Array.isArray(payload.sheets.dailySales.rows),
+      dailyRowsLength: payload.sheets.dailySales.rows ? payload.sheets.dailySales.rows.length : null,
+      dailyFirstRowType: typeof (payload.sheets.dailySales.rows && payload.sheets.dailySales.rows[0]),
+
+      itemRowsIsArray: Array.isArray(payload.sheets.itemSales.rows),
+      itemRowsLength: payload.sheets.itemSales.rows ? payload.sheets.itemSales.rows.length : null,
+      itemFirstRowIsArray: Array.isArray(payload.sheets.itemSales.rows && payload.sheets.itemSales.rows[0]),
+      itemFirstRowType: typeof (payload.sheets.itemSales.rows && payload.sheets.itemSales.rows[0])
+    }));
+
+    Logger.log("ITEM ROWS PAYLOAD PROOF: " + JSON.stringify(payload.sheets.itemSales.rows));
+    // -----------------------------------------------------------------
+
     console.log("Daily Dataset Count:", dailyRows.length);
     console.log("Item Dataset Count:", itemRows.length);
     console.log("Target Sheet Names:", [payload.sheets.dailySales.targetTab, payload.sheets.itemSales.targetTab]);
