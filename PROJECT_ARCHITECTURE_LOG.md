@@ -258,7 +258,8 @@ The application operates on an offline-first SQLite database containing **22 act
 * **Phase 2.5 (Completed)**: Read-only Verification Suite — 8/8 PASS, zero regressions.
 * **Phase Post-2.5 (Completed)**: ISO-8601 week fix, schema version lock, unit test suite (143/143 PASS), preview tool.
 * **Phase 3 (Completed)**: AI Dataset Queue Integration — write-only SQLite queue layer (`enqueueAIDatasetExport`), 39 unit tests (182/182 PASS overall).
-* **Phase 4**: Google Sheets Export & Transport Layer (`processAIDatasetQueue()`).
+* **Phase Post-3 (Completed)**: Batch Export Engine (`DEFAULT_BATCH_SIZE = 25`), Payload Optimization, & Dedicated Transport Layer (`services/aiDataset/transport/googleSheets.js`). 186 unit tests (186/186 PASS overall).
+* **Phase 4**: Google Sheets Transport Processing (`processAIDatasetQueue()`).
 
 ---
 
@@ -308,17 +309,18 @@ dataset_version = "1.0.0" — LOCKED
 
 ### 23.3 Unit Test Suite
 
-Four standalone test files — zero external dependencies — run with plain `node`:
+Five standalone test files — zero external dependencies — run with plain `node`:
 
 ```bash
 npm run test:builder     # 63 tests
 npm run test:validator   # 37 tests
 npm run test:mapper      # 43 tests
 npm run test:queue       # 39 tests
-npm run test:all         # 182 tests total
+npm run test:transport   # 4 tests
+npm run test:all         # 186 tests total
 ```
 
-**Result: 182/182 PASS — Zero failures.**
+**Result: 186/186 PASS — Zero failures.**
 
 ### 23.4 Dataset Preview Tool
 
@@ -375,16 +377,46 @@ ai_dataset_queue                   ai_dataset_queue   ← SQLite ONLY (Write-Onl
 | `updated_at` | `TEXT` | `ISO 8601 String` | Timestamp of last queue status or payload update |
 | `is_synced` | `INTEGER` | Default `0` | Internal sync marker |
 
-### 24.3 Phase 3 Guarantees & Constraints
+---
 
-1. **Write-Only Layer**: Enqueues payload into SQLite only. ZERO HTTP calls, ZERO fetch calls, ZERO Google Sheets operations.
-2. **Strict Validation Gate**: If `validateDailyDataset()` or `validateItemDataset()` fails, insertion is aborted and errors are returned.
-3. **Idempotency**: Uses `INSERT OR REPLACE INTO ai_dataset_queue` to ensure duplicate calls update payloads without duplicating rows.
-4. **Finalized Days Only**: Requires `daily_submit` record to exist before enqueuing. Drafts or unsubmitted days are rejected.
+## 25. Post-Phase 3 Refinements — Batch Export Engine & Dedicated Transport Layer
+
+**Date:** 2026-08-05 | **Scope:** Dedicated Transport Layer (`services/aiDataset/transport/googleSheets.js`)
+
+### 25.1 Batch Processing Architecture & Payload Format
+
+Configurable constant `DEFAULT_BATCH_SIZE = 25`. Up to 25 pending queue records are selected and packed into a single compact JSON batch payload:
+
+```json
+{
+  "spreadsheetName": "Rongdhonu_ML_Dataset",
+  "batchSize": 2,
+  "timestamp": "2026-08-05T15:54:00.000Z",
+  "compression": "none",
+  "sheets": {
+    "dailySales": {
+      "targetTab": "AI_Daily_Sales_Dataset",
+      "rows": [ { ...lossless_daily_record... } ]
+    },
+    "itemSales": {
+      "targetTab": "AI_Item_Sales_Dataset",
+      "rows": [ { ...lossless_item_record... } ]
+    }
+  },
+  "recordIds": ["2026-08-05", "ITEM_2026-08-05"]
+}
+```
+
+### 25.2 Layer Responsibilities & Strict Isolation
+
+- **Builder Layer** (`builder.js`): SQLite → Dataset Object
+- **Validator Layer** (`validator.js`): Dataset Object → Validation Result
+- **Queue Layer** (`database.js` / `enqueueAIDatasetExport`): Dataset Object → `ai_dataset_queue`
+- **Transport Layer** (`services/aiDataset/transport/googleSheets.js`): Queue Records → Batch Payload → Google Sheets WebApp HTTP POST
 
 ---
 
-## 25. Dataset Schema Version History
+## 26. Dataset Schema Version History
 
 | Version | Date | Changes |
 |---------|------|---------|
@@ -394,12 +426,12 @@ ai_dataset_queue                   ai_dataset_queue   ← SQLite ONLY (Write-Onl
 
 ---
 
-## 26. Updated File Structure
+## 27. Updated File Structure
 
 ```
 /
 ├── App.js                         # Root application navigator & global alerts
-├── database.js                    # Core SQLite schemas, migrations, & sync queue engines (includes enqueueAIDatasetExport)
+├── database.js                    # Core SQLite schemas, migrations, & sync queue engines
 ├── pdfHelper.js                   # PDF report generator
 ├── screens/
 │   ├── LoginScreen.js             # Authentication, 88% width layout, mode toggle
@@ -416,13 +448,17 @@ ai_dataset_queue                   ai_dataset_queue   ← SQLite ONLY (Write-Onl
 │       ├── validator.js           # Anomaly checks & cross-field mathematical rules
 │       ├── builder.js             # Pure Dataset Builder (buildDailyDataset, buildItemDataset)
 │       ├── preview.js             # Read-only Dev/QA Dataset Preview Tool
-│       └── README.md              # Architectural directives & phase roadmap
+│       ├── README.md              # Architectural directives & phase roadmap
+│       └── transport/             # DEDICATED TRANSPORT LAYER MODULE
+│           └── googleSheets.js    # Batch payload construction & HTTP transport engine
 └── tests/
     ├── builder.test.js            # 63 unit tests — builder logic, ISO week, ranking
     ├── validator.test.js          # 37 unit tests — validation rules, immutability
     ├── mapper.test.js             # 43 unit tests — mapper coverage, source tables
-    └── queue.test.js              # 39 unit tests — Phase 3 queue insertion & idempotency
+    ├── queue.test.js              # 39 unit tests — Phase 3 queue insertion & idempotency
+    └── transport.test.js          # 4 unit tests — Transport batching & payload optimization
 ```
+
 
 
 

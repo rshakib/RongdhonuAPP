@@ -4,6 +4,24 @@
 > Maintained alongside `PROJECT_ARCHITECTURE_LOG.md`.
 > Every commit that changes the project MUST update this file.
 
+## v1.7.0 — AI Dataset Post-Phase 3 Refinements
+
+**Release Date:** 2026-08-05  
+**Git Commit:** `ebbbeea`
+
+### Added
+- Dedicated Transport Layer in `services/aiDataset/transport/googleSheets.js` for Google Apps Script WebApp integration
+- Configurable Batch Export Engine (`DEFAULT_BATCH_SIZE = 25`) to bundle up to 25 queue records into a single HTTP POST request
+- Compact, lossless payload optimization (`optimizePayloadForTransport`) removing debug/transient fields while preserving 100% of business and ML feature values
+- Architectural extension point for future payload compression (`compression: 'none'`)
+- Automated transport layer unit test suite in `tests/transport.test.js` (4 tests)
+- `test:transport` script in `package.json`
+
+### Documentation
+- Updated `PROJECT_ARCHITECTURE_LOG.md` with Section 25 (Batch Export Engine Architecture, Payload Format & Transport Isolation)
+
+---
+
 ## v1.6.0 — AI Dataset Phase 3 Queue Integration
 
 **Release Date:** 2026-08-05  
