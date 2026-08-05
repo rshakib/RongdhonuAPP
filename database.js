@@ -1,6 +1,12 @@
 import * as SQLite from 'expo-sqlite';
 import { AppState, Platform } from 'react-native';
 import { buildDailyDataset, buildItemDataset } from './services/aiDataset/builder';
+import {
+  DEFAULT_BATCH_SIZE,
+  buildBatchPayload,
+  transmitBatchToGoogleSheets,
+  processStructuredTransportResponse
+} from './services/aiDataset/transport/googleSheets';
 
 let dbInstance = null;
 
@@ -3254,7 +3260,7 @@ export async function processAIDatasetQueue() {
   const webappUrl = cleanEnvVar(process.env.EXPO_PUBLIC_GOOGLE_SHEETS_WEBAPP_URL);
   if (!webappUrl) return;
 
-  // Crash Recovery: Reset stale IN_PROGRESS records back to RETRY if stuck from app termination
+  // 1. Crash Recovery: Reset stale IN_PROGRESS records back to RETRY if stuck from app termination
   try {
     const staleTime = new Date(Date.now() - 5 * 60 * 1000).toISOString();
     db.runSync(
@@ -3265,97 +3271,45 @@ export async function processAIDatasetQueue() {
     console.error("[AI Dataset Sync] Stale recovery check failed:", e.message);
   }
 
-  // Fetch pending or retryable queue items
-  const pending = db.getAllSync(
-    "SELECT * FROM ai_dataset_queue WHERE status IN ('PENDING', 'RETRY', 'FAILED') ORDER BY created_at ASC LIMIT 5"
-  );
-  if (pending.length === 0) return;
+  // 2. Batch Selection: Fetch up to DEFAULT_BATCH_SIZE (25) pending or retryable records
+  let pending;
+  try {
+    pending = db.getAllSync(
+      `SELECT * FROM ai_dataset_queue 
+       WHERE status IN ('PENDING', 'RETRY') 
+       ORDER BY created_at ASC 
+       LIMIT ?`,
+      [DEFAULT_BATCH_SIZE]
+    );
+  } catch (e) {
+    console.error("[AI Dataset Sync] Failed to fetch pending queue records:", e.message);
+    return;
+  }
 
+  if (!pending || pending.length === 0) return;
+
+  const nowIso = new Date().toISOString();
+
+  // 3. Mark batch as IN_PROGRESS before transmission
   for (const record of pending) {
-    const nowIso = new Date().toISOString();
-    const currentRetry = Number(record.retry_count || 0);
-
     try {
-      // Transition: PENDING / RETRY -> IN_PROGRESS
       db.runSync(
         "UPDATE ai_dataset_queue SET status = 'IN_PROGRESS', updated_at = ? WHERE id = ?",
         [nowIso, record.id]
       );
-
-      const payload = JSON.parse(record.payload);
-      const body = { spreadsheetName: "Rongdhonu_ML_Dataset" };
-
-      // TARGET EXCLUSIVELY NEW DEDICATED AI WORKSHEET TABS
-      if (record.type === 'AI_DAILY_SALES_DATASET') {
-        body.sheet1 = "AI_Daily_Sales_Dataset";
-        body.dailyRow = payload;
-      } else if (record.type === 'AI_ITEM_SALES_DATASET') {
-        body.sheet2 = "AI_Item_Sales_Dataset";
-        body.itemRows = payload;
-      }
-
-      const res = await fetch(webappUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-
-      if (res.ok) {
-        const successTime = new Date().toISOString();
-        
-        // Transition: IN_PROGRESS -> SUCCESS
-        try {
-          db.runSync(
-            "UPDATE ai_dataset_queue SET status = 'SUCCESS', updated_at = ?, last_error = NULL, is_synced = 0 WHERE id = ?",
-            [successTime, record.id]
-          );
-        } catch (e) {
-          console.error(`[AI Dataset DB Error] Failed to update SUCCESS status for ${record.id}:`, e.message);
-          throw e;
-        }
-        
-        try {
-          // Record in history log for audit and duplicate prevention
-          db.runSync(`
-            INSERT OR REPLACE INTO ai_dataset_history (id, date, type, exported_at, created_at, updated_at, is_synced)
-            VALUES (?, ?, ?, ?, ?, ?, 0)
-          `, [record.id, record.business_date || '', record.type || '', successTime, record.created_at || successTime, successTime]);
-        } catch (e) {
-          console.error(`[AI Dataset DB Error] Failed to insert history for ${record.id}:`, e.message);
-          throw e;
-        }
-        
-        console.log(`[AI Dataset Sync] Successfully exported dataset record (id=${record.id})`);
-      } else {
-        const errText = await res.text();
-        const failMsg = `HTTP Error ${res.status}: ${errText}`;
-        console.error(`[AI Dataset Sync] ${failMsg} for record ${record.id}`);
-
-        // Transition: IN_PROGRESS -> FAILED / RETRY
-        const nextRetry = currentRetry + 1;
-        const nextStatus = nextRetry >= 5 ? 'FAILED' : 'RETRY';
-        db.runSync(
-          "UPDATE ai_dataset_queue SET status = ?, retry_count = ?, last_error = ?, updated_at = ? WHERE id = ?",
-          [nextStatus, nextRetry, failMsg, new Date().toISOString(), record.id]
-        );
-      }
-    } catch (err) {
-      const errMsg = `Network / Execution Exception: ${err.message}`;
-      console.error(`[AI Dataset Sync] Exception for ${record.id}:`, err.message);
-
-      // Transition: IN_PROGRESS -> RETRY / FAILED
-      const nextRetry = currentRetry + 1;
-      const nextStatus = nextRetry >= 5 ? 'FAILED' : 'RETRY';
-      try {
-        db.runSync(
-          "UPDATE ai_dataset_queue SET status = ?, retry_count = ?, last_error = ?, updated_at = ? WHERE id = ?",
-          [nextStatus, nextRetry, errMsg, new Date().toISOString(), record.id]
-        );
-      } catch (e) {
-        console.error(`[AI Dataset DB Error] Failed to update RETRY status for ${record.id}:`, e.message);
-      }
+    } catch (e) {
+      console.error(`[AI Dataset Sync] Failed to transition ${record.id} to IN_PROGRESS:`, e.message);
     }
   }
+
+  // 4. Build lossless compact batch payload via Transport Layer
+  const batchPayload = buildBatchPayload(pending);
+
+  // 5. Transmit batch to Google Sheets WebApp via Transport Layer
+  const transportResult = await transmitBatchToGoogleSheets(webappUrl, batchPayload);
+
+  // 6. Process per-record response & update queue individually via Transport Layer
+  processStructuredTransportResponse(db, pending, transportResult);
 }
 
 export async function triggerGoogleSheetExportCheck() {

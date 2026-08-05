@@ -4,6 +4,26 @@
 > Maintained alongside `PROJECT_ARCHITECTURE_LOG.md`.
 > Every commit that changes the project MUST update this file.
 
+## v1.8.0 — AI Dataset Phase 4.5 Production Readiness & Architecture Freeze
+
+**Release Date:** 2026-08-05  
+**Git Commit:** `328a037`
+
+### Added
+- Completed Phase 4.5 End-to-End Validation & Production Readiness Certification
+- Created [`AI_DATASET_PRODUCTION_READINESS.md`](./AI_DATASET_PRODUCTION_READINESS.md) production readiness audit report
+- Added ADR-002 to [`DECISIONS.md`](./DECISIONS.md) freezing AI Dataset Sync Pipeline v1.0.0
+
+### Changed
+- Connected `processAIDatasetQueue()` in `database.js` directly to dedicated Transport Layer (`services/aiDataset/transport/googleSheets.js`)
+- Configured production queue processing batch size to `DEFAULT_BATCH_SIZE = 25`
+- Architecture & Schema v1.0.0 certified **PRODUCTION READY & FROZEN**
+
+### Documentation
+- Updated `PROJECT_ARCHITECTURE_LOG.md`, `CHANGELOG.md`, `DECISIONS.md`, and generated `AI_DATASET_PRODUCTION_READINESS.md`
+
+---
+
 ## v1.7.1 — Per-Record Response Handling & Partial Batch Success
 
 **Release Date:** 2026-08-05  
