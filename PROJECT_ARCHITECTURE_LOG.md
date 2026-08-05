@@ -267,6 +267,7 @@ The application operates on an offline-first SQLite database containing **22 act
 * **Transport Layer Audit & Response Classification**: Added multi-stage classification (`HTTP_FAILURE`, `JSON_PARSE_FAILURE`, `APP_LEVEL_FAILURE`, `PARTIAL_SUCCESS`, `FULL_SUCCESS`) with diagnostic audit logging in `transmitBatchToGoogleSheets()`.
 * **Strict JSON Contract Enforcement**: Removed production plain-text fallback. Non-JSON responses (`OK`, `Success`, `Error`, `HTML`) are strictly rejected as `JSON_PARSE_FAILURE` and scheduled for retry according to retry policy.
 * **End-to-End (E2E) Pipeline Validation Suite (`tests/e2ePipeline.test.js`)**: Certified 10/10 E2E scenarios PASS (198/198 total tests PASS overall). Generated official `AI_DATASET_E2E_REPORT.md`.
+* **Navigation Audit & Bug Fix**: Added missing `onNavigateToAIDatasetMonitor` and `onNavigateToAIDatasetAuditCenter` to function parameters in `screens/AdminDB.js`. Fixed runtime `ReferenceError`.
 * **SYSTEM STATUS**: **DATA COLLECTION MODE (ARCHITECTURAL FREEZE v1.0.0 ACTIVE)**.
 
 ---

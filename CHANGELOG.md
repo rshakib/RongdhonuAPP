@@ -4,6 +4,20 @@
 > Maintained alongside `PROJECT_ARCHITECTURE_LOG.md`.
 > Every commit that changes the project MUST update this file.
 
+## v2.0.5 — Navigation Audit & AdminDB Component Prop Fix
+
+**Release Date:** 2026-08-05  
+**Git Commit:** `83dd0a6`
+
+### Fixed
+- Added missing `onNavigateToAIDatasetMonitor` and `onNavigateToAIDatasetAuditCenter` props to `AdminDB` component parameter list in `screens/AdminDB.js`
+- Fixed runtime `ReferenceError: Property 'onNavigateToAIDatasetAuditCenter' doesn't exist` when tapping AI Dataset Monitor or AI Dataset Audit Center menu options
+
+### Documentation
+- Updated `PROJECT_ARCHITECTURE_LOG.md` and `CHANGELOG.md`
+
+---
+
 ## v2.0.4 — End-to-End (E2E) Pipeline Validation Suite & Final Release Certification
 
 **Release Date:** 2026-08-05  
