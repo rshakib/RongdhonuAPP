@@ -263,6 +263,8 @@ The application operates on an offline-first SQLite database containing **22 act
 * **Phase 4.5 (Completed)**: Production Readiness & End-to-End Validation — Architecture & Schema v1.0.0 **OFFICIALLY FROZEN & PRODUCTION READY**.
 * **Phase 5 (Completed)**: AI Dataset Monitor (`screens/AIDatasetMonitorScreen.js`) — Admin-only monitoring and management dashboard. Reads strictly from local SQLite. Zero Firestore reads. Zero direct Google Sheets operations.
 * **Phase 5.1 (Completed)**: AI Dataset Monitor Enhancements — Added Dataset Health Summary Card, Monthly Completion Scores, Dataset Drift Detection, Export Timeline, Data Completeness Metrics, CSV Export Modal, and Queue Health Indicator.
+* **Phase 5.2 (Completed)**: AI Dataset Audit Center (`screens/AIDatasetAuditCenterScreen.js`) — Admin-only end-to-end lifecycle trace, export audit log, error center, consistency engine, and one-click report generator.
+* **SYSTEM STATUS**: **DATA COLLECTION MODE (ARCHITECTURAL FREEZE v1.0.0 ACTIVE)**.
 
 ---
 
@@ -483,7 +485,22 @@ The **AI Dataset Monitor** provides full visibility into the AI Dataset lifecycl
 
 ---
 
-## 27. Dataset Schema Version History
+## 27. Phase 5.2 — AI Dataset Audit Center & Transition to Data Collection Mode
+
+**Date:** 2026-08-05 | **Scope:** Admin-only End-to-End Audit & Diagnostic Tool (`screens/AIDatasetAuditCenterScreen.js`)
+
+### 27.1 Core Capabilities
+
+1. **Export Audit Log**: Detailed listing of every dataset record in `ai_dataset_queue` and `ai_dataset_history`.
+2. **Business Date Trace Modal**: Interactive step-by-step trace: `Daily Submit` → `Builder` → `Validator` → `Queue` → `Transport` → `Completed`.
+3. **Error Center**: Isolated tab listing only failed or retrying dataset exports with direct requeue actions.
+4. **Export Consistency Engine**: Automated anomaly detector identifying missing queue rows, un-exported dates, and orphan records.
+5. **One-click Audit Report**: Generates `AI_DATASET_AUDIT_REPORT` formatted text summarizing dataset health and pipeline integrity.
+6. **Read-only Safety**: Read-only interface with non-destructive Admin requeue actions. Zero record deletions or data mutations allowed.
+
+---
+
+## 28. Dataset Schema Version History
 
 | Version | Date | Changes |
 |---------|------|---------|

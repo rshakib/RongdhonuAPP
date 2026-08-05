@@ -91,3 +91,27 @@ Any future schema modification (adding, removing, or renaming fields, or alterin
 
 ---
 
+## ADR-003 — Transition to Long-term Data Collection Mode
+
+**Status:** ✅ Accepted & Active  
+**Date:** 2026-08-05  
+**Subsystem:** AI Dataset Subsystem v1.0.0
+
+### Decision
+
+With the completion of **Phase 5.2 (AI Dataset Audit Center)**, the AI Dataset Subsystem officially transitions into **DATA COLLECTION MODE**.
+
+No new architectural features, schema changes, queue modifications, or transport layer re-designs will be introduced for version `1.0.0`. The system will run autonomously in production, building and exporting high-quality ML datasets on daily submission.
+
+### Active Guarantees
+
+1. **SQLite Single Source of Truth**: All data reads derive from SQLite. Zero Firestore reads.
+2. **Zero POS Impact**: POS transactions and daily settlements execute without performance impact.
+3. **Idempotency**: All queue operations use `INSERT OR REPLACE INTO ai_dataset_queue`.
+4. **Batch Transport**: Transmits up to 25 records per HTTP request to dedicated Google Sheets tabs.
+5. **Per-Record Isolation**: Individual dataset success/failure handling prevents batch cascading failures.
+6. **Admin-Only Monitoring & Auditing**: Full diagnostic visibility via `AIDatasetMonitorScreen` and `AIDatasetAuditCenterScreen`.
+
+---
+
+

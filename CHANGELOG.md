@@ -4,6 +4,25 @@
 > Maintained alongside `PROJECT_ARCHITECTURE_LOG.md`.
 > Every commit that changes the project MUST update this file.
 
+## v2.0.0 — AI Dataset Phase 5.2 Audit Center & Transition to Data Collection Mode
+
+**Release Date:** 2026-08-05  
+**Git Commit:** `450b92e`
+
+### Added
+- Created `screens/AIDatasetAuditCenterScreen.js` — Admin-only end-to-end lifecycle trace and audit dashboard
+- Added `🔍 AI Dataset Audit Center` option to Admin App menu in `screens/AdminDB.js`
+- Interactive business date trace modal tracking `Daily Submit` → `Builder` → `Validator` → `Queue` → `Google Sheets Export`
+- Isolated Error Center tab listing failed exports with single-click retry action
+- Automated Export Consistency Check detecting missing queue entries or un-exported dates
+- One-click `AI_DATASET_AUDIT_REPORT` generator
+- Added ADR-003 to `DECISIONS.md` transitioning the AI Dataset Subsystem into **DATA COLLECTION MODE**
+
+### Documentation
+- Updated `PROJECT_ARCHITECTURE_LOG.md` (Section 27), `CHANGELOG.md`, and `DECISIONS.md`
+
+---
+
 ## v1.9.1 — AI Dataset Phase 5.1 Monitor Enhancements
 
 **Release Date:** 2026-08-05  

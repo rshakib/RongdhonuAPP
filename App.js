@@ -1492,6 +1492,7 @@ export default function App() {
                 onNavigateToSystemTools={() => setCurrentScreen('SYSTEM_TOOLS')}
                 onNavigateToDeviceManagement={() => setCurrentScreen('DEVICE_MANAGEMENT')}
                 onNavigateToAIDatasetMonitor={() => setCurrentScreen('AI_DATASET_MONITOR')}
+                onNavigateToAIDatasetAuditCenter={() => setCurrentScreen('AI_DATASET_AUDIT_CENTER')}
                 onNavigateToAnalytics={() => setCurrentScreen('ADMIN_ANALYTICS')}
                 onCloudRestore={handleCloudRestore}
                 onMenuRecovery={handleMenuRecovery}
@@ -1853,6 +1854,18 @@ export default function App() {
           const AIDatasetMonitorScreen = require('./screens/AIDatasetMonitorScreen').default;
           return (
             <AIDatasetMonitorScreen
+              onBack={() => setCurrentScreen('DASHBOARD')}
+            />
+          );
+        } else {
+          return null;
+        }
+
+      case 'AI_DATASET_AUDIT_CENTER':
+        if (ACTIVE_APP_PROFILE === 'ADMIN' && String(userRole || '').toLowerCase().trim() === 'admin') {
+          const AIDatasetAuditCenterScreen = require('./screens/AIDatasetAuditCenterScreen').default;
+          return (
+            <AIDatasetAuditCenterScreen
               onBack={() => setCurrentScreen('DASHBOARD')}
             />
           );
