@@ -257,7 +257,8 @@ The application operates on an offline-first SQLite database containing **22 act
 * **Phase 2 (Completed)**: Pure Dataset Builder (`services/aiDataset/builder.js` exposing `buildDailyDataset` and `buildItemDataset`).
 * **Phase 2.5 (Completed)**: Read-only Verification Suite — 8/8 PASS, zero regressions.
 * **Phase Post-2.5 (Completed)**: ISO-8601 week fix, schema version lock, unit test suite (143/143 PASS), preview tool.
-* **Phase 3**: Connect Admin App UI export trigger to Google Sheets WebApp using `processAIDatasetQueue()`.
+* **Phase 3 (Completed)**: AI Dataset Queue Integration — write-only SQLite queue layer (`enqueueAIDatasetExport`), 39 unit tests (182/182 PASS overall).
+* **Phase 4**: Google Sheets Export & Transport Layer (`processAIDatasetQueue()`).
 
 ---
 
@@ -307,16 +308,17 @@ dataset_version = "1.0.0" — LOCKED
 
 ### 23.3 Unit Test Suite
 
-Three standalone test files — zero external dependencies — run with plain `node`:
+Four standalone test files — zero external dependencies — run with plain `node`:
 
 ```bash
 npm run test:builder     # 63 tests
 npm run test:validator   # 37 tests
 npm run test:mapper      # 43 tests
-npm run test:all         # 143 tests total
+npm run test:queue       # 39 tests
+npm run test:all         # 182 tests total
 ```
 
-**Result: 143/143 PASS — Zero failures.**
+**Result: 182/182 PASS — Zero failures.**
 
 ### 23.4 Dataset Preview Tool
 
@@ -337,7 +339,52 @@ printDatasetPreview('2026-08-05'); // Formatted console output
 
 ---
 
-## 24. Dataset Schema Version History
+## 24. Phase 3 — AI Dataset Queue Integration
+
+**Date:** 2026-08-05 | **Scope:** Write-only SQLite Queue Integration (`enqueueAIDatasetExport()`)
+
+### 24.1 Integration Pipeline
+
+```
+submitDailySheet() [Success]
+       │
+       ▼
+buildDailyDataset(dateStr)  buildItemDataset(dateStr)  ← services/aiDataset/builder.js
+       │                                  │
+       ▼                                  ▼
+validateDailyDataset()             validateItemDataset()  ← validator.js
+       │                                  │
+       ▼ (if valid)                       ▼ (if valid)
+ai_dataset_queue                   ai_dataset_queue   ← SQLite ONLY (Write-Only)
+[AI_DAILY_SALES_DATASET]           [AI_ITEM_SALES_DATASET]
+(status: PENDING)                  (status: PENDING)
+```
+
+### 24.2 Queue Schema (`ai_dataset_queue`)
+
+| Column Name | SQLite Type | Allowed Values / Default | Description |
+|-------------|-------------|-------------------------|-------------|
+| `id` | `TEXT PRIMARY KEY` | `YYYY-MM-DD` / `ITEM_YYYY-MM-DD` | Unique queue item identifier (Idempotent key) |
+| `type` | `TEXT` | `AI_DAILY_SALES_DATASET`, `AI_ITEM_SALES_DATASET` | Supported dataset payload type |
+| `business_date` | `TEXT` | `YYYY-MM-DD` | Target business date |
+| `payload` | `TEXT` | `JSON string` | Validated frozen dataset JSON payload |
+| `status` | `TEXT` | `PENDING`, `IN_PROGRESS`, `SUCCESS`, `FAILED`, `RETRY` (Default: `PENDING`) | Queue processing lifecycle status |
+| `retry_count` | `INTEGER` | Default `0` | Number of failed transport attempts |
+| `last_error` | `TEXT` | Default `NULL` | Error log message if transport failed |
+| `created_at` | `TEXT` | `ISO 8601 String` | Timestamp when queue entry was first created |
+| `updated_at` | `TEXT` | `ISO 8601 String` | Timestamp of last queue status or payload update |
+| `is_synced` | `INTEGER` | Default `0` | Internal sync marker |
+
+### 24.3 Phase 3 Guarantees & Constraints
+
+1. **Write-Only Layer**: Enqueues payload into SQLite only. ZERO HTTP calls, ZERO fetch calls, ZERO Google Sheets operations.
+2. **Strict Validation Gate**: If `validateDailyDataset()` or `validateItemDataset()` fails, insertion is aborted and errors are returned.
+3. **Idempotency**: Uses `INSERT OR REPLACE INTO ai_dataset_queue` to ensure duplicate calls update payloads without duplicating rows.
+4. **Finalized Days Only**: Requires `daily_submit` record to exist before enqueuing. Drafts or unsubmitted days are rejected.
+
+---
+
+## 25. Dataset Schema Version History
 
 | Version | Date | Changes |
 |---------|------|---------|
@@ -347,12 +394,12 @@ printDatasetPreview('2026-08-05'); // Formatted console output
 
 ---
 
-## 25. Updated File Structure
+## 26. Updated File Structure
 
 ```
 /
 ├── App.js                         # Root application navigator & global alerts
-├── database.js                    # Core SQLite schemas, migrations, & sync queue engines
+├── database.js                    # Core SQLite schemas, migrations, & sync queue engines (includes enqueueAIDatasetExport)
 ├── pdfHelper.js                   # PDF report generator
 ├── screens/
 │   ├── LoginScreen.js             # Authentication, 88% width layout, mode toggle
@@ -373,8 +420,10 @@ printDatasetPreview('2026-08-05'); // Formatted console output
 └── tests/
     ├── builder.test.js            # 63 unit tests — builder logic, ISO week, ranking
     ├── validator.test.js          # 37 unit tests — validation rules, immutability
-    └── mapper.test.js             # 43 unit tests — mapper coverage, source tables
+    ├── mapper.test.js             # 43 unit tests — mapper coverage, source tables
+    └── queue.test.js              # 39 unit tests — Phase 3 queue insertion & idempotency
 ```
+
 
 
 

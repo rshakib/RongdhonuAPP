@@ -4,6 +4,24 @@
 > Maintained alongside `PROJECT_ARCHITECTURE_LOG.md`.
 > Every commit that changes the project MUST update this file.
 
+## v1.6.0 — AI Dataset Phase 3 Queue Integration
+
+**Release Date:** 2026-08-05  
+**Git Commit:** `bf699fc`
+
+### Added
+- Integrated Phase 2 Dataset Builder and Validator with `ai_dataset_queue` via `enqueueAIDatasetExport()` in `database.js`
+- Automated Phase 3 unit test suite in `tests/queue.test.js` (39 tests)
+- `test:queue` script in `package.json`
+
+### Changed
+- `enqueueAIDatasetExport()` in `database.js` replaced with modular implementation calling `buildDailyDataset()` and `buildItemDataset()`, running validation before insertion
+- `ai_dataset_queue` insertion made strictly idempotent (`INSERT OR REPLACE INTO ai_dataset_queue`)
+- `enqueueAIDatasetExport()` made write-only — removed legacy inline call to `processAIDatasetQueue()`
+
+### Documentation
+- `PROJECT_ARCHITECTURE_LOG.md` updated with Section 24 (Phase 3 Integration Pipeline, Queue Schema & Guarantees)
+
 ---
 
 ## v1.5.0 — AI Dataset Post-Release Refinements

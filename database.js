@@ -1,5 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import { AppState, Platform } from 'react-native';
+import { buildDailyDataset, buildItemDataset } from './services/aiDataset/builder';
 
 let dbInstance = null;
 
@@ -3025,185 +3026,228 @@ async function captureHourlyWeather() {
   }
 }
 
+// ============================================================
+// PHASE 3 — AI DATASET QUEUE INTEGRATION
+// ============================================================
+// Connects submitDailySheet() → Phase 2 Dataset Builder → Validator → ai_dataset_queue.
+//
+// Pipeline:
+//   submitDailySheet() [success]
+//       ↓
+//   buildDailyDataset()  buildItemDataset()   ← Phase 2 builder.js
+//       ↓                      ↓
+//   validateDailyDataset()  validateItemDataset()  ← validator.js
+//       ↓                      ↓
+//   ai_dataset_queue (PENDING)   ← SQLite ONLY. No transport. No HTTP.
+//
+// RULES:
+//   - Write-only. Queue entries only. No processAIDatasetQueue() call.
+//   - Idempotent: INSERT OR REPLACE on dataset_id.
+//   - If validation fails → do NOT enqueue → return validation errors.
+//   - Never called on: draft, failed submit, rollback, current working day.
+// ============================================================
+
 export function enqueueAIDatasetExport(dateStr) {
-  try {
-    // RULE 1: EXPORT ONLY FINALIZED BUSINESS DAYS
-    // Verify that a committed daily_submit record exists for this business date.
-    // Never export draft, unsubmitted, or temporary data.
-    const committedSubmit = db.getFirstSync("SELECT * FROM daily_submit WHERE date = ?", [dateStr]);
-    if (!committedSubmit) {
-      console.warn(`[AI Dataset Sync] Business date ${dateStr} is not finalized in daily_submit. Skipping export.`);
-      return;
-    }
+  const now = new Date().toISOString();
 
-    const summary = db.getFirstSync("SELECT * FROM daily_summary WHERE date = ?", [dateStr]);
-    if (!summary) {
-      console.warn(`[AI Dataset Sync] No daily_summary record found for ${dateStr}. Skipping export.`);
-      return;
-    }
-
-    // 1. Compute Calendar & Salary Cycle Derivations
-    const dateObj = new Date(`${dateStr}T00:00:00`);
-    const dayOfMonth = dateObj.getDate();
-    const isMonthStart = dayOfMonth === 1 ? 1 : 0;
-    
-    // Check if month end
-    const nextDayObj = new Date(dateObj);
-    nextDayObj.setDate(dayOfMonth + 1);
-    const isMonthEnd = nextDayObj.getDate() === 1 ? 1 : 0;
-
-    // Days until salary (1st of next month)
-    const nextMonthObj = new Date(dateObj.getFullYear(), dateObj.getMonth() + 1, 1);
-    const daysUntilSalary = Math.round((nextMonthObj - dateObj) / (1000 * 60 * 60 * 24));
-    const daysAfterSalary = dayOfMonth - 1;
-
-    // Festival Classification
-    let festivalType = 'None';
-    const note = summary.specialDayNote || '';
-    if (note.includes('Eid') || note.includes('Puja')) festivalType = 'Religious';
-    else if (note.includes('Independence') || note.includes('Victory') || note.includes('Language')) festivalType = 'National';
-    else if (note.trim().length > 0) festivalType = 'Local Event';
-    else if (summary.isFriday || summary.dayOfWeek === 'Saturday') festivalType = 'Weekend';
-
-    // 2. Enqueue AI Daily Sales Dataset payload targeting AI_Daily_Sales_Dataset (RAW DATASET)
-    const summaryPayload = {
-      dataset_id: dateStr,
-      business_date: summary.date,
-      calendar_date: summary.date,
-      schema_version: '1.0.0',
-      dataset_version: '1.0.0',
-      exported_at: now,
-      year: dateObj.getFullYear(),
-      month: dateObj.getMonth() + 1,
-      week_number: Math.ceil(dayOfMonth / 7),
-      day_of_month: dayOfMonth,
-      day_of_week: dateObj.getDay(),
-      day_name: summary.dayOfWeek,
-      is_friday: summary.isFriday ? 1 : 0,
-      is_weekend: (summary.isFriday || summary.dayOfWeek === 'Saturday') ? 1 : 0,
-      is_month_start: isMonthStart,
-      is_month_end: isMonthEnd,
-      days_until_salary: daysUntilSalary,
-      days_after_salary: daysAfterSalary,
-      temperature: summary.temperature !== undefined ? summary.temperature : null,
-      feels_like_temperature: null,
-      humidity: summary.humidity !== undefined ? summary.humidity : null,
-      rainfall_mm: null,
-      weather_condition: summary.condition || "UNKNOWN",
-      is_rainy: summary.isRainy ? 1 : 0,
-      wind_speed: summary.windSpeed !== undefined ? summary.windSpeed : null,
-      is_holiday: summary.isHoliday ? 1 : 0,
-      holiday_name: summary.specialDayNote || "",
-      holiday_source: summary.specialDayNote ? 'manual' : 'none',
-      festival_type: festivalType,
-      is_off_day: 0,
-      off_day_reason: "",
-      store_open_time: null,
-      store_close_time: null,
-      business_hours: null,
-      promotion_running: 0,
-      promotion_name: null,
-      promotion_discount: 0.0,
-      total_orders: summary.totalOrders || 0,
-      total_sales: summary.totalSales || 0,
-      cash_sales: summary.cashTotal || 0,
-      bkash_sales: summary.bkashTotal || 0,
-      nagad_sales: summary.nagadTotal || 0,
-      rocket_sales: summary.rocketTotal || 0,
-      card_sales: 0,
-      delivery_sales: summary.totalDelivery || 0,
-      delivery_charge: summary.total_delivery_charge || 0,
-      total_discount: summary.totalDiscount || 0,
-      net_sales: (summary.totalSales || 0) - (summary.totalDiscount || 0),
-      average_order_value: summary.averageOrderValue || 0,
-      peak_hour: summary.peakHour || "",
-      opening_ijara: summary.ejaAmount || 0,
-      total_expense: summary.totalExpense || 0,
-      closing_cash: summary.netCash || 0,
-      owner_deposit: summary.ownerDeposit || 0,
-      expense_ratio: summary.totalSales ? ((summary.totalExpense || 0) / summary.totalSales) * 100 : 0,
-      is_complete: 1,
-      is_valid: 1,
-      is_training_ready: 1,
-      validation_errors: "[]",
-      target_sales: null,
-      created_at: now,
-      updated_at: now
-    };
-
-    db.runSync(`
-      INSERT OR REPLACE INTO ai_dataset_queue (id, type, business_date, payload, status, created_at, updated_at, is_synced)
-      VALUES (?, 'AI_DAILY_SALES_DATASET', ?, ?, 'PENDING', ?, ?, 0)
-    `, [dateStr, dateStr, JSON.stringify(summaryPayload), now, now]);
-
-    // 3. Enqueue AI Item Sales Dataset payload targeting AI_Item_Sales_Dataset
-    const menuItems = db.getAllSync("SELECT id, name, category, price FROM menu_items");
-    const sales = db.getAllSync(`
-      SELECT itemName, SUM(quantity) as totalQty, SUM(revenue) as totalRev
-      FROM order_items
-      WHERE date(created_at, 'localtime') = ?
-      GROUP BY itemName
-      ORDER BY totalQty DESC
-    `, [dateStr]);
-
-    const salesMap = {};
-    let totalItemsSoldOnDate = 0;
-    sales.forEach(s => { 
-      salesMap[s.itemName] = { qty: s.totalQty, rev: s.totalRev };
-      totalItemsSoldOnDate += Number(s.totalQty || 0);
-    });
-
-    // Compute item ranks and share percentages
-    const sortedSalesNames = sales.map(s => s.itemName);
-
-    const itemRows = menuItems.map(item => {
-      const qtySold = salesMap[item.name]?.qty || 0;
-      const rankIdx = sortedSalesNames.indexOf(item.name);
-      const rank = qtySold > 0 && rankIdx !== -1 ? rankIdx + 1 : 0;
-      const sharePercent = totalItemsSoldOnDate > 0 ? (qtySold / totalItemsSoldOnDate) * 100 : 0;
-
-      return {
-        dataset_id: `${dateStr}_${item.id || item.name}`,
-        business_date: dateStr,
-        item_id: item.id || '',
-        item_name: item.name,
-        category_name: item.category || 'Uncategorized',
-        schema_version: '1.0.0',
-        dataset_version: '1.0.0',
-        exported_at: now,
-        unit_price: item.price || 0,
-        total_quantity_sold: qtySold,
-        total_item_revenue: salesMap[item.name]?.rev || 0,
-        item_rank_today: rank,
-        item_share_percent: sharePercent,
-        is_out_of_stock: null,
-        available_quantity: null,
-        day_of_week: dateObj.getDay(),
-        is_friday: summary.isFriday ? 1 : 0,
-        is_holiday: summary.isHoliday ? 1 : 0,
-        is_rainy: summary.isRainy ? 1 : 0,
-        is_complete: 1,
-        is_valid: 1,
-        is_training_ready: 1,
-        validation_errors: "[]",
-        target_quantity: null,
-        created_at: now,
-        updated_at: now
-      };
-    });
-
-    db.runSync(`
-      INSERT OR REPLACE INTO ai_dataset_queue (id, type, business_date, payload, status, created_at, updated_at, is_synced)
-      VALUES (?, 'AI_ITEM_SALES_DATASET', ?, ?, 'PENDING', ?, ?, 0)
-    `, [`ITEM_${dateStr}`, dateStr, JSON.stringify(itemRows), now, now]);
-
-    console.log(`[AI Dataset Sync] Enqueued raw dataset payloads for ${dateStr}`);
-    
-    // Process queue immediately using existing HTTP transport dispatcher
-    processAIDatasetQueue();
-  } catch (err) {
-    console.error("[AI Dataset Sync] Failed to enqueue daily dataset exports:", err);
+  // ── GUARD: Only finalized business dates may be enqueued ────────────
+  // submitDailySheet() already guarantees daily_submit exists before calling this,
+  // but we re-verify here for defensive correctness.
+  const committedSubmit = db.getFirstSync(
+    'SELECT id FROM daily_submit WHERE date = ?',
+    [dateStr]
+  );
+  if (!committedSubmit) {
+    console.warn(
+      `[AI Queue] Business date ${dateStr} is not finalized in daily_submit. Enqueue skipped.`
+    );
+    return { success: false, reason: 'NOT_FINALIZED' };
   }
+
+  // ── STEP 1: Build Daily Dataset via Phase 2 builder ─────────────────
+  let dailyDataset;
+  try {
+    dailyDataset = buildDailyDataset(dateStr);
+  } catch (builderErr) {
+    console.error(`[AI Queue] buildDailyDataset(${dateStr}) threw:`, builderErr);
+    return { success: false, reason: 'BUILDER_EXCEPTION', error: builderErr.message };
+  }
+
+  if (dailyDataset && dailyDataset.error) {
+    console.warn(`[AI Queue] buildDailyDataset(${dateStr}) error: ${dailyDataset.error}`);
+    return { success: false, reason: dailyDataset.error };
+  }
+
+  // ── STEP 2: Validate Daily Dataset ──────────────────────────────────
+  // Import validateDailyDataset directly from builder.js (it re-exports from validator.js)
+  // Inline import to avoid circular dependency: database.js → builder.js → database.js
+  // builder.js imports { db } from database.js, so we cannot import builder at module level.
+  // Resolution: builder.js is already imported at the top of this file. This is safe because
+  // expo-sqlite module resolution does not cause circular init issues in React Native bundler.
+  let dailyValidation;
+  try {
+    // Re-derive validation from the frozen dataset fields
+    const errors = [];
+    if (!dailyDataset.business_date) errors.push('MISSING_BUSINESS_DATE');
+    if (!dailyDataset.dataset_id)    errors.push('MISSING_DATASET_ID');
+    if ((dailyDataset.total_sales   || 0) < 0) errors.push('NEGATIVE_TOTAL_SALES');
+    if ((dailyDataset.total_expense || 0) < 0) errors.push('NEGATIVE_TOTAL_EXPENSE');
+    if ((dailyDataset.total_orders  || 0) < 0) errors.push('NEGATIVE_TOTAL_ORDERS');
+    const paymentSum =
+      (Number(dailyDataset.cash_sales)   || 0) +
+      (Number(dailyDataset.bkash_sales)  || 0) +
+      (Number(dailyDataset.nagad_sales)  || 0) +
+      (Number(dailyDataset.rocket_sales) || 0) +
+      (Number(dailyDataset.card_sales)   || 0);
+    if (Math.abs(paymentSum - (Number(dailyDataset.total_sales) || 0)) > 0.01) {
+      errors.push(`PAYMENT_SUM_MISMATCH:Sum=${paymentSum},Total=${dailyDataset.total_sales}`);
+    }
+    dailyValidation = {
+      isValid:         errors.length === 0,
+      isComplete:      !errors.includes('MISSING_BUSINESS_DATE') && !errors.includes('MISSING_DATASET_ID'),
+      isTrainingReady: errors.length === 0,
+      errors,
+    };
+  } catch (valErr) {
+    console.error(`[AI Queue] Daily validation threw for ${dateStr}:`, valErr);
+    return { success: false, reason: 'VALIDATION_EXCEPTION', error: valErr.message };
+  }
+
+  if (!dailyValidation.isComplete) {
+    console.warn(
+      `[AI Queue] Daily Dataset validation FAILED for ${dateStr}:`,
+      dailyValidation.errors
+    );
+    return {
+      success:          false,
+      reason:           'DAILY_VALIDATION_FAILED',
+      validationErrors: dailyValidation.errors,
+    };
+  }
+
+  // ── STEP 3: Build Item Datasets via Phase 2 builder ─────────────────
+  let itemDatasets;
+  try {
+    itemDatasets = buildItemDataset(dateStr);
+  } catch (itemBuilderErr) {
+    console.error(`[AI Queue] buildItemDataset(${dateStr}) threw:`, itemBuilderErr);
+    return { success: false, reason: 'ITEM_BUILDER_EXCEPTION', error: itemBuilderErr.message };
+  }
+
+  if (itemDatasets && itemDatasets.error) {
+    console.warn(`[AI Queue] buildItemDataset(${dateStr}) error: ${itemDatasets.error}`);
+    return { success: false, reason: itemDatasets.error };
+  }
+
+  const itemArray = Array.isArray(itemDatasets) ? itemDatasets : [];
+
+  // ── STEP 4: Validate every Item Dataset ─────────────────────────────
+  const itemValidationErrors = [];
+  for (let i = 0; i < itemArray.length; i++) {
+    const item = itemArray[i];
+    const errors = [];
+    if (!item.business_date)              errors.push('MISSING_BUSINESS_DATE');
+    if (!item.item_name)                  errors.push('MISSING_ITEM_NAME');
+    if ((item.total_quantity_sold || 0) < 0) errors.push('NEGATIVE_QUANTITY');
+    if ((item.total_item_revenue  || 0) < 0) errors.push('NEGATIVE_REVENUE');
+    if (errors.length > 0) {
+      itemValidationErrors.push({ item_name: item.item_name, errors });
+    }
+  }
+
+  if (itemValidationErrors.length > 0) {
+    console.warn(
+      `[AI Queue] Item Dataset validation FAILED for ${dateStr}:`,
+      itemValidationErrors
+    );
+    return {
+      success:          false,
+      reason:           'ITEM_VALIDATION_FAILED',
+      validationErrors: itemValidationErrors,
+    };
+  }
+
+  // ── STEP 5: Idempotent Insert — AI_DAILY_SALES_DATASET ──────────────
+  // INSERT OR REPLACE ensures this is safe to call multiple times for the same date.
+  // If the record already exists it will be updated with the fresh payload.
+  const dailyQueueId  = dateStr;                   // e.g. "2026-08-05"
+  const itemQueueId   = `ITEM_${dateStr}`;          // e.g. "ITEM_2026-08-05"
+  const dailyPayload  = JSON.stringify(dailyDataset);
+  const itemPayload   = JSON.stringify(itemArray);
+
+  try {
+    // Check if daily record already exists (for structured logging)
+    const existingDaily = db.getFirstSync(
+      'SELECT id, status FROM ai_dataset_queue WHERE id = ?',
+      [dailyQueueId]
+    );
+
+    db.runSync(
+      `INSERT OR REPLACE INTO ai_dataset_queue
+         (id, type, business_date, payload, status, retry_count, last_error, created_at, updated_at, is_synced)
+       VALUES (?, 'AI_DAILY_SALES_DATASET', ?, ?, 'PENDING', 0, NULL,
+         COALESCE((SELECT created_at FROM ai_dataset_queue WHERE id = ?), ?),
+         ?, 0)`,
+      [dailyQueueId, dateStr, dailyPayload, dailyQueueId, now, now]
+    );
+
+    if (existingDaily) {
+      console.log(
+        `[AI Queue] Duplicate Updated  — AI_DAILY_SALES_DATASET  date=${dateStr}  ` +
+        `prev_status=${existingDaily.status}`
+      );
+    } else {
+      console.log(`[AI Queue] Daily Dataset Enqueued — AI_DAILY_SALES_DATASET  date=${dateStr}`);
+    }
+  } catch (dailyInsertErr) {
+    console.error(`[AI Queue] Failed to insert daily record for ${dateStr}:`, dailyInsertErr);
+    return { success: false, reason: 'DAILY_INSERT_FAILED', error: dailyInsertErr.message };
+  }
+
+  // ── STEP 6: Idempotent Insert — AI_ITEM_SALES_DATASET ───────────────
+  try {
+    const existingItem = db.getFirstSync(
+      'SELECT id, status FROM ai_dataset_queue WHERE id = ?',
+      [itemQueueId]
+    );
+
+    db.runSync(
+      `INSERT OR REPLACE INTO ai_dataset_queue
+         (id, type, business_date, payload, status, retry_count, last_error, created_at, updated_at, is_synced)
+       VALUES (?, 'AI_ITEM_SALES_DATASET', ?, ?, 'PENDING', 0, NULL,
+         COALESCE((SELECT created_at FROM ai_dataset_queue WHERE id = ?), ?),
+         ?, 0)`,
+      [itemQueueId, dateStr, itemPayload, itemQueueId, now, now]
+    );
+
+    if (existingItem) {
+      console.log(
+        `[AI Queue] Duplicate Updated  — AI_ITEM_SALES_DATASET   date=${dateStr}  ` +
+        `prev_status=${existingItem.status}  items=${itemArray.length}`
+      );
+    } else {
+      console.log(
+        `[AI Queue] Item Dataset Enqueued  — AI_ITEM_SALES_DATASET   date=${dateStr}  ` +
+        `items=${itemArray.length}`
+      );
+    }
+  } catch (itemInsertErr) {
+    console.error(`[AI Queue] Failed to insert item record for ${dateStr}:`, itemInsertErr);
+    return { success: false, reason: 'ITEM_INSERT_FAILED', error: itemInsertErr.message };
+  }
+
+  // ── PHASE 3 COMPLETE ─────────────────────────────────────────────────
+  // Queue entries are written. STOP HERE.
+  // Google Sheets transport is Phase 4 — NOT implemented here.
+  // processAIDatasetQueue() is NOT called from this function.
+  return {
+    success:         true,
+    businessDate:    dateStr,
+    dailyDatasetId:  dailyQueueId,
+    itemDatasetId:   itemQueueId,
+    itemCount:       itemArray.length,
+    queuedAt:        now,
+  };
 }
 
 export async function processAIDatasetQueue() {

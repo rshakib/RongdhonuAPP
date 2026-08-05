@@ -28,7 +28,8 @@
     "test:builder": "node tests/builder.test.js",
     "test:validator": "node tests/validator.test.js",
     "test:mapper": "node tests/mapper.test.js",
-    "test:all": "node tests/builder.test.js && node tests/validator.test.js && node tests/mapper.test.js"
+    "test:queue": "node tests/queue.test.js",
+    "test:all": "node tests/builder.test.js && node tests/validator.test.js && node tests/mapper.test.js && node tests/queue.test.js"
   },
   "private": true,
   "devDependencies": {
