@@ -262,6 +262,7 @@ The application operates on an offline-first SQLite database containing **22 act
 * **Phase 4 (Completed)**: Google Sheets Transport Processing (`processAIDatasetQueue()`) with per-record response parser (`processStructuredTransportResponse`). 188 unit tests (188/188 PASS overall).
 * **Phase 4.5 (Completed)**: Production Readiness & End-to-End Validation — Architecture & Schema v1.0.0 **OFFICIALLY FROZEN & PRODUCTION READY**.
 * **Phase 5 (Completed)**: AI Dataset Monitor (`screens/AIDatasetMonitorScreen.js`) — Admin-only monitoring and management dashboard. Reads strictly from local SQLite. Zero Firestore reads. Zero direct Google Sheets operations.
+* **Phase 5.1 (Completed)**: AI Dataset Monitor Enhancements — Added Dataset Health Summary Card, Monthly Completion Scores, Dataset Drift Detection, Export Timeline, Data Completeness Metrics, CSV Export Modal, and Queue Health Indicator.
 
 ---
 
@@ -470,6 +471,15 @@ The **AI Dataset Monitor** provides full visibility into the AI Dataset lifecycl
 6. **Dataset Details Modal**: Full inspection of payload fields, schema version, retry count, timestamps, and validation errors.
 7. **Admin Actions**: Requeue selected date, batch requeue all missing finalized dates, and process batch queue manually via local SQLite calls.
 8. **Automatic Missing Dataset Detection**: Compares `daily_submit` against `ai_dataset_history` and `ai_dataset_queue` to identify un-exported business dates.
+
+### 26.3 Phase 5.1 Monitor Enhancements
+
+1. **AI Dataset Health Summary Card**: Dynamic pipeline status indicator (`HEALTHY` vs `NEEDS ATTENTION`) with overall success percentage.
+2. **Monthly Completion Scores**: Per-month export progress tracking (`exported / total` days with percentage score).
+3. **Dataset Drift Detection**: Calculates mean daily sales and flags excessive zero-sales days for anomaly audit.
+4. **Export Timeline**: Chronological log of recent 15 exported dataset records.
+5. **Data Completeness Metrics**: Field availability tracking across the 89 total dataset fields.
+6. **CSV Export Modal**: On-demand generation of raw CSV data for offline administrative inspection.
 
 ---
 

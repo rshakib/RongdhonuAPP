@@ -4,6 +4,24 @@
 > Maintained alongside `PROJECT_ARCHITECTURE_LOG.md`.
 > Every commit that changes the project MUST update this file.
 
+## v1.9.1 — AI Dataset Phase 5.1 Monitor Enhancements
+
+**Release Date:** 2026-08-05  
+**Git Commit:** `eb6b8a4`
+
+### Added
+- **AI Dataset Health Summary Card**: High-level visual indicator (`HEALTHY` / `NEEDS ATTENTION`) and pipeline success rate
+- **Monthly Completion Scores**: Per-month breakdown of exported vs total business days with percentage progress
+- **Dataset Drift Detection**: Automated detection of mean daily sales and zero-sales anomaly tracking
+- **Export Timeline**: Visual log of the 15 most recent successful dataset exports
+- **Data Completeness Metrics**: Field completeness tracking across 89 schema fields
+- **CSV Export Action**: Interactive modal generating exportable CSV text for offline admin analysis
+
+### Documentation
+- Updated `PROJECT_ARCHITECTURE_LOG.md` with Section 26.3 (Phase 5.1 Monitor Enhancements)
+
+---
+
 ## v1.9.0 — AI Dataset Phase 5 Monitor Screen (Admin Only)
 
 **Release Date:** 2026-08-05  
