@@ -3257,7 +3257,7 @@ export function enqueueAIDatasetExport(dateStr) {
 }
 
 export async function processAIDatasetQueue() {
-  const webappUrl = cleanEnvVar(process.env.EXPO_PUBLIC_GOOGLE_SHEETS_WEBAPP_URL);
+  const webappUrl = cleanEnvVar(process.env.EXPO_PUBLIC_AI_DATASET_WEBAPP_URL) || cleanEnvVar(process.env.EXPO_PUBLIC_GOOGLE_SHEETS_WEBAPP_URL);
   if (!webappUrl) return;
 
   // 1. Crash Recovery: Reset stale IN_PROGRESS records back to RETRY if stuck from app termination
