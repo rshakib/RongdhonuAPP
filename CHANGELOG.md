@@ -4,6 +4,26 @@
 > Maintained alongside `PROJECT_ARCHITECTURE_LOG.md`.
 > Every commit that changes the project MUST update this file.
 
+## v1.9.0 — AI Dataset Phase 5 Monitor Screen (Admin Only)
+
+**Release Date:** 2026-08-05  
+**Git Commit:** `72d02c8`
+
+### Added
+- Created `screens/AIDatasetMonitorScreen.js` — dedicated Admin-only AI Dataset lifecycle monitoring dashboard
+- Added `🤖 AI Dataset Monitor` option to Admin App menu in `screens/AdminDB.js`
+- Automated missing dataset detection comparing `daily_submit` vs `ai_dataset_history` and `ai_dataset_queue`
+- Admin actions for manual date requeue, batch missing dataset requeue, and transport batch execution
+- Search and multi-chip status filters (`ALL`, `SUCCESS`, `PENDING`, `RETRY`, `FAILED`, `MISSING`)
+
+### Changed
+- Integrated `AI_DATASET_MONITOR` screen navigation route in `App.js` for Admin profile only
+
+### Documentation
+- Updated `PROJECT_ARCHITECTURE_LOG.md` with Section 26 (Phase 5 AI Dataset Monitor Architecture & Sections)
+
+---
+
 ## v1.8.0 — AI Dataset Phase 4.5 Production Readiness & Architecture Freeze
 
 **Release Date:** 2026-08-05  

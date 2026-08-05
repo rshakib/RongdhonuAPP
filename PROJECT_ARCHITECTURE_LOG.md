@@ -261,6 +261,7 @@ The application operates on an offline-first SQLite database containing **22 act
 * **Phase Post-3 (Completed)**: Batch Export Engine (`DEFAULT_BATCH_SIZE = 25`), Payload Optimization, & Dedicated Transport Layer (`services/aiDataset/transport/googleSheets.js`). 186 unit tests (186/186 PASS overall).
 * **Phase 4 (Completed)**: Google Sheets Transport Processing (`processAIDatasetQueue()`) with per-record response parser (`processStructuredTransportResponse`). 188 unit tests (188/188 PASS overall).
 * **Phase 4.5 (Completed)**: Production Readiness & End-to-End Validation — Architecture & Schema v1.0.0 **OFFICIALLY FROZEN & PRODUCTION READY**.
+* **Phase 5 (Completed)**: AI Dataset Monitor (`screens/AIDatasetMonitorScreen.js`) — Admin-only monitoring and management dashboard. Reads strictly from local SQLite. Zero Firestore reads. Zero direct Google Sheets operations.
 
 ---
 
@@ -439,7 +440,40 @@ Google Apps Script WebApp returns structured per-record outcomes. The transport 
 
 ---
 
-## 26. Dataset Schema Version History
+## 26. Phase 5 — AI Dataset Monitor (Admin App Only)
+
+**Date:** 2026-08-05 | **Scope:** Read-only Admin Monitoring & Diagnostics Dashboard (`screens/AIDatasetMonitorScreen.js`)
+
+### 26.1 Screen Architecture & Data Sources
+
+The **AI Dataset Monitor** provides full visibility into the AI Dataset lifecycle strictly for `ADMIN` profile users.
+
+```
+                  SQLite Source of Truth Only
+  ┌──────────────────┬──────────────────┬──────────────────┐
+  │ ai_dataset_queue │ai_dataset_history│   daily_submit   │
+  └────────┬─────────┴────────┬─────────┴────────┬─────────┘
+           │                  │                  │
+           └──────────────────┼──────────────────┘
+                              │ (Local SQLite Reads ONLY)
+                              ▼
+                AIDatasetMonitorScreen.js
+```
+
+### 26.2 Key Sections Implemented
+
+1. **Dataset Overview Cards**: Total business days, exported days, pending days, retry days, failed days, missing days, success rate %, training ready count, and last export timestamp.
+2. **Business Date Status List**: Per-date rows showing daily submit state, queue status, export status, training readiness, and re-queue triggers.
+3. **Queue Monitor**: Live state of `ai_dataset_queue` records (`PENDING`, `IN_PROGRESS`, `SUCCESS`, `FAILED`, `RETRY`).
+4. **Dataset Health**: Missing daily/item datasets, validation failures, training ready % and incomplete %.
+5. **Export Statistics**: Average batch size (`25 records`), total history exports, daily and item dataset counts.
+6. **Dataset Details Modal**: Full inspection of payload fields, schema version, retry count, timestamps, and validation errors.
+7. **Admin Actions**: Requeue selected date, batch requeue all missing finalized dates, and process batch queue manually via local SQLite calls.
+8. **Automatic Missing Dataset Detection**: Compares `daily_submit` against `ai_dataset_history` and `ai_dataset_queue` to identify un-exported business dates.
+
+---
+
+## 27. Dataset Schema Version History
 
 | Version | Date | Changes |
 |---------|------|---------|
