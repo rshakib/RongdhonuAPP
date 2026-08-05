@@ -145,13 +145,6 @@ export async function transmitBatchToGoogleSheets(webappUrl, batchPayload, optio
         status: response.status,
         body: responseData,
       };
-    } else {
-      const errText = await response.text().catch(() => '');
-      return {
-        success: false,
-        status: response.status,
-        error: `HTTP Error ${response.status}: ${errText.substring(0, 200)}`,
-      };
     }
   } catch (err) {
     return {
@@ -161,3 +154,147 @@ export async function transmitBatchToGoogleSheets(webappUrl, batchPayload, optio
     };
   }
 }
+
+/**
+ * Processes structured per-record response from Google Apps Script WebApp
+ * and updates SQLite ai_dataset_queue individually for each dataset in the batch.
+ * Supports partial batch success and retry count increments on individual failures.
+ *
+ * Response Format:
+ * {
+ *   "success": true,
+ *   "processed": 25,
+ *   "results": [
+ *     { "dataset_id": "2026-08-05", "status": "SUCCESS", "message": "Updated successfully" },
+ *     { "dataset_id": "2026-08-05_item_101", "status": "FAILED", "message": "Missing required column" }
+ *   ]
+ * }
+ *
+ * @param {Object} dbInstance - Expo SQLite database instance
+ * @param {Array<Object>} queueRecords - Array of original queue records sent in the batch
+ * @param {Object} transportResult - Result returned by transmitBatchToGoogleSheets()
+ * @returns {Object} Processing summary { successCount, failCount, totalProcessed }
+ */
+export function processStructuredTransportResponse(dbInstance, queueRecords, transportResult) {
+  const nowIso = new Date().toISOString();
+  let successCount = 0;
+  let failCount = 0;
+
+  if (!dbInstance || !queueRecords || queueRecords.length === 0) {
+    return { successCount: 0, failCount: 0, totalProcessed: 0 };
+  }
+
+  // Handle overall transport/HTTP failure (e.g. network down, 500 server error, WebApp unreachable)
+  if (!transportResult || !transportResult.success || !transportResult.body) {
+    const errorMsg = transportResult?.error || `HTTP ${transportResult?.status || 0} Transport Failure`;
+    console.error(`[AI Transport] Entire batch HTTP transport failed:`, errorMsg);
+
+    for (const record of queueRecords) {
+      const currentRetry = Number(record.retry_count || 0) + 1;
+      const nextStatus = currentRetry >= DEFAULT_MAX_RETRIES ? 'FAILED' : 'RETRY';
+      try {
+        dbInstance.runSync(
+          "UPDATE ai_dataset_queue SET status = ?, retry_count = ?, last_error = ?, updated_at = ? WHERE id = ?",
+          [nextStatus, currentRetry, errorMsg, nowIso, record.id]
+        );
+        failCount++;
+      } catch (e) {
+        console.error(`[AI Transport DB Error] Failed to update retry status for ${record.id}:`, e.message);
+      }
+    }
+
+    return { successCount: 0, failCount, totalProcessed: queueRecords.length };
+  }
+
+  const responseBody = transportResult.body;
+  const resultMap = {};
+
+  if (Array.isArray(responseBody.results)) {
+    responseBody.results.forEach(res => {
+      if (res && res.dataset_id) {
+        resultMap[res.dataset_id] = res;
+      }
+    });
+  }
+
+  for (const record of queueRecords) {
+    const recordResult = resultMap[record.id];
+
+    // If script returned individual result for this record
+    if (recordResult) {
+      if (recordResult.status === 'SUCCESS') {
+        try {
+          dbInstance.runSync(
+            "UPDATE ai_dataset_queue SET status = 'SUCCESS', is_synced = 1, last_error = NULL, updated_at = ? WHERE id = ?",
+            [nowIso, record.id]
+          );
+
+          dbInstance.runSync(
+            `INSERT OR REPLACE INTO ai_dataset_history (id, date, type, exported_at, created_at, updated_at, is_synced)
+             VALUES (?, ?, ?, ?, ?, ?, 1)`,
+            [record.id, record.business_date || '', record.type || '', nowIso, record.created_at || nowIso, nowIso]
+          );
+
+          successCount++;
+          console.log(`[AI Transport] Record ${record.id} -> SUCCESS (${recordResult.message || 'Updated'})`);
+        } catch (e) {
+          console.error(`[AI Transport DB Error] Failed to set SUCCESS for ${record.id}:`, e.message);
+        }
+      } else {
+        // Record failed on Apps Script (status === 'FAILED')
+        const currentRetry = Number(record.retry_count || 0) + 1;
+        const nextStatus = currentRetry >= DEFAULT_MAX_RETRIES ? 'FAILED' : 'RETRY';
+        const failMsg = recordResult.message || 'Apps Script dataset write failed';
+
+        try {
+          dbInstance.runSync(
+            "UPDATE ai_dataset_queue SET status = ?, retry_count = ?, last_error = ?, updated_at = ? WHERE id = ?",
+            [nextStatus, currentRetry, failMsg, nowIso, record.id]
+          );
+          failCount++;
+          console.warn(`[AI Transport] Record ${record.id} -> ${nextStatus} (${failMsg})`);
+        } catch (e) {
+          console.error(`[AI Transport DB Error] Failed to set ${nextStatus} for ${record.id}:`, e.message);
+        }
+      }
+    } else {
+      // Fallback: Apps Script returned 200 OK batch response but omitted this dataset_id from results
+      // Treat as SUCCESS if overall responseBody.success is true
+      if (responseBody.success) {
+        try {
+          dbInstance.runSync(
+            "UPDATE ai_dataset_queue SET status = 'SUCCESS', is_synced = 1, last_error = NULL, updated_at = ? WHERE id = ?",
+            [nowIso, record.id]
+          );
+
+          dbInstance.runSync(
+            `INSERT OR REPLACE INTO ai_dataset_history (id, date, type, exported_at, created_at, updated_at, is_synced)
+             VALUES (?, ?, ?, ?, ?, ?, 1)`,
+            [record.id, record.business_date || '', record.type || '', nowIso, record.created_at || nowIso, nowIso]
+          );
+
+          successCount++;
+        } catch (e) {
+          console.error(`[AI Transport DB Error] Fallback SUCCESS update failed for ${record.id}:`, e.message);
+        }
+      } else {
+        const currentRetry = Number(record.retry_count || 0) + 1;
+        const nextStatus = currentRetry >= DEFAULT_MAX_RETRIES ? 'FAILED' : 'RETRY';
+        dbInstance.runSync(
+          "UPDATE ai_dataset_queue SET status = ?, retry_count = ?, last_error = ?, updated_at = ? WHERE id = ?",
+          [nextStatus, currentRetry, 'Omitted from response results', nowIso, record.id]
+        );
+        failCount++;
+      }
+    }
+  }
+
+  console.log(`[AI Transport] Batch processing complete: ${successCount} SUCCESS, ${failCount} FAILED out of ${queueRecords.length} records`);
+
+  return {
+    successCount,
+    failCount,
+    totalProcessed: queueRecords.length,
+  };
+}
+

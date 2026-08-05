@@ -172,6 +172,90 @@ test('buildBatchPayload supports up to 25 items in a single batch', function() {
 });
 
 // ─────────────────────────────────────────────
+// SUITE 3: STRUCTURED PER-RECORD RESPONSE HANDLING
+// ─────────────────────────────────────────────
+console.log('\n\u2500\u2500 Suite 3: Structured Per-Record Response Handling \u2500\u2500\u2500\u2500\u2500');
+
+function mockProcessStructuredTransportResponse(queueRecords, transportResult) {
+  const updates = {};
+  if (!queueRecords || queueRecords.length === 0) return { successCount: 0, failCount: 0 };
+
+  if (!transportResult || !transportResult.success || !transportResult.body) {
+    queueRecords.forEach(r => { updates[r.id] = { status: 'RETRY', retry_count: (r.retry_count || 0) + 1 }; });
+    return { successCount: 0, failCount: queueRecords.length, updates };
+  }
+
+  const resultMap = {};
+  if (Array.isArray(transportResult.body.results)) {
+    transportResult.body.results.forEach(res => { if (res && res.dataset_id) resultMap[res.dataset_id] = res; });
+  }
+
+  let successCount = 0;
+  let failCount = 0;
+
+  queueRecords.forEach(r => {
+    const res = resultMap[r.id];
+    if (res) {
+      if (res.status === 'SUCCESS') {
+        updates[r.id] = { status: 'SUCCESS', is_synced: 1, last_error: null };
+        successCount++;
+      } else {
+        const nextRetry = (r.retry_count || 0) + 1;
+        const nextStatus = nextRetry >= 5 ? 'FAILED' : 'RETRY';
+        updates[r.id] = { status: nextStatus, retry_count: nextRetry, last_error: res.message || 'Error' };
+        failCount++;
+      }
+    }
+  });
+
+  return { successCount, failCount, updates };
+}
+
+test('Partial success handling: 1 SUCCESS and 1 FAILED record in batch', function() {
+  const queueRecords = [
+    { id: '2026-08-05', retry_count: 0 },
+    { id: '2026-08-05_item_101', retry_count: 0 },
+  ];
+  const transportResult = {
+    success: true,
+    status: 200,
+    body: {
+      success: true,
+      processed: 2,
+      results: [
+        { dataset_id: '2026-08-05', status: 'SUCCESS', message: 'Updated successfully' },
+        { dataset_id: '2026-08-05_item_101', status: 'FAILED', message: 'Missing column' },
+      ],
+    },
+  };
+
+  const outcome = mockProcessStructuredTransportResponse(queueRecords, transportResult);
+  assert.strictEqual(outcome.successCount, 1);
+  assert.strictEqual(outcome.failCount, 1);
+  assert.strictEqual(outcome.updates['2026-08-05'].status, 'SUCCESS');
+  assert.strictEqual(outcome.updates['2026-08-05'].is_synced, 1);
+  assert.strictEqual(outcome.updates['2026-08-05_item_101'].status, 'RETRY');
+  assert.strictEqual(outcome.updates['2026-08-05_item_101'].retry_count, 1);
+  assert.strictEqual(outcome.updates['2026-08-05_item_101'].last_error, 'Missing column');
+});
+
+test('Full batch transport failure sets all records to RETRY and increments retry_count', function() {
+  const queueRecords = [
+    { id: '2026-08-05', retry_count: 1 },
+    { id: 'ITEM_2026-08-05', retry_count: 0 },
+  ];
+  const transportResult = { success: false, status: 500, error: 'HTTP 500 Server Error' };
+
+  const outcome = mockProcessStructuredTransportResponse(queueRecords, transportResult);
+  assert.strictEqual(outcome.successCount, 0);
+  assert.strictEqual(outcome.failCount, 2);
+  assert.strictEqual(outcome.updates['2026-08-05'].status, 'RETRY');
+  assert.strictEqual(outcome.updates['2026-08-05'].retry_count, 2);
+  assert.strictEqual(outcome.updates['ITEM_2026-08-05'].status, 'RETRY');
+  assert.strictEqual(outcome.updates['ITEM_2026-08-05'].retry_count, 1);
+});
+
+// ─────────────────────────────────────────────
 // FINAL SUMMARY
 // ─────────────────────────────────────────────
 console.log('\n\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550');

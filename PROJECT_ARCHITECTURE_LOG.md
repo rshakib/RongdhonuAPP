@@ -412,7 +412,29 @@ Configurable constant `DEFAULT_BATCH_SIZE = 25`. Up to 25 pending queue records 
 - **Builder Layer** (`builder.js`): SQLite → Dataset Object
 - **Validator Layer** (`validator.js`): Dataset Object → Validation Result
 - **Queue Layer** (`database.js` / `enqueueAIDatasetExport`): Dataset Object → `ai_dataset_queue`
-- **Transport Layer** (`services/aiDataset/transport/googleSheets.js`): Queue Records → Batch Payload → Google Sheets WebApp HTTP POST
+- **Transport Layer** (`services/aiDataset/transport/googleSheets.js`): Queue Records → Batch Payload → Google Sheets WebApp HTTP POST → Per-Record Queue Update (`processStructuredTransportResponse`)
+
+### 25.3 Per-Record Response Handling & Partial Batch Success
+
+Google Apps Script WebApp returns structured per-record outcomes. The transport layer parses `responseBody.results` and updates each `ai_dataset_queue` row individually:
+
+```
+                  Apps Script Structured Response
+                                │
+                                ▼
+         processStructuredTransportResponse(db, queueRecords, result)
+                                │
+          ┌─────────────────────┴─────────────────────┐
+          ▼                                           ▼
+[dataset_id: SUCCESS]                       [dataset_id: FAILED]
+          │                                           │
+  - status = 'SUCCESS'                        - status = 'RETRY' (or 'FAILED' if retry>=5)
+  - is_synced = 1                             - retry_count += 1
+  - last_error = NULL                         - last_error = "Error message"
+  - updated_at = NOW                          - updated_at = NOW
+  - Insert into ai_dataset_history            (Record WILL be retried next batch)
+  (Record NEVER retransmitted)
+```
 
 ---
 

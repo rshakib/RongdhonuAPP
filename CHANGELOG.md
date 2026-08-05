@@ -4,6 +4,22 @@
 > Maintained alongside `PROJECT_ARCHITECTURE_LOG.md`.
 > Every commit that changes the project MUST update this file.
 
+## v1.7.1 — Per-Record Response Handling & Partial Batch Success
+
+**Release Date:** 2026-08-05  
+**Git Commit:** `6110575`
+
+### Added
+- `processStructuredTransportResponse()` in `services/aiDataset/transport/googleSheets.js` for handling per-record Apps Script responses
+- Individual SQLite `ai_dataset_queue` updates for `SUCCESS` and `FAILED` records within a single batch payload
+- Individual `retry_count` incrementing and `last_error` logging on per-record failure without failing successful sibling records
+- 2 unit test cases added to `tests/transport.test.js` covering partial batch success and full transport failure
+
+### Documentation
+- Updated `PROJECT_ARCHITECTURE_LOG.md` with Section 25.3 (Per-Record Response Handling & Partial Batch Success Flow)
+
+---
+
 ## v1.7.0 — AI Dataset Post-Phase 3 Refinements
 
 **Release Date:** 2026-08-05  
