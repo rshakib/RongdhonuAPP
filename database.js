@@ -3054,6 +3054,13 @@ async function captureHourlyWeather() {
 // ============================================================
 
 export function enqueueAIDatasetExport(dateStr) {
+  // ── MASTER FEATURE FLAG GUARD ─────────────────────────────────────────
+  const isEnabled = String(process.env.EXPO_PUBLIC_AI_DATASET_ENABLED || 'false').toLowerCase().trim() === 'true';
+  if (!isEnabled) {
+    console.log(`[AI Queue] Subsystem PAUSED (AI_DATASET_ENABLED=false). Enqueue skipped for ${dateStr}.`);
+    return { success: false, reason: 'PAUSED' };
+  }
+
   const now = new Date().toISOString();
 
   // ── GUARD: Only finalized business dates may be enqueued ────────────
@@ -3257,6 +3264,12 @@ export function enqueueAIDatasetExport(dateStr) {
 }
 
 export async function processAIDatasetQueue() {
+  // ── MASTER FEATURE FLAG GUARD ─────────────────────────────────────────
+  const isEnabled = String(process.env.EXPO_PUBLIC_AI_DATASET_ENABLED || 'false').toLowerCase().trim() === 'true';
+  if (!isEnabled) {
+    return;
+  }
+
   const webappUrl = cleanEnvVar(process.env.EXPO_PUBLIC_AI_DATASET_WEBAPP_URL) || cleanEnvVar(process.env.EXPO_PUBLIC_GOOGLE_SHEETS_WEBAPP_URL);
   if (!webappUrl) return;
 

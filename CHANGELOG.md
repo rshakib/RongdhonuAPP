@@ -4,6 +4,23 @@
 > Maintained alongside `PROJECT_ARCHITECTURE_LOG.md`.
 > Every commit that changes the project MUST update this file.
 
+## v2.1.0 — AI Dataset Subsystem Paused Mode Transition
+
+**Release Date:** 2026-08-05  
+**Git Commit:** `ab8d6e4`
+
+### Changed
+- Added master feature flag `EXPO_PUBLIC_AI_DATASET_ENABLED="false"` in `.env`
+- Added execution guards to `enqueueAIDatasetExport()` and `processAIDatasetQueue()` returning immediately when flag is `false`
+- Dynamically hidden **AI Dataset Monitor** and **AI Dataset Audit Center** options from Admin App menu
+- Preserved 100% of source code, schemas, tests (198/198 PASS), SQLite tables, and documentation intact for future ML model development
+
+### Documentation
+- Created `AI_DATASET_PAUSED.md` with complete Paused Mode documentation and reactivation guide
+- Updated `PROJECT_ARCHITECTURE_LOG.md` and `CHANGELOG.md`
+
+---
+
 ## v2.0.5 — Navigation Audit & AdminDB Component Prop Fix
 
 **Release Date:** 2026-08-05  
