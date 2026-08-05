@@ -127,28 +127,64 @@ export async function transmitBatchToGoogleSheets(webappUrl, batchPayload, optio
   };
 
   try {
+    console.log(`[AI Transport Audit] Transmitting batch of ${batchPayload.recordIds.length} records to Google Sheets WebApp...`);
+
     const response = await fetch(webappUrl, {
       method: 'POST',
       headers,
       body: jsonBody,
     });
 
-    if (response.ok) {
-      let responseData = null;
-      try {
-        responseData = await response.json();
-      } catch (_) {
-        // Body might be plain text success message
-      }
+    console.log(`[AI Transport Audit] HTTP Response Status: ${response.status} (ok=${response.ok})`);
+
+    const rawText = await response.text().catch(() => '');
+    console.log(`[AI Transport Audit] Raw HTTP Response Body (first 300 chars):`, rawText.substring(0, 300));
+
+    if (!response.ok) {
+      console.error(`[AI Transport Audit] Classification: HTTP_FAILURE (Status ${response.status})`);
       return {
-        success: true,
+        success: false,
+        classification: 'HTTP_FAILURE',
         status: response.status,
-        body: responseData,
+        rawText,
+        error: `HTTP Error ${response.status}: ${rawText.substring(0, 200)}`,
       };
     }
+
+    let parsedBody = null;
+    try {
+      parsedBody = JSON.parse(rawText);
+      console.log(`[AI Transport Audit] Parsed JSON Body:`, JSON.stringify(parsedBody).substring(0, 300));
+    } catch (parseErr) {
+      console.warn(`[AI Transport Audit] Classification: JSON_PARSE_FAILURE. Raw text body is not valid JSON:`, parseErr.message);
+      return {
+        success: false,
+        classification: 'JSON_PARSE_FAILURE',
+        status: response.status,
+        rawText,
+        error: `JSON Parse Failure: ${parseErr.message}`,
+      };
+    }
+
+    // Evaluate application-level outcome
+    const appSuccess = parsedBody && (parsedBody.success === true || parsedBody.status === 'SUCCESS' || parsedBody.status === 'OK');
+    const classification = appSuccess ? 'FULL_SUCCESS' : 'APP_LEVEL_FAILURE';
+
+    console.log(`[AI Transport Audit] Validation Result — Classification: ${classification}, success: ${parsedBody?.success}, processed: ${parsedBody?.processed}, resultsCount: ${parsedBody?.results?.length || 0}`);
+
+    return {
+      success: appSuccess,
+      classification,
+      status: response.status,
+      body: parsedBody,
+      rawText,
+      error: appSuccess ? null : (parsedBody?.error || parsedBody?.message || 'Application-level export failure reported by Apps Script'),
+    };
   } catch (err) {
+    console.error(`[AI Transport Audit] Classification: NETWORK_EXCEPTION:`, err.message);
     return {
       success: false,
+      classification: 'NETWORK_EXCEPTION',
       status: 0,
       error: `Network Exception: ${err.message}`,
     };

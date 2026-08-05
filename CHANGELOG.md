@@ -4,6 +4,20 @@
 > Maintained alongside `PROJECT_ARCHITECTURE_LOG.md`.
 > Every commit that changes the project MUST update this file.
 
+## v2.0.2 — Google Apps Script Transport Layer Audit & Multi-Stage Classification
+
+**Release Date:** 2026-08-05  
+**Git Commit:** `84c72d5`
+
+### Added
+- **Multi-Stage Response Classification**: Distinguishes `HTTP_FAILURE`, `JSON_PARSE_FAILURE`, `APP_LEVEL_FAILURE`, `PARTIAL_SUCCESS`, and `FULL_SUCCESS`
+- **Diagnostic Audit Logging**: Added temporary `[AI Transport Audit]` console logs capturing HTTP status, raw response snippet, parsed JSON body, and application validation outcome
+
+### Documentation
+- Updated `PROJECT_ARCHITECTURE_LOG.md` with Transport Audit details
+
+---
+
 ## v2.0.1 — Circular Dependency Removal & Builder Dependency Injection
 
 **Release Date:** 2026-08-05  
