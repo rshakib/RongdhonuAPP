@@ -138,7 +138,7 @@ export async function transmitBatchToGoogleSheets(webappUrl, batchPayload, optio
     console.log(`[AI Transport Audit] HTTP Response Status: ${response.status} (ok=${response.ok})`);
 
     const rawText = await response.text().catch(() => '');
-    console.log(`[AI Transport Audit] Raw HTTP Response Body (first 300 chars):`, rawText.substring(0, 300));
+    console.log(`[AI Transport Audit] Raw HTTP Response Body FULL:`, rawText);
 
     if (!response.ok) {
       console.error(`[AI Transport Audit] Classification: HTTP_FAILURE (Status ${response.status})`);
@@ -156,14 +156,31 @@ export async function transmitBatchToGoogleSheets(webappUrl, batchPayload, optio
       parsedBody = JSON.parse(rawText);
       console.log(`[AI Transport Audit] Parsed JSON Body:`, JSON.stringify(parsedBody).substring(0, 300));
     } catch (parseErr) {
-      console.warn(`[AI Transport Audit] Classification: JSON_PARSE_FAILURE. Raw text body is not valid JSON:`, parseErr.message);
-      return {
-        success: false,
-        classification: 'JSON_PARSE_FAILURE',
-        status: response.status,
-        rawText,
-        error: `JSON Parse Failure: ${parseErr.message}`,
-      };
+      console.warn(`[AI Transport Audit] JSON Parse error: ${parseErr.message}. Checking rawText string fallback...`);
+
+      // Check if rawText indicates plain text success (e.g., "Success", "OK", "200", etc.)
+      const trimmedText = (rawText || '').trim().toLowerCase();
+      if (trimmedText.includes('success') || trimmedText === 'ok' || trimmedText === 'done') {
+        console.log(`[AI Transport Audit] Classification: PLAIN_TEXT_SUCCESS. Google Apps Script returned plain text success string: "${rawText.trim()}"`);
+        parsedBody = {
+          success: true,
+          processed: batchPayload.recordIds.length,
+          results: batchPayload.recordIds.map(id => ({
+            dataset_id: id,
+            status: 'SUCCESS',
+            message: rawText.trim() || 'Plain text success'
+          }))
+        };
+      } else {
+        console.warn(`[AI Transport Audit] Classification: JSON_PARSE_FAILURE. Raw text body is not valid JSON nor plain text success: "${rawText.substring(0, 150)}"`);
+        return {
+          success: false,
+          classification: 'JSON_PARSE_FAILURE',
+          status: response.status,
+          rawText,
+          error: `JSON Parse Failure: ${parseErr.message} (Raw: "${rawText.substring(0, 100)}")`,
+        };
+      }
     }
 
     // Evaluate application-level outcome
