@@ -1231,10 +1231,10 @@ export default function App() {
 
   // Deletes a completed order from history
   const handleDeleteDoneOrder = (orderId) => {
-    if (userRole === 'admin') {
+    if (['admin', 'owner', 'manager'].includes(userRole)) {
       Alert.alert(
-        "অর্ডার ডিলিট",
-        "আপনি কি নিশ্চিতভাবে এই সম্পন্ন হওয়া অর্ডারটি ডিলিট করতে চান?",
+        "অর্ডার ডিলিট করুন?",
+        "এই অর্ডারটির পেমেন্ট সম্পন্ন হয়েছে। ডিলিট করলে এর সাথে সম্পর্কিত সকল রেকর্ড এবং রিপোর্ট আপডেট হয়ে যাবে।\n\nআপনি কি নিশ্চিতভাবে এই অর্ডারটি স্থায়ীভাবে মুছে ফেলতে চান?",
         [
           { text: "বাতিল", style: "cancel" },
           {
@@ -1254,7 +1254,7 @@ export default function App() {
     } else {
       Alert.alert(
         "অর্ডার ডিলিট সীমাবদ্ধ",
-        "পেমেন্ট সম্পন্ন হওয়ার পর কোনো বিক্রয় রেকর্ড মুছে ফেলা সম্ভব নয়।",
+        "এই কাজের জন্য আপনার পর্যাপ্ত অনুমতি নেই।",
         [{ text: "ঠিক আছে", style: "default" }]
       );
     }

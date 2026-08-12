@@ -648,8 +648,10 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
                   </View>
                   <View style={styles.orderItemRight}>
                     <View style={styles.amountCol}><Text style={styles.orderItemAmount}>৳ {order.amount}</Text><Text style={[styles.orderItemStatus, styles.textGreen]}>পেমেন্ট শেষ</Text></View>
-                    <View style={styles.lockWrapper}>
-                      <Text style={styles.lockIcon}>🔒</Text>
+                    <View style={styles.actionRow}>
+                      <TouchableOpacity style={styles.deleteBtn} onPress={(e) => { e.stopPropagation(); onDeleteDoneOrder(order.id); }}>
+                        <Text style={styles.btnIcon}>🗑️</Text>
+                      </TouchableOpacity>
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -711,9 +713,24 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
               </View>
             )}
             
-            <TouchableOpacity style={[styles.modalCancelBtn, { width: '100%', marginTop: 20 }]} onPress={() => setOrderDetailVisible(false)}>
-              <Text style={styles.modalCancelBtnText}>পিছনে যান</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 20 }}>
+              <TouchableOpacity 
+                style={[styles.modalCancelBtn, { width: '48%' }]} 
+                onPress={() => setOrderDetailVisible(false)}
+              >
+                <Text style={styles.modalCancelBtnText}>পিছনে যান</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.modalSaveBtn, { width: '48%', backgroundColor: '#EF4444' }]} 
+                onPress={() => {
+                  const targetId = selectedOrder?.id;
+                  setOrderDetailVisible(false);
+                  if (targetId) onDeleteDoneOrder(targetId);
+                }}
+              >
+                <Text style={[styles.modalSaveBtnText, { color: '#FFF' }]}>🗑️ ডিলিট করুন</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>

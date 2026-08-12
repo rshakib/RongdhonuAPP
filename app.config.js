@@ -97,12 +97,11 @@ module.exports = ({ config }) => {
     web: {
       favicon: iconPath
     },
-    owner: 'riajulshakib',
-    extra: {
-      eas: {
-        projectId: 'c0ef37bc-f64e-4a5d-8f68-8296556b722a'
-      },
-      appProfile: profile
-    }
+    "extra": {
+      "eas": {
+        "projectId": "5bbb3050-c514-4ce8-88f4-655a9cec68ba"
+      }
+    },
+    "owner": "shakib223"
   };
 };
