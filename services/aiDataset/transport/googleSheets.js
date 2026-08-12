@@ -129,6 +129,24 @@ export async function transmitBatchToGoogleSheets(webappUrl, batchPayload, optio
   try {
     console.log(`[AI Apps Script Audit] Transmitting batch of ${batchPayload.recordIds.length} records... Target URL: ${webappUrl}`);
 
+    // --- DIAGNOSTIC LOGGING TO IDENTIFY EXPORTER TYPE & PAYLOAD SCHEMA ---
+    if (batchPayload.datasets && Array.isArray(batchPayload.datasets)) {
+      batchPayload.datasets.forEach((ds, idx) => {
+        const recordId = batchPayload.recordIds ? batchPayload.recordIds[idx] : 'UNKNOWN';
+        const dsType = ds ? (ds.type || ds.dataset_type || (recordId.startsWith('WEATHER') ? 'WEATHER' : (recordId.startsWith('ITEM') ? 'AI_ITEM_SALES_DATASET' : 'AI_DAILY_SALES_DATASET'))) : 'UNKNOWN';
+        
+        console.log(`================ EXPORTER TYPE AUDIT ================`);
+        console.log("EXPORT TYPE:", dsType);
+        console.log("queue_record.id:", recordId);
+        console.log("queue_record.type:", dsType);
+        console.log("targetTab:", dsType === 'WEATHER' ? 'Weather_Timeline' : (dsType === 'AI_ITEM_SALES_DATASET' ? 'AI_Item_Sales_Dataset' : 'AI_Daily_Sales_Dataset'));
+        console.log("payload keys:", ds ? Object.keys(ds) : []);
+        console.log("first 500 characters of payload JSON:", JSON.stringify(ds).substring(0, 500));
+        console.log(`====================================================`);
+      });
+    }
+    // -------------------------------------------------------------------
+
     const response = await fetch(webappUrl, {
       method: 'POST',
       headers,
