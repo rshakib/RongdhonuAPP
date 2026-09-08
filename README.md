@@ -120,7 +120,7 @@ Private - All rights reserved.
 
 ## Developer
 
-**রিয়াজুল হাসান সাকিব** (Riazul Hasan Sakib)
+**রিয়াজুল হাসান সাকিব** (Riajul Hasan Shakib)
 
 ---
 
