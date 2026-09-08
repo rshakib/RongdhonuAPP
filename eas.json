@@ -34,6 +34,16 @@
         "buildType": "apk"
       }
     },
+    "demo": {
+      "env": {
+        "EXPO_PUBLIC_APP_PROFILE": "OWNER",
+        "EXPO_PUBLIC_DEMO_MODE": "true"
+      },
+      "channel": "demo",
+      "android": {
+        "buildType": "apk"
+      }
+    },
     "production": {}
   },
   "submit": {

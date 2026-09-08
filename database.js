@@ -4982,6 +4982,11 @@ export function seedDemoData() {
 
 export function isDemoMode() {
   try {
+    // Check environment variable first (for EAS build)
+    if (process.env.EXPO_PUBLIC_DEMO_MODE === 'true') {
+      return true;
+    }
+    // Check local config
     const val = getAppConfig('demo_mode');
     return val === 'true';
   } catch (e) {
