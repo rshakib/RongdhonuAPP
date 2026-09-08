@@ -114,16 +114,6 @@ rong/
 └── assets/                # Images, icons
 ```
 
-## Default Login Credentials
-
-| Role | Username | PIN |
-|------|----------|-----|
-| Owner | `ro` | `2420` |
-| Manager | `m` | `1111` |
-| Admin | `a` | `1323` |
-
-> **Note**: Owner and Admin require biometric authentication after PIN entry.
-
 ## License
 
 Private - All rights reserved.
