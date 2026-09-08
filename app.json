@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "রংধনু",
-    "slug": "temp-expo",
-    "version": "1.0.1",
+    "name": "রংধনু (Demo)",
+    "slug": "rongdhonu-demo",
+    "version": "1.0.0-demo",
     "orientation": "portrait",
     "icon": "./image/mylogo.png",
     "userInterfaceStyle": "light",
@@ -26,8 +26,8 @@
         "backgroundColor": "#ffffff",
         "foregroundImage": "./image/mylogo.png"
       },
-      "package": "com.riajulshakib.rongdhonu",
-      "versionCode": 2
+      "package": "com.riajulshakib.rongdhonu.demo",
+      "versionCode": 1
     },
     "web": {
       "favicon": "./image/mylogo.png"

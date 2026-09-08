@@ -4810,21 +4810,21 @@ export function getSyncPauseInfo() {
   }
 }
 
-    export function resetDailySubmitLock() {
+export function resetDailySubmitLock() {
   try {
     const todayStr = getBusinessDate();
-    
+
     logDeleteHistory("daily_submit", todayStr, "Deposits");
     logDeleteHistory("daily_summary", todayStr, "Deposits");
 
     // 1. Delete from daily_submit locally and record deletion
     db.runSync("DELETE FROM daily_submit WHERE date = ?", [todayStr]);
     recordDeletion("daily_submit", todayStr);
-    
+
     // 2. Delete from daily_summary locally and record deletion
     db.runSync("DELETE FROM daily_summary WHERE date = ?", [todayStr]);
     recordDeletion("daily_summary", todayStr);
-    
+
     // 3. Unlock orders locally and enqueue Firestore update sync for all today's orders
     const todayOrders = db.getAllSync("SELECT id FROM orders WHERE date(created_at, 'localtime') = ?", [todayStr]);
     todayOrders.forEach(o => {
@@ -4833,7 +4833,7 @@ export function getSyncPauseInfo() {
         enqueueSync("orders", String(o.id), "UPDATE");
       }
     });
-    
+
     console.log("[DB] Reset Daily Submit Lock and recorded deletions successfully.");
     return true;
   } catch (err) {
@@ -4883,6 +4883,108 @@ export function resetIjaraExpense() {
     return true;
   } catch (err) {
     console.error("[DB] Reset ijara expense failed:", err);
+    return false;
+  }
+}
+
+/**
+ * ==========================================
+ * DEMO MODE - Seed sample data
+ * ==========================================
+ * Seeds the database with sample data for demo/preview purposes.
+ */
+export function seedDemoData() {
+  try {
+    const now = new Date().toISOString();
+    const todayStr = getBusinessDate();
+
+    console.log("[Demo] Seeding demo data...");
+
+    // Seed menu items if empty
+    const menuCount = db.getFirstSync("SELECT COUNT(*) as count FROM menu_items");
+    if (menuCount.count === 0) {
+      seedDefaultMenu();
+      console.log("[Demo] Menu items seeded");
+    }
+
+    // Create sample expenses for today
+    const expenseCount = db.getFirstSync("SELECT COUNT(*) as count FROM expenses WHERE date(created_at, 'localtime') = ?", [todayStr]);
+    if (expenseCount.count === 0) {
+      const expenses = [
+        { id: `exp_${todayStr}_dudu`, category: 'দুদু স্টোর', amount: 3500, note: 'দুধ, দই, পনির' },
+        { id: `exp_${todayStr}_akash`, category: 'আকাশ মুরগী', amount: 4200, note: 'মুরগির মাংস 10kg' },
+        { id: `exp_${todayStr}_bazar`, category: 'বাজার', amount: 2800, note: 'সবজি, মসলা' },
+      ];
+
+      expenses.forEach(exp => {
+        db.runSync(
+          "INSERT OR REPLACE INTO expenses (id, category, amount, note, is_due, given_amount, used_amount, returned_amount, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, ?, 0)",
+          [exp.id, exp.category, exp.amount, exp.note, now, now]
+        );
+      });
+      console.log("[Demo] Sample expenses seeded");
+    }
+
+    // Create sample completed orders for today
+    const orderCount = db.getFirstSync("SELECT COUNT(*) as count FROM orders WHERE date(created_at, 'localtime') = ?", [todayStr]);
+    if (orderCount.count === 0) {
+      const sampleOrders = [
+        { table: 'T-1', amount: 850, items: 'স্পেশাল বার্গার x2, ফ্রেঞ্চ ফ্রাই x1, কোল্ড কফি x2' },
+        { table: 'T-3', amount: 1200, items: 'চিকেন বিরিয়ানি x2, লাচ্ছি x2' },
+        { table: 'T-5', amount: 650, items: 'চিকেন চাউমিন x1, ম্যাগি মাসালা x1' },
+        { table: 'T-2', amount: 1500, items: 'স্পেশাল পিৎজা x1, কোল্ড ড্রিংস x3' },
+        { table: 'T-7', amount: 450, items: 'চিকেন শর্মা x1, ব্ল্যাক কফি x1' },
+      ];
+
+      sampleOrders.forEach((order, idx) => {
+        const orderId = `demo_order_${todayStr}_${idx + 1}`;
+        const orderTime = new Date();
+        orderTime.setHours(12 + idx, 30 + (idx * 15), 0);
+
+        db.runSync(
+          `INSERT OR REPLACE INTO orders (id, table_id, items, subtotal, discount, grand_total, payment_status, payment_method, time, created_at, updated_at, is_synced)
+           VALUES (?, ?, ?, ?, 0, ?, 'Paid', 'ক্যাশ', ?, ?, ?, 0)`,
+          [orderId, order.table, order.items, order.amount, order.amount, `${12 + idx}:${30 + (idx * 15)}`, orderTime.toISOString(), orderTime.toISOString()]
+        );
+      });
+      console.log("[Demo] Sample orders seeded");
+    }
+
+    // Create sample employees
+    const empCount = db.getFirstSync("SELECT COUNT(*) as count FROM owner_employees");
+    if (empCount.count === 0) {
+      const employees = [
+        { id: 'emp_1', name: 'রাহুল', phone: '01712345678', designation: 'সিনিয়র শেফ', salary: 18000 },
+        { id: 'emp_2', name: 'করিম', phone: '01812345678', designation: 'জুনিয়র শেফ', salary: 12000 },
+        { id: 'emp_3', name: 'সুমন', phone: '01912345678', designation: 'ওয়েটার', salary: 10000 },
+        { id: 'emp_4', name: 'বাবুল', phone: '01612345678', designation: 'ডেলিভারি বয়', salary: 10000 },
+      ];
+
+      employees.forEach(emp => {
+        db.runSync(
+          "INSERT OR REPLACE INTO owner_employees (id, name, phone, designation, monthly_salary, joining_date, status, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE', ?, ?, 0)",
+          [emp.id, emp.name, emp.phone, emp.designation, emp.salary, '2025-01-01', now, now]
+        );
+      });
+      console.log("[Demo] Sample employees seeded");
+    }
+
+    // Set demo mode flag
+    setAppConfig('demo_mode', 'true');
+
+    console.log("[Demo] Demo data seeding complete!");
+    return true;
+  } catch (err) {
+    console.error("[Demo] Failed to seed demo data:", err);
+    return false;
+  }
+}
+
+export function isDemoMode() {
+  try {
+    const val = getAppConfig('demo_mode');
+    return val === 'true';
+  } catch (e) {
     return false;
   }
 }

@@ -165,19 +165,23 @@ export default function LoginScreen({ onLoginSuccess }) {
 
     const user = verifyUserLogin(cleanUsername, cleanPin);
     if (user) {
-      // Biometric authentication required for owner and admin roles
-      if (user.role === 'owner' || user.role === 'admin') {
+      // Skip biometric in demo mode
+      const { isDemoMode } = require('../database');
+      const isDemo = isDemoMode();
+
+      // Biometric authentication required for owner and admin roles (skip in demo)
+      if (!isDemo && (user.role === 'owner' || user.role === 'admin')) {
         try {
           const hasHardware = await LocalAuthentication.hasHardwareAsync();
           const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-          
+
           if (hasHardware && isEnrolled) {
             const biometricResult = await LocalAuthentication.authenticateAsync({
               promptMessage: 'বায়োমেট্রিক ভেরিফিকেশন প্রয়োজন',
               cancelLabel: 'বাতিল',
               disableDeviceFallback: false,
             });
-            
+
             if (!biometricResult.success) {
               Alert.alert(
                 "বায়োমেট্রিক ব্যর্থ",
@@ -260,29 +264,15 @@ export default function LoginScreen({ onLoginSuccess }) {
           <Text style={[styles.doodle, { top: 380, right: 30 }]}>☕</Text>
         </View>
 
-        {/* Top Header Bar with Compact Top-Right Sync Mode Segmented Control */}
+        {/* Top Header Bar - Hide sync toggle in demo mode */}
         <View style={styles.topHeaderBar}>
           <View style={styles.topHeaderSpacer} />
           <View style={styles.compactSyncPill}>
-            <TouchableOpacity 
-              style={[styles.compactSyncBtn, syncMode === 'online_only' && styles.compactSyncBtnActive]}
-              onPress={() => handleModeChange('online_only')}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.compactSyncText, syncMode === 'online_only' && styles.compactSyncTextActive]}>
-                Online
+            <View style={[styles.compactSyncBtn, styles.compactSyncBtnActive]}>
+              <Text style={[styles.compactSyncText, styles.compactSyncTextActive]}>
+                Demo Mode
               </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.compactSyncBtn, syncMode === 'hybrid' && styles.compactSyncBtnActive]}
-              onPress={() => handleModeChange('hybrid')}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.compactSyncText, syncMode === 'hybrid' && styles.compactSyncTextActive]}>
-                Offline
-              </Text>
-            </TouchableOpacity>
+            </View>
           </View>
         </View>
 
@@ -307,6 +297,9 @@ export default function LoginScreen({ onLoginSuccess }) {
                 </View>
                 <Text style={styles.brandTitle}>রংধনু</Text>
                 <Text style={styles.brandSubtitle}>ক্যাফে এন্ড রেস্টুরেন্ট</Text>
+                <View style={styles.demoBadge}>
+                  <Text style={styles.demoBadgeText}>DEMO VERSION</Text>
+                </View>
               </View>
 
               {/* 2. Crossed Fork & Spoon Divider */}
@@ -561,6 +554,21 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     opacity: 0.9,
     letterSpacing: 0.5,
+  },
+  demoBadge: {
+    backgroundColor: 'rgba(255, 77, 77, 0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#FF4D4D',
+  },
+  demoBadgeText: {
+    color: '#FF4D4D',
+    fontSize: 11,
+    fontWeight: 'bold',
+    letterSpacing: 1,
   },
   dividerRow: {
     flexDirection: 'row',
