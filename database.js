@@ -69,6 +69,20 @@ const cleanEnvVar = (val) => {
   return s.trim();
 };
 
+// Demo mode fallback - empty values when .env is missing
+const getFirebaseConfig = () => {
+  if (isDemoMode()) {
+    return {
+      projectId: '',
+      apiKey: '',
+    };
+  }
+  return {
+    projectId: cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID),
+    apiKey: cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_API_KEY),
+  };
+};
+
 // Bangladesh Public Holidays for 2026/2027
 const BD_HOLIDAYS = {
   "01-01": "New Year's Day",

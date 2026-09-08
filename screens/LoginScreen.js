@@ -28,20 +28,34 @@ export default function LoginScreen({ onLoginSuccess }) {
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [syncMode, setSyncMode] = useState('online_only');
+  const [isDemo, setIsDemo] = useState(false);
 
   // Fetch remembered user and mode on mount
   useEffect(() => {
+    // Check demo mode
     try {
-      const savedUser = getAppConfig('remembered_username');
-      if (savedUser && savedUser.trim() !== '') {
-        setUsername(savedUser);
-        setIsFirstLogin(false);
-      } else {
+      const { isDemoMode } = require('../database');
+      const demoMode = isDemoMode();
+      setIsDemo(demoMode);
+      if (demoMode) {
+        setIsFirstLogin(false); // Skip username step in demo
+        setUsername('ro'); // Default demo user
+      }
+    } catch (e) {}
+
+    if (!isDemo) {
+      try {
+        const savedUser = getAppConfig('remembered_username');
+        if (savedUser && savedUser.trim() !== '') {
+          setUsername(savedUser);
+          setIsFirstLogin(false);
+        } else {
+          setIsFirstLogin(true);
+        }
+      } catch (err) {
+        console.error("Failed to load remembered user from SQLite:", err);
         setIsFirstLogin(true);
       }
-    } catch (err) {
-      console.error("Failed to load remembered user from SQLite:", err);
-      setIsFirstLogin(true);
     }
 
     try {
@@ -144,13 +158,20 @@ export default function LoginScreen({ onLoginSuccess }) {
     const cleanUsername = username.trim().toLowerCase();
     const cleanPin = enteredPin.trim();
 
-    if (!cleanUsername) {
-      setError('ইউজারনেম প্রয়োজন!');
+    // Demo mode: PIN 1111 = Owner login directly
+    if (isDemo && cleanPin === '1111') {
+      setError('');
+      onLoginSuccess('owner', 'মালিক (Demo)', 'hybrid');
+      return;
+    }
+
+    if (!isDemo && !cleanUsername) {
+      setError('ইউজারনেম প্রয়োজন!');
       setPin('');
       return;
     }
 
-    if (syncMode === 'online_only') {
+    if (!isDemo && syncMode === 'online_only') {
       const state = await NetInfo.fetch();
       const isOnline = state.isConnected && state.isInternetReachable !== false;
       if (!isOnline) {
@@ -312,7 +333,86 @@ export default function LoginScreen({ onLoginSuccess }) {
               </View>
 
               {/* 3. Login Section Area */}
-              {isFirstLogin ? (
+              {isDemo ? (
+                /* DEMO MODE - Direct PIN Entry */
+                <View style={styles.keypadForm}>
+                  <Text style={styles.promptText}>Demo PIN দিন (1111)</Text>
+
+                  {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+                  {/* 4-Dot PIN Indicator */}
+                  <View style={styles.pinDotsRow}>
+                    {[1, 2, 3, 4].map((dotIndex) => {
+                      const isFilled = pin.length >= dotIndex;
+                      return (
+                        <View
+                          key={dotIndex}
+                          style={[
+                            styles.pinDot,
+                            isFilled ? styles.pinDotFilled : styles.pinDotEmpty,
+                          ]}
+                        />
+                      );
+                    })}
+                  </View>
+
+                  {/* Grid Keypad */}
+                  <View style={styles.keypadGrid}>
+                    {/* Row 1 */}
+                    <View style={styles.keypadRow}>
+                      <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('1')}>
+                        <Text style={styles.keypadNumber}>1</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('2')}>
+                        <Text style={styles.keypadNumber}>2</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('3')}>
+                        <Text style={styles.keypadNumber}>3</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Row 2 */}
+                    <View style={styles.keypadRow}>
+                      <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('4')}>
+                        <Text style={styles.keypadNumber}>4</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('5')}>
+                        <Text style={styles.keypadNumber}>5</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('6')}>
+                        <Text style={styles.keypadNumber}>6</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Row 3 */}
+                    <View style={styles.keypadRow}>
+                      <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('7')}>
+                        <Text style={styles.keypadNumber}>7</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('8')}>
+                        <Text style={styles.keypadNumber}>8</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('9')}>
+                        <Text style={styles.keypadNumber}>9</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Row 4 */}
+                    <View style={styles.keypadRow}>
+                      {/* Dummy Cell */}
+                      <View style={[styles.keypadCell, { borderColor: 'transparent', backgroundColor: 'transparent' }]} />
+
+                      <TouchableOpacity style={styles.keypadCell} onPress={() => handleKeyPress('0')}>
+                        <Text style={styles.keypadNumber}>0</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity style={styles.keypadCell} onPress={handleBackspace}>
+                        <Text style={styles.backspaceIcon}>⌫</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              ) : isFirstLogin ? (
                 /* USERNAME FORM STEP (First Login) */
                 <View style={styles.usernameForm}>
                   <Text style={styles.promptText}>ইউজারনেম দিন (Username)</Text>
