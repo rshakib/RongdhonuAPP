@@ -31,6 +31,7 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
 .env*.local
 
 # typescript
@@ -43,3 +44,15 @@ yarn-error.*
 # backup and internal folders
 .backups/
 .commandcode/
+.claude/
+.idea/
+
+# Debug and audit files
+audit_out.txt
+firestore_count.js
+
+# Credentials (keep credentials.example.json as template only)
+credentials.json
+credentials/*.jks
+credentials/*.p12
+credentials/*.key
