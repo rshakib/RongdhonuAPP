@@ -39,3 +39,7 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# backup and internal folders
+.backups/
+.commandcode/

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -9,7 +9,8 @@ import {
   Modal,
   TextInput,
   ActivityIndicator,
-  StatusBar as RNStatusBar
+  StatusBar as RNStatusBar,
+  RefreshControl
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -25,11 +26,42 @@ import {
 } from '../services/deviceRegistry';
 import { verifyPinCode } from '../database';
 
+// Helper to calculate time ago from a timestamp
+function getTimeAgo(timestamp) {
+  if (!timestamp) return 'অজানা';
+
+  const now = new Date();
+  const past = new Date(timestamp);
+  const diffMs = now - past;
+
+  if (diffMs < 0) return 'এইমাত্র';
+
+  const seconds = Math.floor(diffMs / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  const remainingHours = hours % 24;
+  const remainingMinutes = minutes % 60;
+  const remainingSeconds = seconds % 60;
+
+  if (days > 0) {
+    return `${days} দিন ${remainingHours} ঘণ্টা ${remainingMinutes} মিনিট`;
+  } else if (hours > 0) {
+    return `${hours} ঘণ্টা ${remainingMinutes} মিনিট ${remainingSeconds} সেকেন্ড`;
+  } else if (minutes > 0) {
+    return `${minutes} মিনিট ${remainingSeconds} সেকেন্ড`;
+  } else {
+    return `${seconds} সেকেন্ড`;
+  }
+}
+
 export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
   const [viewMode, setViewMode] = useState('ACTIVE'); // 'ACTIVE' or 'DELETED'
   const [devices, setDevices] = useState([]);
   const [deletedDevices, setDeletedDevices] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Context Menu State (Long Press)
   const [contextMenuVisible, setContextMenuVisible] = useState(false);
@@ -48,8 +80,9 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
 
   const isAdmin = !userRole || String(userRole).toUpperCase().trim() === 'ADMIN';
 
-  const loadDevices = () => {
-    setLoading(true);
+  const loadDevices = (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     try {
       if (viewMode === 'DELETED') {
         const delList = getDeletedDevices();
@@ -60,11 +93,16 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
       }
     } catch (err) {
       console.error('[DeviceManagement] Error loading devices:', err);
-      Alert.alert('ত্রুটি', 'ডিভাইস তালিকা লোড করতে ব্যর্থ হয়েছে');
+      Alert.alert('ত্রুটি', 'ডিভাইস তালিকা লোড করতে ব্যর্থ হয়েছে');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
+
+  const onRefresh = useCallback(() => {
+    loadDevices(true);
+  }, [viewMode]);
 
   useEffect(() => {
     loadDevices();
@@ -215,12 +253,12 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
   // Phase 4: Handle Admin Lock Warning Dialog
   const handleInitiateAdminLock = (device) => {
     Alert.alert(
-      '⚠️ Block Administrator Access',
-      `You are about to permanently disable Administrator access from this device ('${device.device_name || device.device_id}').\n\nAfter enabling this option:\n• Admin cannot login\n• Owner cannot login\n• Manager cannot login\n\nOnly another approved Admin device can remove this lock.\n\nContinue?`,
+      '⚠️ ডিভাইস অ্যাক্সেস ব্লক',
+      `'${device.device_name || device.device_id}' ডিভাইসের সকল অ্যাক্সেস স্থায়ীভাবে ব্লক করতে চান?\n\nএটি চালু করলে:\n• Admin লগইন করতে পারবেন না\n• Owner লগইন করতে পারবেন না\n• Manager লগইন করতে পারবেন না\n\nশুধুমাত্র অন্য অনুমোদিত Admin ডিভাইস থেকে এই লক সরানো যাবে।\n\nচালিয়ে যেতে চান?`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'বাতিল', style: 'cancel' },
         {
-          text: 'Continue',
+          text: 'চালিয়ে যান',
           style: 'destructive',
           onPress: () => {
             setTargetLockDevice(device);
@@ -236,13 +274,13 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
   // Confirm PIN and execute Admin Lock
   const handleConfirmPinAndLock = () => {
     if (!pinInput.trim()) {
-      setPinError('সাকিব PIN দিন');
+      setPinError('PIN দিন');
       return;
     }
 
-    const isValidPin = verifyPinCode(pinInput.trim(), 'admin');
-    if (!isValidPin) {
-      setPinError('ভুল PIN নম্বর! পুনরায় চেষ্টা করুন');
+    const user = verifyPinCode(pinInput.trim());
+    if (!user || (user.role !== 'admin' && user.role !== 'owner')) {
+      setPinError('ভুল PIN! শুধুমাত্র Admin/Owner PIN গ্রহণযোগ্য');
       return;
     }
 
@@ -254,10 +292,10 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
     setTargetLockDevice(null);
 
     if (success) {
-      Alert.alert('সফল', 'সাকিব এক্সেস স্থায়ীভাবে ব্লক করা হয়েছে।');
+      Alert.alert('সফল', 'ডিভাইস এক্সেস স্থায়ীভাবে ব্লক করা হয়েছে।');
       loadDevices();
     } else {
-      Alert.alert('ত্রুটি', 'সাকিব ব্লক ব্যর্থ হয়েছে।');
+      Alert.alert('ত্রুটি', 'ডিভাইস ব্লক ব্যর্থ হয়েছে।');
     }
   };
 
@@ -287,20 +325,20 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
   // Phase 5: Handle Remote Force Logout Action
   const handleForceLogoutPrompt = (device) => {
     Alert.alert(
-      'Force Logout',
-      `You are about to sign this device ('${device.device_name || device.device_id}') out remotely.\n\nThe current user will immediately lose access.\n\nThe next login will require Username and PIN again.\n\nContinue?`,
+      '🔄 রিমোট লগআউট',
+      `'${device.device_name || device.device_id}' ডিভাইস থেকে রিমোটভাবে সাইন আউট করতে চান?\n\nবর্তমান ব্যবহারকারী সাথে সাথে অ্যাক্সেস হারাবেন।\n\nপরবর্তী লগইনের জন্য আবার ইউজারনেম ও PIN লাগবে।\n\nচালিয়ে যেতে চান?`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: 'বাতিল', style: 'cancel' },
         {
-          text: 'Force Logout',
+          text: 'লগআউট করুন',
           style: 'destructive',
           onPress: () => {
             const success = triggerForceLogout(device.device_id, 'admin');
             if (success) {
-              Alert.alert('সফল', 'ডিভাইসটিতে রিমোট Force Logout নির্দেশ পাঠানো হয়েছে।');
+              Alert.alert('সফল', 'ডিভাইসটিতে রিমোট লগআউট নির্দেশ পাঠানো হয়েছে।');
               loadDevices();
             } else {
-              Alert.alert('ত্রুটি', 'Force Logout নির্দেশ ব্যর্থ হয়েছে।');
+              Alert.alert('ত্রুটি', 'রিমোট লগআউট ব্যর্থ হয়েছে।');
             }
           }
         }
@@ -342,15 +380,15 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
 
   return (
     <SafeAreaView style={styles.container}>
-      <RNStatusBar barStyle="light-content" backgroundColor="#09090b" />
-      
+      <RNStatusBar barStyle="light-content" backgroundColor="#0D0D0D" />
+
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn}>
-          <Text style={styles.backBtnText}>❮ Back</Text>
+          <Text style={styles.backBtnText}>◁ ফিরে যান</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
-          {viewMode === 'ACTIVE' ? '📱 ডিভাইস অ্যাক্সেস কন্ট্রোল' : '🗑️ মুছে ফেলা ডিভাইসসমূহ'}
+          {viewMode === 'ACTIVE' ? '📱 ডিভাইস কন্ট্রোল' : '🗑️ মুছে ফেলা ডিভাইস'}
         </Text>
         <View style={styles.headerRightGroup}>
           {isAdmin && (
@@ -359,7 +397,7 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
               style={[styles.tabToggleBtn, viewMode === 'DELETED' ? styles.tabToggleBtnActive : null]}
             >
               <Text style={styles.tabToggleBtnText}>
-                {viewMode === 'ACTIVE' ? '🗑️ Deleted' : '📱 Active'}
+                {viewMode === 'ACTIVE' ? '🗑️ ডিলিটেড' : '📱 অ্যাক্টিভ'}
               </Text>
             </TouchableOpacity>
           )}
@@ -369,17 +407,61 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#FFB703']}
+            tintColor="#FFB703"
+          />
+        }
+      >
         {viewMode === 'ACTIVE' ? (
           <>
             <View style={styles.infoBanner}>
-              <Text style={styles.infoBannerTitle}>🛡️ Device Registry & Policy Control</Text>
+              <Text style={styles.infoBannerTitle}>🛡️ ডিভাইস রেজিস্ট্রি ও পলিসি কন্ট্রোল</Text>
               <Text style={styles.infoBannerText}>
-                এডমিন যে কোনো ডিভাইসের অনুমোদন, ব্লক, স্টোলেন লক, রিনেম (Long Press), ডিলিট ও রিকভার নিয়ন্ত্রণ করতে পারেন।
+                এডমিন যে কোনো ডিভাইসের অনুমোদন, ব্লক, লক, নাম পরিবর্তন, ডিলিট ও রিকভার নিয়ন্ত্রণ করতে পারেন।
+              </Text>
+              <Text style={styles.infoBannerHint}>
+                💡 ডিভাইসে লং প্রেস করলে নাম পরিবর্তন ও ডিলিট অপশন পাবেন
               </Text>
             </View>
 
-            <Text style={styles.sectionHeader}>নিবন্ধিত ডিভাইসের তালিকা ({devices.length})</Text>
+            {/* Device Count Summary */}
+            {!loading && devices.length > 0 && (
+              <View style={styles.summaryCard}>
+                <View style={styles.summaryItem}>
+                  <Text style={styles.summaryCount}>{devices.length}</Text>
+                  <Text style={styles.summaryLabel}>মোট</Text>
+                </View>
+                <View style={styles.summaryDivider} />
+                <View style={styles.summaryItem}>
+                  <Text style={[styles.summaryCount, { color: '#10B981' }]}>
+                    {devices.filter(d => String(d.status || '').toUpperCase() === 'ACTIVE').length}
+                  </Text>
+                  <Text style={styles.summaryLabel}>অনুমোদিত</Text>
+                </View>
+                <View style={styles.summaryDivider} />
+                <View style={styles.summaryItem}>
+                  <Text style={[styles.summaryCount, { color: '#F59E0B' }]}>
+                    {devices.filter(d => String(d.status || '').toUpperCase() === 'PENDING').length}
+                  </Text>
+                  <Text style={styles.summaryLabel}>অপেক্ষমাণ</Text>
+                </View>
+                <View style={styles.summaryDivider} />
+                <View style={styles.summaryItem}>
+                  <Text style={[styles.summaryCount, { color: '#EF4444' }]}>
+                    {devices.filter(d => String(d.status || '').toUpperCase() === 'BLOCKED').length}
+                  </Text>
+                  <Text style={styles.summaryLabel}>ব্লকড</Text>
+                </View>
+              </View>
+            )}
+
+            <Text style={styles.sectionHeader}>নিবন্ধিত ডিভাইসের তালিকা</Text>
 
             {loading ? (
               <View style={styles.loadingBox}>
@@ -431,12 +513,14 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
                         <Text style={styles.detailLabel}>অ্যাপ ভার্সন:</Text>
                         <Text style={styles.detailValue}>v{item.app_version || '1.0.0'}</Text>
                       </View>
-                      <View style={styles.detailItem}>
-                        <Text style={styles.detailLabel}>সর্বশেষ সক্রিয় (Last Seen):</Text>
-                        <Text style={styles.detailValue}>
-                          {item.last_seen ? new Date(item.last_seen).toLocaleString() : 'N/A'}
-                        </Text>
-                      </View>
+                    </View>
+
+                    {/* Last Seen - Time Ago Display */}
+                    <View style={styles.lastSeenContainer}>
+                      <Text style={styles.lastSeenLabel}>সর্বশেষ সক্রিয়:</Text>
+                      <Text style={styles.lastSeenTime}>
+                        {item.last_seen ? `⏳ ${getTimeAgo(item.last_seen)} আগে` : '⏳ অজানা'}
+                      </Text>
                     </View>
 
                     {/* Phase 6: Admin Offline Permission Switch Row */}
@@ -470,14 +554,14 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
                               style={[styles.btnAction, styles.btnApprove]}
                               onPress={() => handleStatusChange(item.device_id, item.device_name, 'ACTIVE')}
                             >
-                              <Text style={styles.btnApproveText}>✅ অনুমোদন (Approve)</Text>
+                              <Text style={styles.btnApproveText}>✅ অনুমোদন</Text>
                             </TouchableOpacity>
 
                             <TouchableOpacity
                               style={[styles.btnAction, styles.btnBlock]}
                               onPress={() => handleStatusChange(item.device_id, item.device_name, 'BLOCKED')}
                             >
-                              <Text style={styles.btnBlockText}>🚫 ব্লক (Block)</Text>
+                              <Text style={styles.btnBlockText}>🚫 ব্লক</Text>
                             </TouchableOpacity>
                           </View>
                         )}
@@ -489,14 +573,14 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
                               style={[styles.btnAction, styles.btnBlock]}
                               onPress={() => handleStatusChange(item.device_id, item.device_name, 'BLOCKED')}
                             >
-                              <Text style={styles.btnBlockText}>🚫 ব্লক করুন (Block)</Text>
+                              <Text style={styles.btnBlockText}>🚫 ব্লক করুন</Text>
                             </TouchableOpacity>
 
                             <TouchableOpacity
                               style={[styles.btnAction, styles.btnForceLogout]}
                               onPress={() => handleForceLogoutPrompt(item)}
                             >
-                              <Text style={styles.btnForceLogoutText}>🔄 Force Logout</Text>
+                              <Text style={styles.btnForceLogoutText}>🔄 লগআউট</Text>
                             </TouchableOpacity>
                           </View>
                         )}
@@ -509,7 +593,7 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
                                 style={[styles.btnAction, styles.btnUnblockAdmin]}
                                 onPress={() => handleRemoveAdminLock(item)}
                               >
-                                <Text style={styles.btnUnblockAdminText}>🔓 Remove Admin Lock</Text>
+                                <Text style={styles.btnUnblockAdminText}>🔓 অ্যাডমিন লক সরান</Text>
                               </TouchableOpacity>
                             ) : (
                               <View style={styles.actionRowColumn}>
@@ -525,7 +609,7 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
                                     style={[styles.btnAction, styles.btnAdminLock]}
                                     onPress={() => handleInitiateAdminLock(item)}
                                   >
-                                    <Text style={styles.btnAdminLockText}>🔒 Block Admin</Text>
+                                    <Text style={styles.btnAdminLockText}>🔒 অ্যাডমিন ব্লক</Text>
                                   </TouchableOpacity>
                                 </View>
 
@@ -533,7 +617,7 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
                                   style={[styles.btnAction, styles.btnForceLogoutFull]}
                                   onPress={() => handleForceLogoutPrompt(item)}
                                 >
-                                  <Text style={styles.btnForceLogoutText}>🔄 Force Logout (সাইন-আউট)</Text>
+                                  <Text style={styles.btnForceLogoutText}>🔄 রিমোট লগআউট</Text>
                                 </TouchableOpacity>
                               </View>
                             )}
@@ -761,7 +845,7 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#09090b',
+    backgroundColor: '#0D0D0D',
   },
   header: {
     flexDirection: 'row',
@@ -770,20 +854,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderColor: '#27272a',
-    backgroundColor: '#18181b',
+    borderColor: '#1A1A1A',
+    backgroundColor: '#0D0D0D',
   },
   backBtn: {
-    padding: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#1E1E1E',
   },
   backBtnText: {
-    color: '#ffb703',
-    fontWeight: 'bold',
-    fontSize: 15,
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
   },
   headerTitle: {
-    color: '#ffffff',
-    fontSize: 17,
+    color: '#FFFFFF',
+    fontSize: 18,
     fontWeight: 'bold',
   },
   refreshBtn: {
@@ -814,6 +901,41 @@ const styles = StyleSheet.create({
     color: '#a1a1aa',
     fontSize: 11,
     lineHeight: 16,
+  },
+  infoBannerHint: {
+    color: '#FFB703',
+    fontSize: 11,
+    marginTop: 8,
+    fontStyle: 'italic',
+  },
+  summaryCard: {
+    flexDirection: 'row',
+    backgroundColor: '#161616',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#262626',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+  },
+  summaryItem: {
+    alignItems: 'center',
+  },
+  summaryCount: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  summaryLabel: {
+    fontSize: 11,
+    color: '#A1A1AA',
+    marginTop: 4,
+  },
+  summaryDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: '#262626',
   },
   sectionHeader: {
     color: '#d4d4d8',
@@ -924,6 +1046,25 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: '#27272a',
     marginVertical: 12,
+  },
+  lastSeenContainer: {
+    backgroundColor: '#1A1A1A',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  lastSeenLabel: {
+    color: '#A1A1AA',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  lastSeenTime: {
+    color: '#FFB703',
+    fontSize: 13,
+    fontWeight: 'bold',
   },
   detailsGrid: {
     gap: 6,

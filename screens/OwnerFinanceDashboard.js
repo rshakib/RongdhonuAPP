@@ -43,6 +43,7 @@ export default function OwnerFinanceDashboard({
     ownerWithdrawn: 0,
     salaryPaid: 0,
     ownerExpenses: 0,
+    homeDeposits: 0,
     netSavings: 0,
     totalDeposit: 0,
     isClosed: false
@@ -55,6 +56,15 @@ export default function OwnerFinanceDashboard({
     inactive: 0,
     totalSalary: 0
   });
+
+  // Home Deposits (বাসায় জমা) Management States
+  const [homeDepositModalVisible, setHomeDepositModalVisible] = useState(false);
+  const [homeDepositsList, setHomeDepositsList] = useState([]);
+  const [depositAmountInput, setDepositAmountInput] = useState('');
+  const [depositDateInput, setDepositDateInput] = useState('');
+  const [depositNotesInput, setDepositNotesInput] = useState('');
+  const [editingDepositId, setEditingDepositId] = useState(null);
+  const [isAddingDeposit, setIsAddingDeposit] = useState(false);
 
   // Warning Modal States (Previous Month Open Warning)
   const [warningModalVisible, setWarningModalVisible] = useState(false);
@@ -119,7 +129,8 @@ export default function OwnerFinanceDashboard({
         getMonthlyTotalSalaryPaid,
         getOwnerExpenseSummary,
         getTotalOwnerDeposits,
-        getOwnerDepositByMonth
+        getOwnerDepositByMonth,
+        getMonthlyTotalHomeDeposits
       } = require('../database');
 
       // 1. Employees overview
@@ -137,8 +148,9 @@ export default function OwnerFinanceDashboard({
       const salPaid = getMonthlyTotalSalaryPaid(currentMonth);
       const expSum = getOwnerExpenseSummary(currentMonth);
       const ownerExp = expSum.total;
+      const homeDep = getMonthlyTotalHomeDeposits(currentMonth);
       
-      const netSave = withdrawn - salPaid - ownerExp;
+      const netSave = withdrawn - salPaid - ownerExp - homeDep;
       const totDeposit = getTotalOwnerDeposits();
       
       const depositRecord = getOwnerDepositByMonth(currentMonth);
@@ -148,6 +160,7 @@ export default function OwnerFinanceDashboard({
         ownerWithdrawn: withdrawn,
         salaryPaid: salPaid,
         ownerExpenses: ownerExp,
+        homeDeposits: homeDep,
         netSavings: netSave,
         totalDeposit: totDeposit,
         isClosed
@@ -157,6 +170,118 @@ export default function OwnerFinanceDashboard({
     } finally {
       setLoading(false);
     }
+  };
+
+  // --- Home Deposits (বাসায় জমা) Management Handlers ---
+  const openHomeDepositModal = () => {
+    loadHomeDepositsList();
+    resetHomeDepositForm();
+    setHomeDepositModalVisible(true);
+  };
+
+  const loadHomeDepositsList = () => {
+    try {
+      const { getHomeDeposits } = require('../database');
+      const list = getHomeDeposits(currentMonth);
+      setHomeDepositsList(list || []);
+    } catch (err) {
+      console.error("[OwnerFinanceDashboard] Error loading home deposits:", err);
+    }
+  };
+
+  const resetHomeDepositForm = () => {
+    const { getBusinessDate } = require('../database');
+    const today = getBusinessDate ? getBusinessDate() : new Date().toISOString().substring(0, 10);
+    const defaultDate = currentMonth === today.substring(0, 7) ? today : `${currentMonth}-01`;
+    setDepositAmountInput('');
+    setDepositDateInput(defaultDate);
+    setDepositNotesInput('');
+    setEditingDepositId(null);
+    setIsAddingDeposit(false);
+  };
+
+  const handleStartEditDeposit = (item) => {
+    setEditingDepositId(item.id);
+    setDepositAmountInput(String(item.amount));
+    setDepositDateInput(item.deposit_date);
+    setDepositNotesInput(item.notes || '');
+    setIsAddingDeposit(true);
+  };
+
+  const handleSaveHomeDeposit = () => {
+    const num = parseFloat(depositAmountInput);
+    if (isNaN(num) || num <= 0) {
+      Alert.alert("ত্রুটি", "সঠিক টাকার পরিমাণ লিখুন");
+      return;
+    }
+    if (!depositDateInput || !/^\d{4}-\d{2}-\d{2}$/.test(depositDateInput)) {
+      Alert.alert("ত্রুটি", "তারিখ সঠিক ফরম্যাটে লিখুন (YYYY-MM-DD)");
+      return;
+    }
+
+    try {
+      const { saveHomeDeposit, updateHomeDeposit } = require('../database');
+      if (editingDepositId) {
+        const success = updateHomeDeposit({
+          id: editingDepositId,
+          amount: num,
+          deposit_date: depositDateInput,
+          notes: depositNotesInput.trim()
+        });
+        if (success) {
+          Alert.alert("সফল", "বাসায় জমা আপডেট করা হয়েছে");
+        } else {
+          Alert.alert("ত্রুটি", "আপডেট করতে সমস্যা হয়েছে");
+        }
+      } else {
+        const id = saveHomeDeposit({
+          amount: num,
+          deposit_date: depositDateInput,
+          notes: depositNotesInput.trim()
+        });
+        if (id) {
+          Alert.alert("সফল", "বাসায় জমা সংরক্ষণ করা হয়েছে");
+        } else {
+          Alert.alert("ত্রুটি", "সংরক্ষণ করতে সমস্যা হয়েছে");
+        }
+      }
+      resetHomeDepositForm();
+      loadHomeDepositsList();
+      loadDashboardData();
+    } catch (err) {
+      console.error("[OwnerFinanceDashboard] Save home deposit error:", err);
+      Alert.alert("ত্রুটি", "সংরক্ষণ করতে ব্যর্থ হয়েছে");
+    }
+  };
+
+  const handleDeleteHomeDeposit = (id) => {
+    Alert.alert(
+      "জমা ডিলিট",
+      "আপনি কি নিশ্চিত এই বাসার জমা এন্ট্রি ডিলিট করতে চান?",
+      [
+        { text: "বাতিল", style: "cancel" },
+        {
+          text: "ডিলিট করুন",
+          style: "destructive",
+          onPress: () => {
+            try {
+              const { deleteHomeDeposit } = require('../database');
+              const success = deleteHomeDeposit(id);
+              if (success) {
+                Alert.alert("সফল", "জমা সফলভাবে ডিলিট করা হয়েছে");
+                loadHomeDepositsList();
+                loadDashboardData();
+              } else {
+                Alert.alert("ত্রুটি", "ডিলিট করতে সমস্যা হয়েছে");
+              }
+            } catch (err) {
+              console.error("[OwnerFinanceDashboard] Delete home deposit error:", err);
+              Alert.alert("ত্রুটি", "ডিলিট করতে ব্যর্থ হয়েছে");
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handlePrevMonth = () => {
@@ -381,6 +506,16 @@ export default function OwnerFinanceDashboard({
             </Text>
           </View>
 
+          <View style={styles.metricRow}>
+            <View style={styles.metricLeft}>
+              <Text style={styles.metricIcon}>🏠</Text>
+              <Text style={styles.metricLabelText}>বাসায় জমা (Home Deposit)</Text>
+            </View>
+            <Text style={[styles.metricValueText, { color: '#F59E0B' }]}>
+              - ৳{metrics.homeDeposits.toLocaleString()}
+            </Text>
+          </View>
+
           <View style={styles.divider} />
 
           <View style={[styles.metricRow, { marginBottom: 0 }]}>
@@ -464,6 +599,24 @@ export default function OwnerFinanceDashboard({
             </View>
             <Text style={[styles.cardBtnChevron, styles.expenseChevron]}>❯</Text>
           </TouchableOpacity>
+
+          {/* Card 3: Home Deposits */}
+          <TouchableOpacity 
+            style={[styles.premiumCardBtn, styles.homeDepositCardBtn]} 
+            onPress={openHomeDepositModal}
+            activeOpacity={0.8}
+          >
+            <View style={styles.cardBtnLeft}>
+              <View style={[styles.cardBtnIconContainer, styles.homeDepositIconContainer]}>
+                <Text style={styles.cardBtnIcon}>🏠</Text>
+              </View>
+              <View style={styles.cardBtnTextCol}>
+                <Text style={[styles.cardBtnTitle, styles.homeDepositBtnTitle]} numberOfLines={1}>বাসায় জমা</Text>
+                <Text style={styles.cardBtnSubtitle} numberOfLines={2}>বাসায় প্রেরিত বা জমাকৃত অর্থের বিবরণ ও হিসাব</Text>
+              </View>
+            </View>
+            <Text style={[styles.cardBtnChevron, styles.homeDepositChevron]}>❯</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
 
@@ -546,6 +699,170 @@ export default function OwnerFinanceDashboard({
                 <Text style={styles.modalSaveBtnText}>নিশ্চিত করুন</Text>
               </TouchableOpacity>
             </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
+      {/* 🏠 Home Deposits (বাসায় জমা) Management Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={homeDepositModalVisible}
+        onRequestClose={() => setHomeDepositModalVisible(false)}
+      >
+        <View style={styles.homeDepModalOverlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.homeDepModalContent}
+          >
+            {/* Modal Header */}
+            <View style={styles.homeDepModalHeader}>
+              <View style={styles.homeDepHeaderLeft}>
+                <Text style={styles.homeDepHeaderIcon}>🏠</Text>
+                <View>
+                  <Text style={styles.homeDepHeaderTitle}>বাসায় জমা</Text>
+                  <Text style={styles.homeDepHeaderSubtitle}>{getMonthNameBangla(currentMonth)}</Text>
+                </View>
+              </View>
+              <TouchableOpacity 
+                style={styles.homeDepCloseBtn} 
+                onPress={() => setHomeDepositModalVisible(false)}
+              >
+                <Text style={styles.homeDepCloseBtnText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Monthly Total Banner */}
+            <View style={styles.homeDepTotalBanner}>
+              <Text style={styles.homeDepTotalLabel}>এই মাসের মোট জমা:</Text>
+              <Text style={styles.homeDepTotalValue}>৳{metrics.homeDeposits.toLocaleString()}</Text>
+            </View>
+
+            <ScrollView style={styles.homeDepScrollArea} showsVerticalScrollIndicator={false}>
+              {/* Add / Edit Form */}
+              {!metrics.isClosed && (
+                <View style={styles.homeDepFormContainer}>
+                  {!isAddingDeposit ? (
+                    <TouchableOpacity 
+                      style={styles.homeDepAddTriggerBtn}
+                      onPress={() => {
+                        resetHomeDepositForm();
+                        setIsAddingDeposit(true);
+                      }}
+                    >
+                      <Text style={styles.homeDepAddTriggerText}>➕ নতুন জমা যোগ করুন</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={styles.homeDepFormCard}>
+                      <Text style={styles.homeDepFormTitle}>
+                        {editingDepositId ? '✏️ জমা সম্পাদন করুন' : '➕ নতুন জমা যুক্ত করুন'}
+                      </Text>
+
+                      <View style={styles.homeDepInputGroup}>
+                        <Text style={styles.homeDepInputLabel}>টাকার পরিমাণ (৳) *</Text>
+                        <TextInput
+                          style={styles.homeDepInput}
+                          placeholder="0"
+                          placeholderTextColor="#666"
+                          keyboardType="numeric"
+                          value={depositAmountInput}
+                          onChangeText={setDepositAmountInput}
+                        />
+                      </View>
+
+                      <View style={styles.homeDepInputGroup}>
+                        <Text style={styles.homeDepInputLabel}>তারিখ (YYYY-MM-DD) *</Text>
+                        <TextInput
+                          style={styles.homeDepInput}
+                          placeholder="YYYY-MM-DD"
+                          placeholderTextColor="#666"
+                          value={depositDateInput}
+                          onChangeText={setDepositDateInput}
+                        />
+                      </View>
+
+                      <View style={styles.homeDepInputGroup}>
+                        <Text style={styles.homeDepInputLabel}>নোট / বিবরণ (ঐচ্ছিক)</Text>
+                        <TextInput
+                          style={[styles.homeDepInput, { height: 40 }]}
+                          placeholder="বিবরণ লিখুন..."
+                          placeholderTextColor="#666"
+                          value={depositNotesInput}
+                          onChangeText={setDepositNotesInput}
+                        />
+                      </View>
+
+                      <View style={styles.homeDepFormBtnRow}>
+                        <TouchableOpacity
+                          style={styles.homeDepFormCancelBtn}
+                          onPress={resetHomeDepositForm}
+                        >
+                          <Text style={styles.homeDepFormCancelText}>বাতিল</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.homeDepFormSaveBtn}
+                          onPress={handleSaveHomeDeposit}
+                        >
+                          <Text style={styles.homeDepFormSaveText}>
+                            {editingDepositId ? 'আপডেট করুন' : 'সংরক্ষণ করুন'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* Deposit List Section */}
+              <View style={styles.homeDepListHeader}>
+                <Text style={styles.homeDepListTitle}>জমার তালিকা</Text>
+                <Text style={styles.homeDepListCount}>{homeDepositsList.length} টি এন্ট্রি</Text>
+              </View>
+
+              {homeDepositsList.length === 0 ? (
+                <View style={styles.homeDepEmptyState}>
+                  <Text style={styles.homeDepEmptyEmoji}>📦</Text>
+                  <Text style={styles.homeDepEmptyText}>এই মাসে কোনো বাসায় জমা যোগ করা হয়নি।</Text>
+                </View>
+              ) : (
+                homeDepositsList.map((item) => (
+                  <View key={item.id} style={styles.homeDepItemCard}>
+                    <View style={styles.homeDepItemLeft}>
+                      <View style={styles.homeDepItemIcon}>
+                        <Text style={{ fontSize: 16 }}>🏡</Text>
+                      </View>
+                      <View style={styles.homeDepItemInfo}>
+                        <Text style={styles.homeDepItemDate}>{item.deposit_date}</Text>
+                        {item.notes ? (
+                          <Text style={styles.homeDepItemNotes} numberOfLines={2}>{item.notes}</Text>
+                        ) : null}
+                      </View>
+                    </View>
+
+                    <View style={styles.homeDepItemRight}>
+                      <Text style={styles.homeDepItemAmount}>৳{(item.amount || 0).toLocaleString()}</Text>
+                      {!metrics.isClosed && (
+                        <View style={styles.homeDepItemActions}>
+                          <TouchableOpacity 
+                            style={styles.homeDepActionBtn}
+                            onPress={() => handleStartEditDeposit(item)}
+                          >
+                            <Text style={styles.homeDepActionText}>✏️</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity 
+                            style={[styles.homeDepActionBtn, { backgroundColor: 'rgba(239, 68, 68, 0.15)' }]}
+                            onPress={() => handleDeleteHomeDeposit(item.id)}
+                          >
+                            <Text style={styles.homeDepActionText}>🗑️</Text>
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                ))
+              )}
+              <View style={{ height: 30 }} />
+            </ScrollView>
           </KeyboardAvoidingView>
         </View>
       </Modal>
@@ -1015,5 +1332,273 @@ const styles = StyleSheet.create({
     color: '#000000',
     fontSize: 13,
     fontWeight: 'bold',
+  },
+  // Home Deposit Card styles
+  homeDepositCardBtn: {
+    borderColor: 'rgba(245, 158, 11, 0.4)',
+    backgroundColor: 'rgba(245, 158, 11, 0.02)',
+  },
+  homeDepositIconContainer: {
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+  },
+  homeDepositBtnTitle: {
+    color: '#F59E0B',
+  },
+  homeDepositChevron: {
+    color: '#F59E0B',
+  },
+  // Home Deposit Modal Styles
+  homeDepModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    justifyContent: 'flex-end',
+  },
+  homeDepModalContent: {
+    backgroundColor: '#121212',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderTopWidth: 1,
+    borderColor: '#2A2A2A',
+    maxHeight: '90%',
+    paddingBottom: 20,
+  },
+  homeDepModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderColor: '#222222',
+  },
+  homeDepHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  homeDepHeaderIcon: {
+    fontSize: 24,
+  },
+  homeDepHeaderTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  homeDepHeaderSubtitle: {
+    fontSize: 12,
+    color: '#888888',
+    marginTop: 2,
+  },
+  homeDepCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#222222',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  homeDepCloseBtnText: {
+    fontSize: 16,
+    color: '#AAAAAA',
+    fontWeight: 'bold',
+  },
+  homeDepTotalBanner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#1A1A1A',
+    marginHorizontal: 16,
+    marginTop: 14,
+    marginBottom: 8,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#2E2E2E',
+  },
+  homeDepTotalLabel: {
+    fontSize: 13,
+    color: '#AAAAAA',
+    fontWeight: '600',
+  },
+  homeDepTotalValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#F59E0B',
+  },
+  homeDepScrollArea: {
+    paddingHorizontal: 16,
+  },
+  homeDepFormContainer: {
+    marginTop: 10,
+    marginBottom: 8,
+  },
+  homeDepAddTriggerBtn: {
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.4)',
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  homeDepAddTriggerText: {
+    color: '#F59E0B',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  homeDepFormCard: {
+    backgroundColor: '#181818',
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#333333',
+  },
+  homeDepFormTitle: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#F59E0B',
+    marginBottom: 14,
+  },
+  homeDepInputGroup: {
+    marginBottom: 12,
+  },
+  homeDepInputLabel: {
+    fontSize: 12,
+    color: '#AAAAAA',
+    marginBottom: 6,
+    fontWeight: '500',
+  },
+  homeDepInput: {
+    backgroundColor: '#222222',
+    borderWidth: 1,
+    borderColor: '#333333',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    height: 44,
+    color: '#FFFFFF',
+    fontSize: 14,
+  },
+  homeDepFormBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 8,
+  },
+  homeDepFormCancelBtn: {
+    flex: 1,
+    height: 42,
+    borderRadius: 8,
+    backgroundColor: '#262626',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  homeDepFormCancelText: {
+    color: '#AAAAAA',
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  homeDepFormSaveBtn: {
+    flex: 1,
+    height: 42,
+    borderRadius: 8,
+    backgroundColor: '#F59E0B',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  homeDepFormSaveText: {
+    color: '#000000',
+    fontWeight: 'bold',
+    fontSize: 13,
+  },
+  homeDepListHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 16,
+    marginBottom: 10,
+    paddingHorizontal: 4,
+  },
+  homeDepListTitle: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#DDDDDD',
+  },
+  homeDepListCount: {
+    fontSize: 12,
+    color: '#888888',
+  },
+  homeDepEmptyState: {
+    alignItems: 'center',
+    paddingVertical: 36,
+  },
+  homeDepEmptyEmoji: {
+    fontSize: 40,
+    marginBottom: 10,
+  },
+  homeDepEmptyText: {
+    fontSize: 13,
+    color: '#777777',
+  },
+  homeDepItemCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#181818',
+    borderWidth: 1,
+    borderColor: '#262626',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+  },
+  homeDepItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+    marginRight: 10,
+  },
+  homeDepItemIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  homeDepItemInfo: {
+    flex: 1,
+  },
+  homeDepItemDate: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  homeDepItemNotes: {
+    color: '#888888',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  homeDepItemRight: {
+    alignItems: 'flex-end',
+  },
+  homeDepItemAmount: {
+    color: '#F59E0B',
+    fontSize: 15,
+    fontWeight: 'bold',
+    marginBottom: 6,
+  },
+  homeDepItemActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  homeDepActionBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 6,
+    backgroundColor: '#262626',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  homeDepActionText: {
+    fontSize: 13,
   },
 });

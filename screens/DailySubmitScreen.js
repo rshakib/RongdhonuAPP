@@ -220,12 +220,9 @@ export default function DailySubmitScreen({ dailyExpenses, completedOrders = [],
             <Text style={styles.headerSub}>রংধনু ক্যাফে এন্ড রেস্টুরেন্ট</Text>
           </View>
         </View>
-        <TouchableOpacity 
-          style={styles.datePickerBtn} 
-          onPress={() => setHistoryModalVisible(true)}
-        >
-          <Text style={styles.datePickerText}>📅 {currentDateText} ▾</Text>
-        </TouchableOpacity>
+        <View style={styles.datePickerBtn}>
+          <Text style={styles.datePickerText}>📅 {currentDateText}</Text>
+        </View>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollBody} contentContainerStyle={styles.scrollContent}>

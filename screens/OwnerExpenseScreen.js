@@ -29,6 +29,7 @@ const AccessDenied = ({ onBack }) => (
 );
 
 const DEFAULT_CATEGORIES = [
+  { label: '🏠 দোকান ভাড়া', icon: '🏠' },
   { label: '⚡ বিদ্যুৎ বিল', icon: '⚡' },
   { label: '🔥 গ্যাস বিল', icon: '🔥' },
   { label: '🌐 ইন্টারনেট বিল', icon: '🌐' },
@@ -36,6 +37,13 @@ const DEFAULT_CATEGORIES = [
   { label: '🔧 মেরামত (Maintenance)', icon: '🔧' },
   { label: '📦 অন্যান্য', icon: '📦' }
 ];
+
+const parseSafeAmount = (val) => {
+  if (!val) return 0;
+  const bengaliDigits = { '০': '0', '১': '1', '২': '2', '৩': '3', '৪': '4', '৫': '5', '৬': '6', '৭': '7', '৮': '8', '৯': '9' };
+  const cleaned = String(val).replace(/[০-৯]/g, d => bengaliDigits[d]).replace(/,/g, '').trim();
+  return parseFloat(cleaned) || 0;
+};
 
 export default function OwnerExpenseScreen({
   userRole,
@@ -138,11 +146,14 @@ export default function OwnerExpenseScreen({
       Alert.alert("সীমাবদ্ধতা", "এই মাসের হিসাব বন্ধ করা হয়েছে (Read-Only)");
       return;
     }
+    const { getBusinessDate } = require('../database');
     setEditingExpenseId(null);
-    setFormCategory('🛒 বাজার');
+    setFormCategory('🏠 দোকান ভাড়া');
     setFormAmount('');
-    setFormDate(new Date().toISOString().substring(0, 10));
+    setFormDate(getBusinessDate ? getBusinessDate() : new Date().toISOString().substring(0, 10));
     setFormNotes('');
+    setNewCatModalVisible(false);
+    setNewCatName('');
     setModalVisible(true);
   };
 
@@ -156,6 +167,8 @@ export default function OwnerExpenseScreen({
     setFormAmount(item.amount.toString());
     setFormDate(item.expense_date);
     setFormNotes(item.notes || '');
+    setNewCatModalVisible(false);
+    setNewCatName('');
     setModalVisible(true);
   };
 
@@ -165,15 +178,22 @@ export default function OwnerExpenseScreen({
       return;
     }
 
-    const amountNum = parseFloat(formAmount) || 0;
+    const amountNum = parseSafeAmount(formAmount);
     if (amountNum <= 0) {
       Alert.alert("ইনপুট ত্রুটি", "খরচের পরিমাণ অবশ্যই ০ থেকে বেশি হতে হবে।");
       return;
     }
 
-    if (!formDate.trim()) {
+    let cleanDate = formDate.trim();
+    if (!cleanDate) {
       Alert.alert("ইনপুট ত্রুটি", "খরচের তারিখ দেওয়া আবশ্যক।");
       return;
+    }
+
+    // Normalize DD-MM-YYYY or DD/MM/YYYY to YYYY-MM-DD
+    if (/^\d{1,2}[-/]\d{1,2}[-/]\d{4}$/.test(cleanDate)) {
+      const parts = cleanDate.split(/[-/]/);
+      cleanDate = `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
     }
 
     try {
@@ -182,7 +202,7 @@ export default function OwnerExpenseScreen({
       const payload = {
         category: formCategory,
         amount: amountNum,
-        expense_date: formDate.trim(),
+        expense_date: cleanDate,
         notes: formNotes.trim()
       };
 
@@ -263,7 +283,10 @@ export default function OwnerExpenseScreen({
     const allCategories = [...DEFAULT_CATEGORIES, ...customCategories];
     const nameExists = allCategories.some(c => c.label.toLowerCase() === cleanedName.toLowerCase());
     if (nameExists) {
-      Alert.alert("ইনপুট ত্রুটি", "এই ক্যাটাগরি অলরেডি রয়েছে।");
+      Alert.alert("তথ্য", "এই ক্যাটাগরি ইতিমধ্যে রয়েছে এবং নির্বাচন করা হয়েছে।");
+      setFormCategory(cleanedName);
+      setNewCatModalVisible(false);
+      setNewCatName('');
       return;
     }
 
@@ -279,7 +302,7 @@ export default function OwnerExpenseScreen({
       setNewCatName('');
       setNewCatModalVisible(false);
       
-      Alert.alert("সফল", "নতুন ক্যাটাগরি সফলভাবে যুক্ত করা হয়েছে।");
+      Alert.alert("সফল", `"${cleanedName}" ক্যাটাগরি যুক্ত ও নির্বাচন করা হয়েছে। এবার খরচের পরিমাণ লিখুন।`);
       
       if (refreshData) {
         refreshData();
@@ -291,7 +314,8 @@ export default function OwnerExpenseScreen({
   };
 
   const getCategoryIcon = (catName) => {
-    const found = DEFAULT_CATEGORIES.find(c => c.label === catName);
+    const all = [...DEFAULT_CATEGORIES, ...customCategories];
+    const found = all.find(c => c.label === catName);
     return found ? found.icon : '📦';
   };
 
@@ -369,12 +393,12 @@ export default function OwnerExpenseScreen({
               <Text style={[styles.statValue, { color: '#FFB703' }]}>৳{summary.total.toLocaleString()}</Text>
             </View>
             <View style={styles.summaryStatBox}>
-              <Text style={styles.statLabel}>ইউটিলিটি বিল</Text>
-              <Text style={[styles.statValue, { color: '#60A5FA' }]}>৳{summary.utilities.toLocaleString()}</Text>
+              <Text style={styles.statLabel}>দোকান ভাড়া</Text>
+              <Text style={[styles.statValue, { color: '#F472B6' }]}>৳{(summary.rent || 0).toLocaleString()}</Text>
             </View>
             <View style={styles.summaryStatBox}>
-              <Text style={styles.statLabel}>মোট বাজার</Text>
-              <Text style={[styles.statValue, { color: '#34D399' }]}>৳{summary.bazar.toLocaleString()}</Text>
+              <Text style={styles.statLabel}>ইউটিলিটি ও বিল</Text>
+              <Text style={[styles.statValue, { color: '#60A5FA' }]}>৳{summary.utilities.toLocaleString()}</Text>
             </View>
           </View>
 
@@ -502,14 +526,34 @@ export default function OwnerExpenseScreen({
                   })}
                   {/* Add New Category trigger option */}
                   <TouchableOpacity
-                    style={[styles.catGridBtn, { borderColor: '#FFB703', borderStyle: 'dashed' }]}
-                    onPress={() => setNewCatModalVisible(true)}
+                    style={[styles.catGridBtn, { borderColor: '#FFB703', borderStyle: 'dashed' }, newCatModalVisible && styles.catGridBtnActive]}
+                    onPress={() => setNewCatModalVisible(prev => !prev)}
                   >
-                    <Text style={styles.catGridIcon}>➕</Text>
-                    <Text style={[styles.catGridLabel, { color: '#FFB703' }]}>নতুন যোগ</Text>
+                    <Text style={styles.catGridIcon}>{newCatModalVisible ? '✖️' : '➕'}</Text>
+                    <Text style={[styles.catGridLabel, { color: '#FFB703' }]}>{newCatModalVisible ? 'বাতিল' : 'নতুন যোগ'}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
+
+              {/* Inline Custom Category Creator (Avoids nested Modal Android focus freeze) */}
+              {newCatModalVisible && (
+                <View style={styles.inlineCatBox}>
+                  <Text style={styles.inlineCatTitle}>➕ নতুন ক্যাটাগরি তৈরি করুন</Text>
+                  <View style={styles.inlineCatRow}>
+                    <TextInput
+                      style={styles.inlineCatInput}
+                      placeholder="ক্যাটাগরির নাম লিখুন (যেমন: গাড়ি ভাড়া)"
+                      placeholderTextColor="#777"
+                      value={newCatName}
+                      onChangeText={setNewCatName}
+                      autoFocus={true}
+                    />
+                    <TouchableOpacity style={styles.inlineCatAddBtn} onPress={handleSaveCustomCategory}>
+                      <Text style={styles.inlineCatAddBtnText}>যোগ করুন</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
 
               <View style={styles.formGroup}>
                 <Text style={styles.inputLabel}>খরচের পরিমাণ (৳) *</Text>
@@ -563,48 +607,6 @@ export default function OwnerExpenseScreen({
               </TouchableOpacity>
             </View>
           </KeyboardAvoidingView>
-        </View>
-      </Modal>
-
-      {/* Add Custom Category Sub-Modal */}
-      <Modal
-        animationType="fade"
-        transparent={true}
-        visible={newCatModalVisible}
-        onRequestClose={() => setNewCatModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.subModalContent}>
-            <Text style={styles.subModalTitle}>নতুন খরচ ক্যাটাগরি</Text>
-            <View style={styles.formGroup}>
-              <Text style={styles.inputLabel}>নতুন ক্যাটাগরির নাম *</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="যেমন: 🚗 যাতায়াত খরচ"
-                placeholderTextColor="#666"
-                value={newCatName}
-                onChangeText={setNewCatName}
-                autoFocus={true}
-              />
-            </View>
-            <View style={[styles.modalBtnRow, { marginTop: 20 }]}>
-              <TouchableOpacity
-                style={styles.modalCancelBtn}
-                onPress={() => {
-                  setNewCatName('');
-                  setNewCatModalVisible(false);
-                }}
-              >
-                <Text style={styles.modalCancelBtnText}>বাতিল</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalSaveBtn}
-                onPress={handleSaveCustomCategory}
-              >
-                <Text style={styles.modalSaveBtnText}>সংরক্ষণ</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
         </View>
       </Modal>
     </SafeAreaView>
@@ -961,21 +963,48 @@ const styles = StyleSheet.create({
     width: width * 0.9,
     maxHeight: '90%',
   },
-  subModalContent: {
-    backgroundColor: '#0D0D0D',
-    borderRadius: 20,
+  inlineCatBox: {
+    backgroundColor: '#161616',
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#FFB703',
-    padding: 24,
-    width: width * 0.85,
-    maxWidth: 320,
+    padding: 12,
+    marginTop: 4,
+    gap: 8,
   },
-  subModalTitle: {
-    fontSize: 16,
+  inlineCatTitle: {
+    fontSize: 12,
     fontWeight: 'bold',
+    color: '#FFB703',
+  },
+  inlineCatRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  inlineCatInput: {
+    flex: 1,
+    height: 42,
+    backgroundColor: '#0D0D0D',
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 8,
+    paddingHorizontal: 12,
     color: '#FFFFFF',
-    textAlign: 'center',
-    marginBottom: 16,
+    fontSize: 13,
+  },
+  inlineCatAddBtn: {
+    backgroundColor: '#FFB703',
+    height: 42,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  inlineCatAddBtnText: {
+    color: '#000000',
+    fontSize: 13,
+    fontWeight: 'bold',
   },
   modalHeaderCircle: {
     alignSelf: 'center',

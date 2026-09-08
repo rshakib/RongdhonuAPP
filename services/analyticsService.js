@@ -295,3 +295,148 @@ export function buildAnalyticsComparison(mode, currentKey, compareKey, currentLa
     }
   };
 }
+
+/**
+ * Get all dates for a given period (month or week)
+ * Returns: string array of YYYY-MM-DD dates
+ */
+export function getDatesForPeriod(mode, periodKey) {
+  try {
+    if (!periodKey) return [];
+
+    if (mode === 'monthly') {
+      const rows = executeInspectorQuery(
+        "SELECT date FROM daily_submit WHERE strftime('%Y-%m', date) = ? ORDER BY date ASC",
+        [periodKey]
+      );
+      return rows.map(r => r.date).filter(Boolean);
+    } else {
+      // Weekly mode
+      const [yearStr, weekStr] = periodKey.split('-W');
+      const year = parseInt(yearStr, 10);
+      const week = parseInt(weekStr, 10);
+
+      const allSubmits = executeInspectorQuery("SELECT date FROM daily_submit");
+      return allSubmits
+        .filter(r => {
+          if (!r.date) return false;
+          const yw = getYearAndWeek(r.date);
+          return yw.year === year && yw.week === week;
+        })
+        .map(r => r.date)
+        .filter(Boolean)
+        .sort();
+    }
+  } catch (err) {
+    console.error("[AnalyticsService] getDatesForPeriod error:", err);
+    return [];
+  }
+}
+
+/**
+ * Get daily breakdown for a period with weather and top item
+ * Returns: [{date, sales, expense, profit, weatherIcon, temp, topItem}]
+ */
+export function getDailyBreakdown(mode, periodKey) {
+  try {
+    const dates = getDatesForPeriod(mode, periodKey);
+    if (dates.length === 0) return [];
+
+    const placeholders = dates.map(() => '?').join(',');
+
+    // Get submit data
+    const submitRows = executeInspectorQuery(
+      `SELECT date, total_sell, total_expense, net_deposit 
+       FROM daily_submit WHERE date IN (${placeholders}) ORDER BY date ASC`,
+      dates
+    );
+
+    // Get summary data (weather + items)
+    const summaryRows = executeInspectorQuery(
+      `SELECT date, temperature, condition, isRainy, itemSummary
+       FROM daily_summary WHERE date IN (${placeholders})`,
+      dates
+    );
+
+    // Build summary map
+    const summaryMap = {};
+    summaryRows.forEach(s => {
+      summaryMap[s.date] = s;
+    });
+
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const dayNamesBn = ['রবি', 'সোম', 'মঙ্গল', 'বুধ', 'বৃহ', 'শুক্র', 'শনি'];
+
+    return submitRows.map(row => {
+      const summary = summaryMap[row.date] || {};
+      const d = new Date(row.date + 'T00:00:00');
+      const dayIndex = d.getDay();
+
+      // Weather icon
+      let weatherIcon = '☀️';
+      if (summary.isRainy === 1 || (summary.condition && summary.condition.toLowerCase().includes('rain'))) {
+        weatherIcon = '🌧️';
+      } else if (summary.condition && summary.condition.toLowerCase().includes('cloud')) {
+        weatherIcon = '☁️';
+      }
+
+      // Parse top item from itemSummary JSON
+      let topItem = '-';
+      try {
+        if (summary.itemSummary) {
+          const items = JSON.parse(summary.itemSummary);
+          if (items && items.length > 0) {
+            topItem = items[0].name || '-';
+          }
+        }
+      } catch (e) {}
+
+      return {
+        date: row.date,
+        dayName: dayNamesBn[dayIndex],
+        sales: row.total_sell || 0,
+        expense: row.total_expense || 0,
+        profit: row.net_deposit || 0,
+        weatherIcon,
+        temp: summary.temperature ? `${Math.round(summary.temperature)}°` : '-',
+        topItem,
+      };
+    });
+  } catch (err) {
+    console.error("[AnalyticsService] getDailyBreakdown error:", err);
+    return [];
+  }
+}
+
+/**
+ * Get expense category totals for a period
+ * Returns: {dudu_store, akash_murgi, burger_bun, bazar, others, total}
+ */
+export function getExpenseCategories(mode, periodKey) {
+  try {
+    const dates = getDatesForPeriod(mode, periodKey);
+    if (dates.length === 0) {
+      return { dudu_store: 0, akash_murgi: 0, burger_bun: 0, bazar: 0, others: 0, total: 0 };
+    }
+
+    const placeholders = dates.map(() => '?').join(',');
+    const rows = executeInspectorQuery(
+      `SELECT 
+        COALESCE(SUM(dudu_store), 0) as dudu_store,
+        COALESCE(SUM(akash_murgi), 0) as akash_murgi,
+        COALESCE(SUM(burger_bun), 0) as burger_bun,
+        COALESCE(SUM(bazar), 0) as bazar,
+        COALESCE(SUM(others), 0) as others
+      FROM daily_submit WHERE date IN (${placeholders})`,
+      dates
+    );
+
+    const data = rows[0] || { dudu_store: 0, akash_murgi: 0, burger_bun: 0, bazar: 0, others: 0 };
+    const total = (data.dudu_store || 0) + (data.akash_murgi || 0) + (data.burger_bun || 0) + (data.bazar || 0) + (data.others || 0);
+
+    return { ...data, total };
+  } catch (err) {
+    console.error("[AnalyticsService] getExpenseCategories error:", err);
+    return { dudu_store: 0, akash_murgi: 0, burger_bun: 0, bazar: 0, others: 0, total: 0 };
+  }
+}

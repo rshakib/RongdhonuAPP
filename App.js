@@ -534,7 +534,9 @@ export default function App() {
       }
     }, registryIntervalMs);
 
-    // Step 7: 5-Minute Batched last_seen Flush Timer (Foreground Only)
+    // Step 7: last_seen Flush Timer (Foreground Only)
+    // Admin: 60s, Manager/Owner: 90s
+    const lastSeenIntervalMs = isRoleAdmin ? 60000 : 90000;
     const lastSeenTimer = setInterval(() => {
       if (AppState.currentState === 'active') {
         try {
@@ -542,7 +544,7 @@ export default function App() {
           checkAndFlushLastSeen();
         } catch (e) {}
       }
-    }, 300000); // 5 minutes (300s)
+    }, lastSeenIntervalMs);
 
     return () => {
       clearInterval(registryTimer);
@@ -970,6 +972,58 @@ export default function App() {
     setCurrentScreen('DASHBOARD');
   };
 
+  // Android Back Button Handler
+  useEffect(() => {
+    const backAction = () => {
+      // If not logged in, show exit confirmation
+      if (!isLoggedIn) {
+        Alert.alert(
+          'অ্যাপ বন্ধ করুন',
+          'আপনি কি অ্যাপ থেকে বের হতে চান?',
+          [
+            { text: 'না', style: 'cancel' },
+            { text: 'হ্যাঁ', onPress: () => BackHandler.exitApp() }
+          ]
+        );
+        return true;
+      }
+
+      // If on a sub-screen, go back to dashboard
+      const subScreens = [
+        'TABLE_DETAIL', 'PAYMENT_SUCCESS', 'PAYMENT_CHECKOUT',
+        'DAILY_SUBMIT', 'ADD_ITEM', 'EXPENSES', 'EDIT_MENU',
+        'SUPPLIER_DUE', 'ITEM_SALES_REPORT', 'SYNC_DIAGNOSTICS',
+        'DELETE_HISTORY', 'SYSTEM_TOOLS', 'DEVICE_MANAGEMENT',
+        'ADMIN_ANALYTICS', 'OWNER_FINANCE_DASHBOARD', 'EMPLOYEE_LIST',
+        'OWNER_EXPENSES', 'DATABASE_STATS', 'DATABASE_EXPLORER'
+      ];
+
+      if (subScreens.includes(currentScreen)) {
+        setCurrentScreen('DASHBOARD');
+        return true;
+      }
+
+      // If on DASHBOARD, show exit confirmation
+      if (currentScreen === 'DASHBOARD') {
+        Alert.alert(
+          'অ্যাপ বন্ধ করুন',
+          'আপনি কি অ্যাপ থেকে বের হতে চান?',
+          [
+            { text: 'না', style: 'cancel' },
+            { text: 'হ্যাঁ', onPress: () => BackHandler.exitApp() }
+          ]
+        );
+        return true;
+      }
+
+      return false;
+    };
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+
+    return () => backHandler.remove();
+  }, [isLoggedIn, currentScreen]);
+
   // Navigates to a table detail billing screen
   const handleTableSelect = (tableId) => {
     setSelectedTableId(tableId);
@@ -1305,7 +1359,7 @@ export default function App() {
   const handleResetIjara = () => {
     Alert.alert(
       "ইজা রিসেট নিশ্চিতকরণ",
-      "আপনি কি নিশ্চিতভাবে আজকের ইজারার হিসাব ডিলিট করতে চান? ইজা রিসেট করলে বাকিরা পুনরায় নতুন করে ইজা এন্ট্রি করতে পারবে।",
+      "আপনি কি নিশ্চিতভাবে আজকের ইজারার হিসাব ডিলিট করতে চান? ইজা রিসেট করলে বাকিরা পুনরায় নতুন করে ইজা এন্ট্রি করতে পারবে।",
       [
         { text: "বাতিল করুন", style: "cancel" },
         {
@@ -1316,9 +1370,43 @@ export default function App() {
             const success = resetIjaraExpense();
             if (success) {
               refreshData();
-              Alert.alert("সফল", "আজকের ইজারার হিসাব সফলভাবে ডিলিট করা হয়েছে!");
+              Alert.alert("সফল", "আজকের ইজারার হিসাব সফলভাবে ডিলিট করা হয়েছে!");
             } else {
-              Alert.alert("ব্যর্থ", "ইজা ডিলিট করতে সমস্যা হয়েছে।");
+              Alert.alert("ব্যর্থ", "ইজা ডিলিট করতে সমস্যা হয়েছে।");
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Rollback the last auto ijara application (Admin/Owner privilege)
+  const handleRollbackAutoIjara = () => {
+    const { getLastAutoIjaraDetails, rollbackAutoIjara } = require('./database');
+
+    // Get last ijara details for confirmation
+    const lastDetails = getLastAutoIjaraDetails();
+
+    if (!lastDetails) {
+      Alert.alert("তথ্য নেই", "কোনো অটো ইজা পাওয়া যায়নি।");
+      return;
+    }
+
+    Alert.alert(
+      "🔄 অটো ইজা রোলব্যাক",
+      `সর্বশেষ অটো ইজা:\n${lastDetails.message}\n\nএই অপারেশনটি:\n• ইজা খরচ রেকর্ড মুছে ফেলবে\n• ইজা হিস্ট্রি মুছে ফেলবে\n• পেন্ডিং ইজা ক্লিয়ার করবে\n\nরোলব্যাক করতে চান?`,
+      [
+        { text: "বাতিল", style: "cancel" },
+        {
+          text: "রোলব্যাক করুন",
+          style: "destructive",
+          onPress: () => {
+            const result = rollbackAutoIjara(lastDetails.date);
+            if (result.success) {
+              refreshData();
+              Alert.alert("সফল", result.message);
+            } else {
+              Alert.alert("ব্যর্থ", result.message);
             }
           }
         }
@@ -1510,6 +1598,7 @@ export default function App() {
                 onDeleteDoneOrder={handleDeleteDoneOrder}
                 onResetDailySubmit={handleResetDailySubmit}
                 onResetIjara={handleResetIjara}
+                onRollbackAutoIjara={handleRollbackAutoIjara}
               />
             );
           } else if (roleNormalized === 'owner') {
@@ -1575,6 +1664,7 @@ export default function App() {
                 isDailySubmitted={isDailySubmitted}
                 onDeleteActiveOrder={handleDeleteActiveOrder}
                 onDeleteDoneOrder={handleDeleteDoneOrder}
+                userRole={userRole}
               />
             );
           }
@@ -1641,6 +1731,7 @@ export default function App() {
               isDailySubmitted={isDailySubmitted}
               onDeleteActiveOrder={handleDeleteActiveOrder}
               onDeleteDoneOrder={handleDeleteDoneOrder}
+              userRole={userRole}
             />
           );
         }

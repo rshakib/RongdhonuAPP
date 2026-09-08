@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import NetInfo from '@react-native-community/netinfo';
+import * as LocalAuthentication from 'expo-local-authentication';
 import { verifyUserLogin, checkUserExists, getAppConfig, setAppConfig, getPendingSyncCount } from '../database';
 
 const BUTTON_SIZE = 72; // Circular buttons sized perfectly to fit all displays
@@ -164,6 +165,40 @@ export default function LoginScreen({ onLoginSuccess }) {
 
     const user = verifyUserLogin(cleanUsername, cleanPin);
     if (user) {
+      // Biometric authentication required for owner and admin roles
+      if (user.role === 'owner' || user.role === 'admin') {
+        try {
+          const hasHardware = await LocalAuthentication.hasHardwareAsync();
+          const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+          
+          if (hasHardware && isEnrolled) {
+            const biometricResult = await LocalAuthentication.authenticateAsync({
+              promptMessage: 'বায়োমেট্রিক ভেরিফিকেশন প্রয়োজন',
+              cancelLabel: 'বাতিল',
+              disableDeviceFallback: false,
+            });
+            
+            if (!biometricResult.success) {
+              Alert.alert(
+                "বায়োমেট্রিক ব্যর্থ",
+                "Owner/Admin হিসেবে লগইন করতে বায়োমেট্রিক ভেরিফিকেশন আবশ্যক।",
+                [{ text: "ঠিক আছে", onPress: () => setPin('') }]
+              );
+              return;
+            }
+          } else {
+            Alert.alert(
+              "বায়োমেট্রিক পাওয়া যায়নি",
+              "এই ডিভাইসে বায়োমেট্রিক (ফিঙ্গারপ্রিন্ট/Face ID) সেটআপ করা নেই।\n\nOwner/Admin হিসেবে লগইন করতে বায়োমেট্রিক সেটআপ করুন।",
+              [{ text: "ঠিক আছে", onPress: () => setPin('') }]
+            );
+            return;
+          }
+        } catch (e) {
+          console.error("[LoginScreen] Biometric auth error:", e);
+        }
+      }
+
       if (syncMode === 'hybrid') {
         try {
           const { checkDeviceOfflinePermission } = require('../services/deviceRegistry');

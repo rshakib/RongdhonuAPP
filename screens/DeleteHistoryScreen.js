@@ -17,7 +17,7 @@ import { getDeleteHistory, formatDisplayDate, getBusinessDateFromISO, getBusines
 
 const { width } = Dimensions.get('window');
 
-const recordTypes = ['All', 'Orders', 'Expenses', 'Deposits', 'Due Records', 'Menu Items', 'Others'];
+const recordTypes = ['সব', 'অর্ডার', 'খরচ', 'জমা', 'ডেলিভারি', 'মেনু', 'অন্যান্য'];
 
 const recordTypeIcons = {
   Orders: "🛒",
@@ -36,6 +36,37 @@ const recordTypeIcons = {
   Weather: "🌤️",
   OffDays: "📅",
   Eja: "🏠",
+};
+
+// Map Bengali filter to English record types
+const filterToRecordType = {
+  'সব': null,
+  'অর্ডার': 'Orders',
+  'খরচ': 'Expenses',
+  'জমা': ['Deposits', 'Daily Submit'],
+  'ডেলিভারি': 'Deliveries',
+  'মেনু': 'Menu Items',
+  'অন্যান্য': ['Users', 'Payments', 'Tables', 'Categories', 'Weather', 'OffDays', 'Eja', 'Supplier', 'Supplier Payment', 'Supplier Due'],
+};
+
+// Bengali labels for record types
+const recordTypeBengali = {
+  Orders: "অর্ডার",
+  Expenses: "খরচ",
+  Deposits: "জমা",
+  "Daily Submit": "দৈনিক জমা",
+  Supplier: "সাপ্লায়ার",
+  "Supplier Payment": "সাপ্লায়ার পেমেন্ট",
+  "Supplier Due": "সাপ্লায়ার বাকি",
+  "Menu Items": "মেনু আইটেম",
+  Users: "ব্যবহারকারী",
+  Deliveries: "ডেলিভারি",
+  Payments: "পেমেন্ট",
+  Tables: "টেবিল",
+  Categories: "ক্যাটাগরি",
+  Weather: "আবহাওয়া",
+  OffDays: "ছুটির দিন",
+  Eja: "ইজা",
 };
 
 // --- CUSTOM CALENDAR PICKER COMPONENT ---
@@ -95,7 +126,7 @@ const CalendarPicker = ({ visible, onClose, onSelectDate }) => {
             ))}
           </View>
           <TouchableOpacity style={styles.calCloseBtn} onPress={onClose}>
-            <Text style={styles.calCloseBtnText}>Close</Text>
+            <Text style={styles.calCloseBtnText}>বন্ধ করুন</Text>
           </TouchableOpacity>
         </View>
       </TouchableOpacity>
@@ -154,8 +185,16 @@ export default function DeleteHistoryScreen({ onBack }) {
       return false;
     }
 
-    // Type Filter
-    const matchesType = filterType === 'All' || item.record_type === filterType;
+    // Type Filter (Bengali to English mapping)
+    const mappedType = filterToRecordType[filterType];
+    let matchesType = false;
+    if (filterType === 'সব') {
+      matchesType = true;
+    } else if (Array.isArray(mappedType)) {
+      matchesType = mappedType.includes(item.record_type);
+    } else {
+      matchesType = item.record_type === mappedType;
+    }
     
     // Date Filter
     let matchesDate = true;
@@ -192,11 +231,12 @@ export default function DeleteHistoryScreen({ onBack }) {
     }
 
     const icon = recordTypeIcons[selectedItem.record_type] || "🗑️";
+    const typeLabel = recordTypeBengali[selectedItem.record_type] || selectedItem.record_type;
 
     return (
       <View style={styles.detailCard}>
-        <Text style={styles.detailTitle}>{icon} {selectedItem.record_type.toUpperCase()} DELETED</Text>
-        <Text style={styles.detailSubtitle}>ID: {selectedItem.record_id}</Text>
+        <Text style={styles.detailTitle}>{icon} মুছে ফেলা হয়েছে</Text>
+        <Text style={styles.detailSubtitle}>{typeLabel}</Text>
 
         <View style={styles.detailDivider} />
 
@@ -204,31 +244,23 @@ export default function DeleteHistoryScreen({ onBack }) {
           {isOrder ? (
             <View style={{ width: '100%' }}>
               <View style={styles.detailRow}>
-                <Text style={styles.detailKey}>ORDER ID:</Text>
-                <Text style={styles.detailValue}>{snapshot.id || selectedItem.record_id}</Text>
-              </View>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailKey}>TABLE:</Text>
+                <Text style={styles.detailKey}>টেবিল:</Text>
                 <Text style={styles.detailValue}>{snapshot.table_id || 'N/A'}</Text>
               </View>
               <View style={styles.detailRow}>
-                <Text style={styles.detailKey}>AMOUNT:</Text>
+                <Text style={styles.detailKey}>মোট টাকা:</Text>
                 <Text style={[styles.detailValue, { color: '#34D399', fontWeight: 'bold' }]}>৳{snapshot.grand_total || 0}</Text>
               </View>
               <View style={styles.detailRow}>
-                <Text style={styles.detailKey}>PAYMENT METHOD:</Text>
+                <Text style={styles.detailKey}>পেমেন্ট মাধ্যম:</Text>
                 <Text style={styles.detailValue}>{snapshot.payment_method || 'N/A'}</Text>
               </View>
               <View style={styles.detailRow}>
-                <Text style={styles.detailKey}>PAYMENT STATUS:</Text>
-                <Text style={styles.detailValue}>{snapshot.payment_status || 'N/A'}</Text>
-              </View>
-              <View style={styles.detailRow}>
-                <Text style={styles.detailKey}>TIME:</Text>
+                <Text style={styles.detailKey}>সময়:</Text>
                 <Text style={styles.detailValue}>{snapshot.time || 'N/A'}</Text>
               </View>
 
-              <Text style={[styles.detailKey, { marginTop: 16, marginBottom: 8, color: '#FFB703' }]}>ORDER ITEMS:</Text>
+              <Text style={[styles.detailKey, { marginTop: 16, marginBottom: 8, color: '#FFB703' }]}>অর্ডার আইটেম:</Text>
               <View style={{ backgroundColor: '#1A1A1A', borderRadius: 8, padding: 10, borderWidth: 1, borderColor: '#333' }}>
                 {parsedItems.map((item, idx) => {
                   const name = item.name || item.itemName || 'Unknown Item';
@@ -242,7 +274,7 @@ export default function DeleteHistoryScreen({ onBack }) {
                   );
                 })}
                 {parsedItems.length === 0 && (
-                  <Text style={{ color: '#666', fontStyle: 'italic', fontSize: 11 }}>No items recorded.</Text>
+                  <Text style={{ color: '#666', fontStyle: 'italic', fontSize: 11 }}>কোনো আইটেম নেই।</Text>
                 )}
               </View>
             </View>
@@ -262,16 +294,15 @@ export default function DeleteHistoryScreen({ onBack }) {
         <View style={styles.detailDivider} />
 
         <View style={styles.detailFooter}>
-          <Text style={styles.footerText}>Created By: {selectedItem.created_by}</Text>
-          <Text style={styles.footerText}>Deleted By: {selectedItem.deleted_by}</Text>
-          <Text style={styles.footerText}>Deleted At: {formatDisplayDate(selectedItem.deleted_at)}</Text>
+          <Text style={styles.footerText}>মুছেছেন: {selectedItem.deleted_by}</Text>
+          <Text style={styles.footerText}>সময়: {formatDisplayDate(selectedItem.deleted_at)}</Text>
         </View>
 
         <TouchableOpacity 
           style={styles.detailCloseBtn} 
           onPress={() => setDetailVisible(false)}
         >
-          <Text style={styles.detailCloseBtnText}>CLOSE</Text>
+          <Text style={styles.detailCloseBtnText}>বন্ধ করুন</Text>
         </TouchableOpacity>
       </View>
     );
@@ -281,11 +312,11 @@ export default function DeleteHistoryScreen({ onBack }) {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={onBack} style={styles.backBtn}>
-          <Text style={styles.backBtnText}>❮ Back</Text>
+          <Text style={styles.backBtnText}>◁ ফিরে যান</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>🗑 Delete History</Text>
+        <Text style={styles.headerTitle}>🗑️ মুছে ফেলার ইতিহাস</Text>
         <TouchableOpacity onPress={loadHistory} style={styles.refreshBtn}>
-          <Text style={styles.refreshBtnText}>Refresh</Text>
+          <Text style={styles.refreshBtnText}>🔄</Text>
         </TouchableOpacity>
       </View>
 
@@ -311,7 +342,7 @@ export default function DeleteHistoryScreen({ onBack }) {
           onPress={() => setCalendarVisible(true)}
         >
           <Text style={styles.datePickerBtnText}>
-            📅 {filterDate ? formatDisplayDate(filterDate) : 'Select Date'}
+            📅 {filterDate ? formatDisplayDate(filterDate) : 'তারিখ নির্বাচন'}
           </Text>
         </TouchableOpacity>
         {filterDate ? (
@@ -319,7 +350,7 @@ export default function DeleteHistoryScreen({ onBack }) {
             style={styles.clearDateBtn}
             onPress={() => setFilterDate('')}
           >
-            <Text style={styles.clearDateText}>✕ Clear</Text>
+            <Text style={styles.clearDateText}>✕ মুছুন</Text>
           </TouchableOpacity>
         ) : null}
       </View>
@@ -331,24 +362,71 @@ export default function DeleteHistoryScreen({ onBack }) {
       ) : (
         <ScrollView style={styles.list}>
           {filteredHistory.length === 0 ? (
-            <Text style={styles.emptyText}>No delete records found.</Text>
+            <Text style={styles.emptyText}>কোনো মুছে ফেলার রেকর্ড পাওয়া যায়নি।</Text>
           ) : (
-            filteredHistory.map((item, idx) => (
-              <TouchableOpacity 
-                key={item.id} 
-                style={styles.historyCard}
-                onPress={() => handleShowDetail(item)}
-              >
-                <View style={styles.cardLeft}>
-                  <Text style={styles.cardType}>{recordTypeIcons[item.record_type] || "🗑️"} {item.record_type}</Text>
-                  <Text style={styles.cardId}>ID: {item.record_id}</Text>
-                </View>
-                <View style={styles.cardRight}>
-                  <Text style={styles.cardUser}>By: {item.deleted_by}</Text>
-                  <Text style={styles.cardTime}>{formatDisplayDate(item.deleted_at)}</Text>
-                </View>
-              </TouchableOpacity>
-            ))
+            filteredHistory.map((item, idx) => {
+              // Parse snapshot to show meaningful info
+              let snapshot = {};
+              try { snapshot = JSON.parse(item.snapshot_data); } catch (e) {}
+              
+              // Build description based on type
+              let description = '';
+              let amount = null;
+              
+              if (item.record_type === 'Orders') {
+                amount = snapshot.grand_total;
+                description = `টেবিল ${snapshot.table_id || '-'}`;
+                if (snapshot.items) {
+                  try {
+                    const items = JSON.parse(snapshot.items);
+                    if (items.length > 0) {
+                      const firstItem = items[0].name || items[0].itemName || '';
+                      description += ` • ${firstItem}${items.length > 1 ? ` +${items.length - 1}` : ''}`;
+                    }
+                  } catch (e) {}
+                }
+              } else if (item.record_type === 'Expenses') {
+                amount = snapshot.amount;
+                description = snapshot.category || 'খরচ';
+                if (snapshot.note) description += ` • ${snapshot.note}`;
+              } else if (item.record_type === 'Deposits' || item.record_type === 'Daily Submit') {
+                amount = snapshot.amount || snapshot.total_sell;
+                description = `${snapshot.month || snapshot.date || ''}`;
+              } else if (item.record_type === 'Deliveries') {
+                amount = snapshot.amount;
+                description = snapshot.customer_name || 'ডেলিভারি';
+              } else if (item.record_type === 'Menu Items') {
+                description = snapshot.name || 'মেনু আইটেম';
+                if (snapshot.price) amount = snapshot.price;
+              } else if (item.record_type === 'Payments') {
+                amount = snapshot.total_amount;
+                description = `অর্ডার ${snapshot.order_id || '-'}`;
+              } else {
+                description = item.record_id;
+              }
+
+              return (
+                <TouchableOpacity 
+                  key={item.id} 
+                  style={styles.historyCard}
+                  onPress={() => handleShowDetail(item)}
+                >
+                  <View style={styles.cardIconContainer}>
+                    <Text style={styles.cardIcon}>{recordTypeIcons[item.record_type] || "🗑️"}</Text>
+                  </View>
+                  <View style={styles.cardContent}>
+                    <View style={styles.cardTopRow}>
+                      <Text style={styles.cardType}>{recordTypeBengali[item.record_type] || item.record_type}</Text>
+                      {amount != null && (
+                        <Text style={styles.cardAmount}>৳{Number(amount).toLocaleString()}</Text>
+                      )}
+                    </View>
+                    <Text style={styles.cardDescription} numberOfLines={1}>{description}</Text>
+                    <Text style={styles.cardTime}>{formatDisplayDate(item.deleted_at)} • {item.deleted_by}</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })
           )}
         </ScrollView>
       )}
@@ -371,7 +449,7 @@ export default function DeleteHistoryScreen({ onBack }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: '#0D0D0D',
   },
   header: {
     flexDirection: 'row',
@@ -380,13 +458,18 @@ const styles = StyleSheet.create({
     padding: 16,
     borderBottomWidth: 1,
     borderColor: '#1A1A1A',
+    backgroundColor: '#0D0D0D',
   },
   backBtn: {
-    padding: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#1E1E1E',
   },
   backBtnText: {
-    color: '#FFB703',
-    fontWeight: 'bold',
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
   },
   headerTitle: {
     color: '#FFF',
@@ -471,38 +554,53 @@ const styles = StyleSheet.create({
   },
   historyCard: {
     flexDirection: 'row',
-    backgroundColor: '#0D0D0D',
+    backgroundColor: '#161616',
     borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    padding: 14,
+    marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#1A1A1A',
+    borderColor: '#262626',
+    alignItems: 'center',
   },
-  cardLeft: {
+  cardIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#1E1E1E',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  cardIcon: {
+    fontSize: 20,
+  },
+  cardContent: {
     flex: 1,
+  },
+  cardTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
   },
   cardType: {
     color: '#FFB703',
     fontWeight: 'bold',
     fontSize: 14,
-    marginBottom: 4,
   },
-  cardId: {
-    color: '#666',
-    fontSize: 11,
-  },
-  cardRight: {
-    alignItems: 'flex-end',
-  },
-  cardUser: {
-    color: '#FFF',
-    fontSize: 12,
+  cardAmount: {
+    color: '#EF4444',
     fontWeight: 'bold',
+    fontSize: 14,
+  },
+  cardDescription: {
+    color: '#FFFFFF',
+    fontSize: 13,
     marginBottom: 4,
   },
   cardTime: {
-    color: '#666',
-    fontSize: 10,
+    color: '#A1A1AA',
+    fontSize: 11,
   },
   emptyText: {
     color: '#666',

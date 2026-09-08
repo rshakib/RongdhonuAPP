@@ -112,7 +112,7 @@ const formatStartTime = (timeStr) => {
   return timeStr;
 };
 
-export default function ManagerDashboard({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onNavigateToSubmit, onUpdateTableName, onNavigateToExpenses, onNavigateToSupplierDue, onNavigateToItemSalesReport, onCloudRestore, onMenuRecovery, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, delCountdown, tabCountdown, fullCountdown }) {
+export default function ManagerDashboard({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onNavigateToSubmit, onUpdateTableName, onNavigateToExpenses, onNavigateToSupplierDue, onNavigateToItemSalesReport, onCloudRestore, onMenuRecovery, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, onResetIjara, onRollbackAutoIjara, delCountdown, tabCountdown, fullCountdown, userRole = 'manager' }) {
   const [renameModalVisible, setRenameModalVisible] = useState(false);
   const [selectedTableForRename, setSelectedTableForRename] = useState(null);
   const [newTableName, setNewTableName] = useState('');
@@ -423,16 +423,6 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
             <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: 'bold', marginBottom: 2 }}>Cashbox: ৳ {(totalCash - (bkashSale + nagadSale + rocketSale)).toLocaleString()}</Text>
             <Text style={styles.statsCardSubBlue}>বিক্রয় + ইজা - খরচ</Text>
           </View>
-
-          {/* Card 3: Monthly Total */}
-          <View style={[styles.statsCard, styles.cardOrange]}>
-            <View style={styles.statsCardHeader}>
-              <Text style={styles.statsCardTitle}>এই মাসের মোট বিক্রয়</Text>
-              <Text style={styles.statsEmoji}>💰</Text>
-            </View>
-            <Text style={styles.statsCardAmount}>৳ {monthlyTotalSell.toLocaleString()}</Text>
-            <Text style={styles.statsCardSubOrange}>{getBengaliMonthRange()}</Text>
-            </View>
           {/* Card 4: Active Tables */}
           <View style={[styles.statsCard, styles.cardRed]}>
             <View style={styles.statsCardHeader}>
@@ -553,9 +543,11 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
                       <Text style={[styles.orderItemStatus, styles.textGreen]}>পেমেন্ট শেষ</Text>
                     </View>
                     <View style={styles.actionRow}>
-                      <TouchableOpacity style={styles.deleteBtn} onPress={(e) => { e.stopPropagation(); onDeleteDoneOrder(order.id); }}>
-                        <Text style={styles.btnIcon}>🗑️</Text>
-                      </TouchableOpacity>
+                      {(userRole === 'owner' || userRole === 'admin') && (
+                        <TouchableOpacity style={styles.deleteBtn} onPress={(e) => { e.stopPropagation(); onDeleteDoneOrder(order.id); }}>
+                          <Text style={styles.btnIcon}>🗑️</Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -689,8 +681,13 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
             )}
 
             <TouchableOpacity style={styles.menuOption} onPress={handleOpenPastAccount}><Text style={styles.menuOptionText}>📅 অতীতের হিসাব</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onNavigateToSupplierDue(); }}><Text style={styles.menuOptionText}>📒 সাপ্লায়ার পেমেন্ট</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onNavigateToItemSalesReport(); }}><Text style={styles.menuOptionText}>📊 আইটেম বিক্রয় রিপোর্ট</Text></TouchableOpacity>
+
+            {/* Auto Ijara Rollback Option */}
+            {(userRole === 'owner' || userRole === 'admin') && onRollbackAutoIjara && (
+              <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onRollbackAutoIjara(); }}>
+                <Text style={[styles.menuOptionText, { color: '#F59E0B' }]}>🔄 অটো ইজা রোলব্যাক</Text>
+              </TouchableOpacity>
+            )}
 
             <View style={styles.menuSectionHeader}><Text style={styles.menuSectionText}>SYSTEM TOOLS</Text></View>
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onCloudRestore(); }}><Text style={[styles.menuOptionText, { color: '#34D399' }]}>☁️ Cloud Restore</Text></TouchableOpacity>
@@ -812,17 +809,20 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#FFB703',
+    letterSpacing: 0.5,
   },
   managerBadge: {
     backgroundColor: 'rgba(255, 183, 3, 0.15)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
     marginLeft: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 183, 3, 0.3)',
   },
   managerBadgeText: {
     color: '#FFB703',
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: 'bold',
   },
   titleBadgeRow: {
@@ -831,7 +831,7 @@ const styles = StyleSheet.create({
   },
   headerDate: {
     fontSize: 12,
-    color: '#888888',
+    color: '#A1A1AA',
     marginTop: 2,
   },
   notificationButton: {
@@ -876,24 +876,29 @@ const styles = StyleSheet.create({
     width: 170,
     borderRadius: 16,
     padding: 16,
-    marginHorizontal: 4,
+    marginHorizontal: 6,
     borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
   },
   cardGreen: {
-    backgroundColor: 'rgba(16, 37, 24, 0.6)',
-    borderColor: 'rgba(52, 211, 153, 0.3)',
+    backgroundColor: 'rgba(16, 37, 24, 0.8)',
+    borderColor: 'rgba(52, 211, 153, 0.4)',
   },
   cardOrange: {
-    backgroundColor: 'rgba(36, 22, 14, 0.6)',
-    borderColor: 'rgba(251, 146, 60, 0.3)',
+    backgroundColor: 'rgba(36, 22, 14, 0.8)',
+    borderColor: 'rgba(251, 146, 60, 0.4)',
   },
   cardRed: {
-    backgroundColor: 'rgba(69, 10, 10, 0.4)',
-    borderColor: 'rgba(239, 68, 68, 0.2)',
+    backgroundColor: 'rgba(69, 10, 10, 0.6)',
+    borderColor: 'rgba(239, 68, 68, 0.3)',
   },
   cardBlue: {
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
-    borderColor: 'rgba(96, 165, 250, 0.3)',
+    backgroundColor: 'rgba(15, 23, 42, 0.8)',
+    borderColor: 'rgba(96, 165, 250, 0.4)',
   },
   statsCardHeader: {
     flexDirection: 'row',
@@ -932,22 +937,23 @@ const styles = StyleSheet.create({
   },
   sectionContainer: {
     paddingHorizontal: 16,
-    marginBottom: 20,
+    marginBottom: 24,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 14,
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: 'bold',
     color: '#FFFFFF',
+    letterSpacing: 0.3,
   },
   sectionSubtitle: {
     fontSize: 11,
-    color: '#888888',
+    color: '#A1A1AA',
     fontWeight: 'normal',
   },
   infoIcon: {
@@ -955,9 +961,25 @@ const styles = StyleSheet.create({
     color: '#888888',
   },
   tableGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', width: '100%', paddingBottom: 10 },
-  tableCard: { width: '23.5%', aspectRatio: 0.75, borderRadius: 12, padding: 6, alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, borderWidth: 1, backgroundColor: '#0D0D0D' },
+  tableCard: {
+    width: '23.5%',
+    aspectRatio: 0.75,
+    borderRadius: 14,
+    padding: 8,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+    borderWidth: 1.5,
+    backgroundColor: '#161616',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
   tableBusyBorder: {
-    borderColor: 'rgba(251, 146, 60, 0.4)',
+    borderColor: 'rgba(251, 146, 60, 0.5)',
+    backgroundColor: 'rgba(36, 22, 14, 0.6)',
   },
   tableFreeBorder: {
     borderColor: 'rgba(52, 211, 153, 0.4)',
@@ -1005,9 +1027,9 @@ const styles = StyleSheet.create({
   deliveryCard: {
     backgroundColor: '#0D0D0D',
     borderWidth: 1,
-    borderColor: '#1A1A1A',
+    borderColor: '#262626',
     borderRadius: 14,
-    padding: 14,
+    padding: 16,
   },
   deliveryTitle: {
     fontSize: 14,
@@ -1016,7 +1038,7 @@ const styles = StyleSheet.create({
   },
   deliveryTime: {
     fontSize: 11,
-    color: '#888888',
+    color: '#A1A1AA',
     marginTop: 4,
   },
   deliveryAmount: {
@@ -1068,19 +1090,20 @@ const styles = StyleSheet.create({
     color: '#000000',
   },
   orderList: {
-    backgroundColor: '#0D0D0D',
+    backgroundColor: '#161616',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#1A1A1A',
-    paddingHorizontal: 8,
+    borderColor: '#262626',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
   orderItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderColor: '#161616',
+    borderColor: '#1E1E1E',
   },
   orderItemLeft: {
     flexDirection: 'row',

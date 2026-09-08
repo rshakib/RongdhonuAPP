@@ -10,20 +10,26 @@ import { getDb, enqueueSync, setAppConfig, syncRecordImmediately } from '../data
 let lastFlushedLastSeen = null;
 
 /**
- * Step 7: Flush last_seen update to sync_queue if changed (5-minute batch).
+ * Step 7: Update last_seen to NOW and flush to sync_queue (5-minute batch).
+ * This ensures admin can see the device is still active.
  */
 export function checkAndFlushLastSeen() {
   try {
+    const db = getDb();
     const record = getCurrentDeviceRecord();
     if (!record) return false;
 
-    const currentLastSeen = record.last_seen || record.updated_at;
-    if (currentLastSeen && currentLastSeen !== lastFlushedLastSeen) {
-      lastFlushedLastSeen = currentLastSeen;
-      enqueueSync("device_registry", record.id, "UPDATE");
-      console.log(`[DeviceRegistry] Batched last_seen flushed for device '${record.device_id}': ${currentLastSeen}`);
-      return true;
-    }
+    // Update last_seen to current time
+    const now = new Date().toISOString();
+    db.runSync(
+      "UPDATE device_registry SET last_seen = ?, updated_at = ? WHERE id = ?",
+      [now, now, record.id]
+    );
+
+    // Enqueue for sync to Firebase
+    enqueueSync("device_registry", record.id, "UPDATE");
+    console.log(`[DeviceRegistry] Updated last_seen to ${now} for device '${record.device_id}'`);
+    return true;
   } catch (err) {
     console.error("[DeviceRegistry] Error in checkAndFlushLastSeen:", err);
   }
@@ -36,6 +42,7 @@ export function checkAndFlushLastSeen() {
  * @returns {Promise<string>} Unique persistent device ID
  */
 async function getPersistentDeviceId(db) {
+  // Priority 1: Try hardware-based Android ID (persists across reinstalls)
   try {
     let androidId = null;
     if (typeof Application.getAndroidIdAsync === 'function') {
@@ -44,16 +51,57 @@ async function getPersistentDeviceId(db) {
       androidId = Application.androidId;
     }
     if (androidId && typeof androidId === 'string' && androidId.trim().length > 0) {
-      return `android_${androidId.trim()}`;
+      const hardwareId = `android_${androidId.trim()}`;
+      // Save to app_config for faster lookups
+      try {
+        const now = new Date().toISOString();
+        db.runSync(
+          "INSERT OR REPLACE INTO app_config (key, value, updated_at) VALUES ('persistent_device_id', ?, ?)",
+          [hardwareId, now]
+        );
+      } catch (e) {}
+      return hardwareId;
     }
-  } catch (e) {}
+  } catch (e) {
+    console.log("[DeviceRegistry] Could not get hardware Android ID:", e.message);
+  }
 
+  // Priority 2: Check if we have a stored ID in local DB
   try {
     const storedRow = db.getFirstSync("SELECT value FROM app_config WHERE key = 'persistent_device_id'");
     if (storedRow && storedRow.value) {
       return storedRow.value;
     }
+  } catch (e) {}
 
+  // Priority 3: Generate deterministic ID based on hardware info (brand + model)
+  // This helps identify same device even after reinstall
+  try {
+    const brand = Device.brand || Device.manufacturer || 'unknown';
+    const model = Device.modelName || Device.designName || 'unknown';
+    const deterministicSeed = `${brand.toLowerCase()}_${model.toLowerCase()}`.replace(/[^a-z0-9]/g, '_');
+    // Create a simple hash from the seed
+    let hash = 0;
+    for (let i = 0; i < deterministicSeed.length; i++) {
+      const char = deterministicSeed.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    const deterministicId = `hw_${Math.abs(hash).toString(36)}_${deterministicSeed.substring(0, 20)}`;
+
+    const now = new Date().toISOString();
+    db.runSync(
+      "INSERT OR REPLACE INTO app_config (key, value, updated_at) VALUES ('persistent_device_id', ?, ?)",
+      [deterministicId, now]
+    );
+    console.log(`[DeviceRegistry] Generated deterministic device ID: ${deterministicId}`);
+    return deterministicId;
+  } catch (err) {
+    console.error("[DeviceRegistry] Error generating deterministic ID:", err);
+  }
+
+  // Priority 4: Last resort - random UUID (will create duplicate on reinstall)
+  try {
     const newDeviceId = `dev_uuid_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
     const now = new Date().toISOString();
     db.runSync(
@@ -188,7 +236,18 @@ export function getCurrentDeviceRecord() {
     const db = getDb();
     const storedRow = db.getFirstSync("SELECT value FROM app_config WHERE key = 'persistent_device_id'");
     if (!storedRow || !storedRow.value) {
-      return db.getFirstSync("SELECT * FROM device_registry ORDER BY created_at DESC LIMIT 1");
+      // No stored ID - try to find by hardware info
+      const brand = Device.brand || Device.manufacturer || '';
+      const model = Device.modelName || '';
+      if (brand && model) {
+        const record = db.getFirstSync(
+          "SELECT * FROM device_registry WHERE LOWER(brand) = LOWER(?) AND LOWER(model) = LOWER(?) AND (is_deleted IS NULL OR is_deleted = 0) ORDER BY created_at DESC LIMIT 1",
+          [brand, model]
+        );
+        if (record) return record;
+      }
+      // Last resort: get most recent non-deleted device
+      return db.getFirstSync("SELECT * FROM device_registry WHERE (is_deleted IS NULL OR is_deleted = 0) ORDER BY created_at DESC LIMIT 1");
     }
     return db.getFirstSync("SELECT * FROM device_registry WHERE device_id = ?", [storedRow.value]);
   } catch (err) {

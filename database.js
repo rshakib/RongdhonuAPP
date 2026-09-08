@@ -610,6 +610,17 @@ const TABLE_SCHEMAS = {
       created_at TEXT NOT NULL,
       is_synced INTEGER DEFAULT 0
     );
+  `,
+  owner_home_deposits: `
+    CREATE TABLE IF NOT EXISTS owner_home_deposits (
+      id TEXT PRIMARY KEY,
+      amount REAL NOT NULL,
+      deposit_date TEXT NOT NULL,
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      is_synced INTEGER DEFAULT 0
+    );
   `
 };
 
@@ -959,7 +970,7 @@ export function initDatabase(skipSeeding = false) {
     if (userCount.count === 0) {
       console.log("[DB] Seeding Default Users...");
       const defaultUsers = [
-        { id: "owner_shakib", username: "rokib", pin: "1111", role: "owner", display_name: "মালিক (Owner)" },
+        { id: "owner_ro", username: "ro", pin: "2420", role: "owner", display_name: "মালিক (Owner)" },
         { id: "manager_shakib1", username: "m", pin: "1111", role: "manager", display_name: "ম্যানেজার (Manager)" },
         { id: "admin_a", username: "a", pin: "1323", role: "admin", display_name: "অ্যাডমিন (Admin)" }
       ];
@@ -974,9 +985,23 @@ export function initDatabase(skipSeeding = false) {
     } else {
       // Migrate existing usernames and pins if they already exist in database
       try {
-        db.runSync("UPDATE users SET username = 'rokib', pin = '1111' WHERE role = 'owner'");
-        db.runSync("UPDATE users SET username = 'm', pin = '1111' WHERE role = 'manager'");
-        db.runSync("UPDATE users SET username = 'a', pin = '1323' WHERE role = 'admin'");
+        // Remove deprecated owner_shakib user
+        const oldOwner = db.getFirstSync("SELECT id FROM users WHERE username = 'rokib'");
+        if (oldOwner) {
+          db.runSync("DELETE FROM users WHERE username = 'rokib'");
+          enqueueSync("users", oldOwner.id, "DELETE");
+          console.log("[DB Migration] Removed deprecated owner_shakib user");
+        }
+        // Ensure owner_ro exists for existing databases
+        const ownerRo = db.getFirstSync("SELECT id FROM users WHERE username = 'ro'");
+        if (!ownerRo) {
+          const now = new Date().toISOString();
+          db.runSync(
+            "INSERT INTO users (id, username, pin, role, display_name, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, ?, ?, 0)",
+            ["owner_ro", "ro", "2420", "owner", "মালিক (Owner)", now, now]
+          );
+          enqueueSync("users", "owner_ro", "INSERT");
+        }
       } catch (err) {
         console.error("[DB Migration] Failed to update usernames and pins:", err);
       }
@@ -1459,6 +1484,12 @@ export function startSyncService() {
 }
 
 export async function processSyncQueue(singleRecordId = null, singleTableName = null) {
+  // CHECK IF SYNC IS PAUSED
+  if (isSyncPaused()) {
+    console.log("[Sync Processor] Sync is PAUSED. Skipping queue processing.");
+    return { beforeCount: 0, afterCount: 0, successfulWrites: 0, failedWrites: 0 };
+  }
+
   // Concurrency Lock: Prevent multiple cycles from overlapping
   if (isProcessingSyncQueue && !singleRecordId) return { beforeCount: 0, afterCount: 0, successfulWrites: 0, failedWrites: 0 };
   
@@ -2114,7 +2145,7 @@ export const ACTIVE_APP_PROFILE = String(process.env.EXPO_PUBLIC_APP_PROFILE || 
 export const APP_PROFILES = {
   ADMIN: {
     name: 'ADMIN',
-    alwaysFull: ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due', 'owner_employees', 'owner_salary_ledger', 'owner_deposits', 'device_registry'],
+    alwaysFull: ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due', 'owner_employees', 'owner_salary_ledger', 'owner_deposits', 'device_registry', 'owner_home_deposits'],
     recentOnly: [
       'orders', 'order_items', 'payments', 'expenses', 'deliveries', 
       'daily_submit', 'daily_summary', 'due_payments', 'eja_history', 
@@ -2126,14 +2157,14 @@ export const APP_PROFILES = {
       'users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 
       'app_config', 'expenses', 'eja_history', 'daily_submit', 'supplier_due', 
       'supplier_due_history', 'supplier_payment_ledger', 'delete_history', 
-      'owner_employees', 'owner_salary_ledger', 'owner_expenses', 'owner_deposits'
+      'owner_employees', 'owner_salary_ledger', 'owner_expenses', 'owner_deposits', 'owner_home_deposits'
     ],
     deviceRegistry: ['device_registry'],
     skipRestoreMarkers: ['deletions', 'delete_history', 'supplier_due_history']
   },
   OWNER: {
     name: 'OWNER',
-    alwaysFull: ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due', 'owner_employees', 'owner_salary_ledger', 'owner_deposits', 'device_registry'],
+    alwaysFull: ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due', 'owner_employees', 'owner_salary_ledger', 'owner_deposits', 'device_registry', 'owner_home_deposits'],
     recentOnly: [
       'orders', 'order_items', 'payments', 'expenses', 'deliveries', 
       'daily_submit', 'daily_summary', 'due_payments', 'eja_history', 
@@ -2145,7 +2176,7 @@ export const APP_PROFILES = {
       'users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 
       'app_config', 'expenses', 'eja_history', 'daily_submit', 'supplier_due', 
       'supplier_due_history', 'supplier_payment_ledger', 
-      'owner_employees', 'owner_salary_ledger', 'owner_expenses', 'owner_deposits'
+      'owner_employees', 'owner_salary_ledger', 'owner_expenses', 'owner_deposits', 'owner_home_deposits'
     ],
     deviceRegistry: ['device_registry'],
     skipRestoreMarkers: ['deletions', 'delete_history', 'supplier_due_history']
@@ -2166,7 +2197,7 @@ export const APP_PROFILES = {
     skipRestoreMarkers: [
       'deletions', 'delete_history', 'supplier_due_history', 'due_payments', 
       'off_days', 'weather_data', 'supplier_payment_ledger', 
-      'owner_employees', 'owner_salary_ledger', 'owner_expenses', 'owner_deposits'
+      'owner_employees', 'owner_salary_ledger', 'owner_expenses', 'owner_deposits', 'owner_home_deposits'
     ]
   }
 };
@@ -4312,6 +4343,215 @@ export function isTodaySubmitted() {
   }
 }
 
+/**
+ * Get a business date offset by N days from a given date string (YYYY-MM-DD)
+ * @param {string} dateStr - Starting date in YYYY-MM-DD format
+ * @param {number} days - Number of days to add (can be negative)
+ * @returns {string} Date string in YYYY-MM-DD format
+ */
+export function getBusinessDateOffset(dateStr, days) {
+  try {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    date.setDate(date.getDate() + days);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  } catch (err) {
+    console.error("[getBusinessDateOffset] Error:", err);
+    return dateStr;
+  }
+}
+
+/**
+ * Calculate and store next day's opening ijara after daily submit
+ * This is called from submitDailySheet() to prepare the auto-rollover
+ *
+ * Formula: nextDayIjara = MAX(0, (totalSales + currentIjara - totalExpense) - ownerDeposit)
+ *
+ * @param {object} summary - The daily submit summary object
+ * @param {string} submittedDateStr - The business date that was submitted (YYYY-MM-DD)
+ * @returns {object} { success, nextDayIjara, targetDate } for logging/rollback
+ */
+export function calculateAndStoreNextDayIjara(summary, submittedDateStr) {
+  try {
+    const totalSales = summary.sell || 0;
+    const currentIjara = summary.breakdown?.ijara || 0;
+    const totalExpense = summary.expense || 0;
+    const ownerDeposit = parseFloat(summary.deposit) || 0;
+
+    // Formula from PROJECT_ARCHITECTURE_LOG.md
+    const nextDayIjara = Math.max(0, (totalSales + currentIjara - totalExpense) - ownerDeposit);
+
+    // Calculate next business date (submitted date + 1 day)
+    const targetDate = getBusinessDateOffset(submittedDateStr, 1);
+    const now = new Date().toISOString();
+
+    console.log(`[Auto Ijara] Calculated next day ijara:`);
+    console.log(`  - Submitted Date: ${submittedDateStr}`);
+    console.log(`  - Target Date: ${targetDate}`);
+    console.log(`  - Total Sales: ৳${totalSales}`);
+    console.log(`  - Current Ijara: ৳${currentIjara}`);
+    console.log(`  - Total Expense: ৳${totalExpense}`);
+    console.log(`  - Owner Deposit: ৳${ownerDeposit}`);
+    console.log(`  - Next Day Ijara: ৳${nextDayIjara}`);
+
+    // Store the pending ijara values in app_config
+    db.runSync(
+      "INSERT OR REPLACE INTO app_config (id, key, value, created_at, updated_at, is_synced) VALUES (?, 'pending_ijara_amount', ?, ?, ?, 0)",
+      [`config_pending_ijara_amount`, String(nextDayIjara), now, now]
+    );
+    db.runSync(
+      "INSERT OR REPLACE INTO app_config (id, key, value, created_at, updated_at, is_synced) VALUES (?, 'pending_ijara_date', ?, ?, ?, 0)",
+      [`config_pending_ijara_date`, targetDate, now, now]
+    );
+
+    // Enqueue sync for both config values
+    enqueueSync("app_config", "config_pending_ijara_amount", "INSERT");
+    enqueueSync("app_config", "config_pending_ijara_date", "INSERT");
+
+    console.log(`[Auto Ijara] Stored pending ijara: ৳${nextDayIjara} for date ${targetDate}`);
+
+    return { success: true, nextDayIjara, targetDate };
+  } catch (err) {
+    console.error("[Auto Ijara] Error calculating next day ijara:", err);
+    return { success: false, nextDayIjara: 0, targetDate: null };
+  }
+}
+
+/**
+ * Rollback the most recent auto ijara application
+ * This will:
+ * 1. Delete the ijara expense record for the target date
+ * 2. Delete the eja_history record for the target date
+ * 3. Clear any pending ijara values from app_config
+ *
+ * @param {string} targetDate - The date to rollback (YYYY-MM-DD), if null uses the last pending date
+ * @returns {object} { success, message, rolledBackAmount }
+ */
+export function rollbackAutoIjara(targetDate = null) {
+  try {
+    let rollbackDate = targetDate;
+    let rolledBackAmount = 0;
+
+    // If no target date, try to find from pending or last ijara expense
+    if (!rollbackDate) {
+      const pendingDateRow = db.getFirstSync("SELECT value FROM app_config WHERE key = 'pending_ijara_date'");
+      if (pendingDateRow && pendingDateRow.value) {
+        rollbackDate = pendingDateRow.value;
+      } else {
+        // Find the most recent ijara expense
+        const lastIjara = db.getFirstSync(
+          "SELECT * FROM expenses WHERE category = 'ijara' ORDER BY created_at DESC LIMIT 1"
+        );
+        if (lastIjara) {
+          // Extract date from created_at or id
+          const dateMatch = lastIjara.id.match(/exp_(\d{4}-\d{2}-\d{2})_ijara/);
+          if (dateMatch) {
+            rollbackDate = dateMatch[1];
+          }
+        }
+      }
+    }
+
+    if (!rollbackDate) {
+      return { success: false, message: 'কোনো অটো ইজা পাওয়া যায়নি', rolledBackAmount: 0 };
+    }
+
+    console.log(`[Auto Ijara Rollback] Rolling back ijara for date: ${rollbackDate}`);
+
+    // 1. Delete the ijara expense record
+    const stableExpId = `exp_${rollbackDate}_ijara`;
+    const existingExp = db.getFirstSync(
+      "SELECT * FROM expenses WHERE id = ? OR (category = 'ijara' AND date(created_at, 'localtime') = ?)",
+      [stableExpId, rollbackDate]
+    );
+
+    if (existingExp) {
+      rolledBackAmount = Number(existingExp.amount) || 0;
+      db.runSync("DELETE FROM expenses WHERE id = ?", [existingExp.id]);
+      recordDeletion("expenses", existingExp.id);
+      enqueueSync("expenses", existingExp.id, "DELETE");
+      console.log(`[Auto Ijara Rollback] Deleted expense record: ${existingExp.id} (৳${rolledBackAmount})`);
+    }
+
+    // 2. Delete the eja_history record
+    const ejaId = `eja_${rollbackDate}`;
+    const existingEja = db.getFirstSync(
+      "SELECT * FROM eja_history WHERE id = ? OR date = ?",
+      [ejaId, rollbackDate]
+    );
+
+    if (existingEja) {
+      db.runSync("DELETE FROM eja_history WHERE id = ?", [existingEja.id]);
+      recordDeletion("eja_history", existingEja.id);
+      enqueueSync("eja_history", existingEja.id, "DELETE");
+      console.log(`[Auto Ijara Rollback] Deleted eja_history record: ${existingEja.id}`);
+    }
+
+    // 3. Clear pending ijara values from app_config
+    db.runSync("DELETE FROM app_config WHERE key = 'pending_ijara_amount'");
+    db.runSync("DELETE FROM app_config WHERE key = 'pending_ijara_date'");
+    enqueueSync("app_config", "pending_ijara_amount", "DELETE");
+    enqueueSync("app_config", "pending_ijara_date", "DELETE");
+
+    console.log(`[Auto Ijara Rollback] Cleared pending ijara config values`);
+
+    return {
+      success: true,
+      message: `ইজা ৳${rolledBackAmount.toLocaleString()} (${rollbackDate}) সফলভাবে রোলব্যাক করা হয়েছে`,
+      rolledBackAmount,
+      rolledBackDate: rollbackDate
+    };
+  } catch (err) {
+    console.error("[Auto Ijara Rollback] Error:", err);
+    return { success: false, message: 'রোলব্যাক ব্যর্থ হয়েছে: ' + err.message, rolledBackAmount: 0 };
+  }
+}
+
+/**
+ * Get the last auto ijara details for display/audit purposes
+ * @returns {object|null} { amount, date, applied_at } or null
+ */
+export function getLastAutoIjaraDetails() {
+  try {
+    // Check pending first
+    const pendingAmount = db.getFirstSync("SELECT value FROM app_config WHERE key = 'pending_ijara_amount'");
+    const pendingDate = db.getFirstSync("SELECT value FROM app_config WHERE key = 'pending_ijara_date'");
+
+    if (pendingAmount && pendingDate) {
+      return {
+        amount: parseFloat(pendingAmount.value),
+        date: pendingDate.value,
+        status: 'PENDING',
+        message: `অপেক্ষমাণ: ৳${parseFloat(pendingAmount.value).toLocaleString()} (${pendingDate.value})`
+      };
+    }
+
+    // Check last applied ijara expense
+    const lastIjara = db.getFirstSync(
+      "SELECT * FROM expenses WHERE category = 'ijara' ORDER BY created_at DESC LIMIT 1"
+    );
+
+    if (lastIjara) {
+      const dateMatch = lastIjara.id.match(/exp_(\d{4}-\d{2}-\d{2})_ijara/);
+      const ijaraDate = dateMatch ? dateMatch[1] : 'Unknown';
+      return {
+        amount: Number(lastIjara.amount) || 0,
+        date: ijaraDate,
+        status: 'APPLIED',
+        message: `সর্বশেষ প্রয়োগ: ৳${(Number(lastIjara.amount) || 0).toLocaleString()} (${ijaraDate})`
+      };
+    }
+
+    return null;
+  } catch (err) {
+    console.error("[getLastAutoIjaraDetails] Error:", err);
+    return null;
+  }
+}
+
 export function submitDailySheet(summary, submittedBy, submissionType = 'MANUAL') {
   try {
     const todayStr = summary.bizDate || getBusinessDate();
@@ -4384,6 +4624,15 @@ export function submitDailySheet(summary, submittedBy, submissionType = 'MANUAL'
 
     calculateAndSaveDailySummary(todayStr);
 
+    // --- AUTO IJARA: Calculate and store next day's opening ijara ---
+    const ijaraResult = calculateAndStoreNextDayIjara(summary, todayStr);
+    if (ijaraResult.success && ijaraResult.nextDayIjara > 0) {
+      console.log(`[DailySubmit] Next day ijara calculated: ৳${ijaraResult.nextDayIjara} for ${ijaraResult.targetDate}`);
+    } else {
+      console.log(`[DailySubmit] Next day ijara is ৳0, no pending ijara stored`);
+    }
+
+    // Apply any previously pending ijara (from yesterday's submit)
     checkAndApplyIjaraRollover();
 
     // --- TRANSACTION-SAFE AI DATASET SYNC TRIGGER ---
@@ -4477,6 +4726,87 @@ export function checkAndApplyIjaraRollover() {
   } catch (err) {
     console.error("[Auto Ijara] Error in checkAndApplyIjaraRollover:", err.stack || err);
     return false;
+  }
+}
+
+/**
+ * ==========================================
+ * SYNC PAUSE/RESUME SYSTEM
+ * ==========================================
+ * Allows pausing all Firebase sync operations until app is updated.
+ * Useful for preventing sync issues during deployment.
+ */
+
+/**
+ * Check if sync is currently paused
+ * @returns {boolean} true if sync is paused
+ */
+export function isSyncPaused() {
+  try {
+    const row = db.getFirstSync("SELECT value FROM app_config WHERE key = 'sync_paused'");
+    return row && row.value === 'true';
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Pause all sync operations
+ * @param {string} reason - Why sync is being paused
+ */
+export function pauseSync(reason = 'Manual pause') {
+  try {
+    const now = new Date().toISOString();
+    db.runSync(
+      "INSERT OR REPLACE INTO app_config (id, key, value, created_at, updated_at, is_synced) VALUES (?, 'sync_paused', ?, ?, ?, 0)",
+      ['config_sync_paused', 'true', now, now]
+    );
+    db.runSync(
+      "INSERT OR REPLACE INTO app_config (id, key, value, created_at, updated_at, is_synced) VALUES (?, 'sync_paused_reason', ?, ?, ?, 0)",
+      ['config_sync_paused_reason', reason, now, now]
+    );
+    db.runSync(
+      "INSERT OR REPLACE INTO app_config (id, key, value, created_at, updated_at, is_synced) VALUES (?, 'sync_paused_at', ?, ?, ?, 0)",
+      ['config_sync_paused_at', now, now, now]
+    );
+    console.log(`[Sync Control] Sync PAUSED: ${reason}`);
+    return true;
+  } catch (err) {
+    console.error("[Sync Control] Failed to pause sync:", err);
+    return false;
+  }
+}
+
+/**
+ * Resume all sync operations
+ */
+export function resumeSync() {
+  try {
+    db.runSync("DELETE FROM app_config WHERE key IN ('sync_paused', 'sync_paused_reason', 'sync_paused_at')");
+    console.log("[Sync Control] Sync RESUMED");
+    return true;
+  } catch (err) {
+    console.error("[Sync Control] Failed to resume sync:", err);
+    return false;
+  }
+}
+
+/**
+ * Get sync pause status info
+ * @returns {object} { isPaused, reason, pausedAt }
+ */
+export function getSyncPauseInfo() {
+  try {
+    const paused = isSyncPaused();
+    const reason = db.getFirstSync("SELECT value FROM app_config WHERE key = 'sync_paused_reason'");
+    const pausedAt = db.getFirstSync("SELECT value FROM app_config WHERE key = 'sync_paused_at'");
+    return {
+      isPaused: paused,
+      reason: reason?.value || '',
+      pausedAt: pausedAt?.value || ''
+    };
+  } catch (e) {
+    return { isPaused: false, reason: '', pausedAt: '' };
   }
 }
 
@@ -4871,7 +5201,8 @@ export function inspectDatabaseStats() {
     'owner_employees',
     'owner_salary_ledger',
     'owner_expenses',
-    'owner_deposits'
+    'owner_deposits',
+    'owner_home_deposits'
   ];
   
   const stats = {};
@@ -5225,7 +5556,7 @@ export async function executeManualPush() {
       'users', 'restaurant_tables', 'orders', 'order_items', 'payments', 
       'expenses', 'deliveries', 'daily_submit', 'daily_summary', 
       'due_payments', 'eja_history', 'off_days', 'weather_data', 
-      'supplier_payment_ledger', 'notifications', 'app_config', 'ai_dataset_history', 'deletions', 'delete_history', 'owner_employees', 'owner_salary_ledger', 'owner_expenses', 'owner_deposits'
+      'supplier_payment_ledger', 'notifications', 'app_config', 'ai_dataset_history', 'deletions', 'delete_history', 'owner_employees', 'owner_salary_ledger', 'owner_expenses', 'owner_deposits', 'owner_home_deposits'
     ];
     
     let countEnqueued = 0;
@@ -5385,6 +5716,7 @@ export function saveOwnerEmployee(employee) {
       [id, employee.name, employee.phone || '', employee.designation || '', employee.monthly_salary, employee.joining_date || '', employee.status || 'ACTIVE', employee.notes || '', employee.created_at || now, now]
     );
     enqueueSync("owner_employees", id, "INSERT");
+    syncRecordImmediately("owner_employees", id);
     return id;
   } catch (err) {
     console.error("[DB] saveOwnerEmployee error:", err);
@@ -5401,6 +5733,7 @@ export function updateOwnerEmployee(employee) {
       [employee.name, employee.phone || '', employee.designation || '', employee.monthly_salary, employee.joining_date || '', employee.status || 'ACTIVE', employee.notes || '', now, employee.id]
     );
     enqueueSync("owner_employees", employee.id, "UPDATE");
+    syncRecordImmediately("owner_employees", employee.id);
     return true;
   } catch (err) {
     console.error("[DB] updateOwnerEmployee error:", err);
@@ -5431,6 +5764,8 @@ export function deleteOwnerEmployee(id) {
     logDeleteHistory("owner_employees", id, "Employees");
     db.runSync("DELETE FROM owner_employees WHERE id = ?", [id]);
     recordDeletion("owner_employees", id);
+    syncRecordImmediately("deletions", id);
+    syncRecordImmediately("owner_employees", id);
     return true;
   } catch (err) {
     console.error("[DB] deleteOwnerEmployee error:", err);
@@ -5448,6 +5783,7 @@ export function saveSalaryLedgerEntry(entry) {
       [id, entry.employee_id, entry.amount, entry.payment_type, entry.payment_date, entry.notes || '', now]
     );
     enqueueSync("owner_salary_ledger", id, "INSERT");
+    syncRecordImmediately("owner_salary_ledger", id);
     return id;
   } catch (err) {
     console.error("[DB] saveSalaryLedgerEntry error:", err);
@@ -5523,6 +5859,7 @@ export function saveOwnerExpense(expense) {
       [id, expense.category, expense.amount, expense.expense_date, expense.notes || '', expense.created_at || now, now]
     );
     enqueueSync("owner_expenses", id, "INSERT");
+    syncRecordImmediately("owner_expenses", id);
     return id;
   } catch (err) {
     console.error("[DB] saveOwnerExpense error:", err);
@@ -5539,6 +5876,7 @@ export function updateOwnerExpense(expense) {
       [expense.category, expense.amount, expense.expense_date, expense.notes || '', now, expense.id]
     );
     enqueueSync("owner_expenses", expense.id, "UPDATE");
+    syncRecordImmediately("owner_expenses", expense.id);
     return true;
   } catch (err) {
     console.error("[DB] updateOwnerExpense error:", err);
@@ -5567,6 +5905,8 @@ export function deleteOwnerExpense(id) {
     logDeleteHistory("owner_expenses", id, "OwnerExpenses");
     db.runSync("DELETE FROM owner_expenses WHERE id = ?", [id]);
     recordDeletion("owner_expenses", id);
+    syncRecordImmediately("deletions", id);
+    syncRecordImmediately("owner_expenses", id);
     return true;
   } catch (err) {
     console.error("[DB] deleteOwnerExpense error:", err);
@@ -5583,7 +5923,16 @@ export function getOwnerExpenseSummary(month) {
     );
     const total = totalRow ? (totalRow.total || 0) : 0;
 
-    // 2. Utilities (Electricity, Gas, Internet)
+    // 2. Rent / Vara
+    const rentRow = db.getFirstSync(
+      `SELECT SUM(amount) as total FROM owner_expenses 
+       WHERE expense_date LIKE ? 
+         AND (category LIKE '%ভাড়া%' OR category LIKE '%ভাড়া%' OR category LIKE '%Rent%')`,
+      [`${month}%`]
+    );
+    const rent = rentRow ? (rentRow.total || 0) : 0;
+
+    // 3. Utilities (Electricity, Gas, Internet)
     const utilRow = db.getFirstSync(
       `SELECT SUM(amount) as total FROM owner_expenses 
        WHERE expense_date LIKE ? 
@@ -5592,14 +5941,14 @@ export function getOwnerExpenseSummary(month) {
     );
     const utilities = utilRow ? (utilRow.total || 0) : 0;
 
-    // 3. Bazar
+    // 4. Bazar
     const bazarRow = db.getFirstSync(
       "SELECT SUM(amount) as total FROM owner_expenses WHERE expense_date LIKE ? AND category = '🛒 বাজার'",
       [`${month}%`]
     );
     const bazar = bazarRow ? (bazarRow.total || 0) : 0;
 
-    // 4. Breakdown (Dynamic Group By)
+    // 5. Breakdown (Dynamic Group By)
     const breakdown = {};
     const rows = db.getAllSync(
       "SELECT category, SUM(amount) as total FROM owner_expenses WHERE expense_date LIKE ? GROUP BY category",
@@ -5609,10 +5958,10 @@ export function getOwnerExpenseSummary(month) {
       breakdown[r.category] = r.total || 0;
     });
 
-    return { total, utilities, bazar, breakdown };
+    return { total, rent, utilities, bazar, breakdown };
   } catch (err) {
     console.error("[DB] getOwnerExpenseSummary error:", err);
-    return { total: 0, utilities: 0, bazar: 0, breakdown: {} };
+    return { total: 0, rent: 0, utilities: 0, bazar: 0, breakdown: {} };
   }
 }
 
@@ -5641,6 +5990,7 @@ export function saveOwnerDeposit(deposit) {
       [id, deposit.month, deposit.amount, now]
     );
     enqueueSync("owner_deposits", id, "INSERT");
+    syncRecordImmediately("owner_deposits", id);
     return id;
   } catch (err) {
     console.error("[DB] saveOwnerDeposit error:", err);
@@ -5683,6 +6033,8 @@ export function deleteOwnerDepositByMonth(month) {
       logDeleteHistory("owner_deposits", record.id, "OwnerDeposits");
       db.runSync("DELETE FROM owner_deposits WHERE id = ?", [record.id]);
       recordDeletion("owner_deposits", record.id);
+      syncRecordImmediately("deletions", record.id);
+      syncRecordImmediately("owner_deposits", record.id);
       return true;
     }
     return false;
@@ -5708,5 +6060,86 @@ export function insertNotification(title, message) {
     return null;
   }
 }
+
+// --- OWNER HOME DEPOSIT (বাসায় জমা) FUNCTIONS ---
+
+export function saveHomeDeposit(deposit) {
+  try {
+    const now = new Date().toISOString();
+    const id = deposit.id || `owhdep_${Date.now()}`;
+    db.runSync(
+      `INSERT OR REPLACE INTO owner_home_deposits (id, amount, deposit_date, notes, created_at, updated_at, is_synced)
+       VALUES (?, ?, ?, ?, ?, ?, 0)`,
+      [id, deposit.amount, deposit.deposit_date, deposit.notes || '', deposit.created_at || now, now]
+    );
+    enqueueSync("owner_home_deposits", id, "INSERT");
+    syncRecordImmediately("owner_home_deposits", id);
+    return id;
+  } catch (err) {
+    console.error("[DB] saveHomeDeposit error:", err);
+    return null;
+  }
+}
+
+export function updateHomeDeposit(deposit) {
+  try {
+    const now = new Date().toISOString();
+    db.runSync(
+      `UPDATE owner_home_deposits SET amount = ?, deposit_date = ?, notes = ?, updated_at = ?, is_synced = 0
+       WHERE id = ?`,
+      [deposit.amount, deposit.deposit_date, deposit.notes || '', now, deposit.id]
+    );
+    enqueueSync("owner_home_deposits", deposit.id, "UPDATE");
+    syncRecordImmediately("owner_home_deposits", deposit.id);
+    return true;
+  } catch (err) {
+    console.error("[DB] updateHomeDeposit error:", err);
+    return false;
+  }
+}
+
+export function deleteHomeDeposit(id) {
+  try {
+    logDeleteHistory("owner_home_deposits", id, "HomeDeposits");
+    db.runSync("DELETE FROM owner_home_deposits WHERE id = ?", [id]);
+    recordDeletion("owner_home_deposits", id);
+    syncRecordImmediately("deletions", id);
+    syncRecordImmediately("owner_home_deposits", id);
+    return true;
+  } catch (err) {
+    console.error("[DB] deleteHomeDeposit error:", err);
+    return false;
+  }
+}
+
+export function getHomeDeposits(month = '') {
+  try {
+    if (month) {
+      return db.getAllSync(
+        "SELECT * FROM owner_home_deposits WHERE deposit_date LIKE ? ORDER BY deposit_date DESC, created_at DESC",
+        [`${month}%`]
+      );
+    } else {
+      return db.getAllSync("SELECT * FROM owner_home_deposits ORDER BY deposit_date DESC, created_at DESC");
+    }
+  } catch (err) {
+    console.error("[DB] getHomeDeposits error:", err);
+    return [];
+  }
+}
+
+export function getMonthlyTotalHomeDeposits(month) {
+  try {
+    const row = db.getFirstSync(
+      "SELECT SUM(amount) as total FROM owner_home_deposits WHERE deposit_date LIKE ?",
+      [`${month}%`]
+    );
+    return row ? (row.total || 0) : 0;
+  } catch (err) {
+    console.error("[DB] getMonthlyTotalHomeDeposits error:", err);
+    return 0;
+  }
+}
+
 
 
