@@ -47,6 +47,9 @@ yarn-error.*
 .claude/
 .idea/
 
+# tests (keep locally, not in repo)
+tests/
+
 # Debug and audit files
 audit_out.txt
 firestore_count.js
