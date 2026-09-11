@@ -516,7 +516,7 @@ export default function OwnerExpenseScreen({
       >
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={styles.modalContent}
           >
             <View style={styles.modalHeaderCircle}>
@@ -526,7 +526,12 @@ export default function OwnerExpenseScreen({
               {editingExpenseId ? "খরচের বিবরণ পরিবর্তন" : "নতুন খরচ যুক্ত করুন"}
             </Text>
 
-            <ScrollView contentContainerStyle={styles.modalForm}>
+            <ScrollView
+              style={{ flexShrink: 1, width: '100%' }}
+              contentContainerStyle={styles.modalForm}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
               <View style={styles.formGroup}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Text style={styles.inputLabel}>বিভাগ / ক্যাটাগরি *</Text>
@@ -574,6 +579,8 @@ export default function OwnerExpenseScreen({
                   placeholder="পরিমাণ"
                   placeholderTextColor="#666"
                   keyboardType="numeric"
+                  inputMode="numeric"
+                  editable={true}
                   value={formAmount}
                   onChangeText={setFormAmount}
                 />
