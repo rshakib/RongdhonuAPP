@@ -93,10 +93,7 @@ import {
   getSyncRuntimeDiagnostics,
   executeInspectorQuery,
   formatDisplayDate,
-  ACTIVE_APP_PROFILE,
-  seedDemoData,
-  isDemoMode,
-  pauseSync
+  ACTIVE_APP_PROFILE
 } from './database';
 
 // Import all 9 high-fidelity screens
@@ -348,12 +345,6 @@ export default function App() {
         // 1. Just create schemas (no seeding yet)
         initDatabase(true);
 
-        // DEMO MODE: Pause sync and seed demo data
-        if (isDemoMode()) {
-          console.log('[App] DEMO MODE detected - pausing sync and seeding demo data');
-          pauseSync('Demo mode - no Firebase sync');
-          seedDemoData();
-        }
 
         // Device Registration Check (Phase 1 Access Control)
         try {
