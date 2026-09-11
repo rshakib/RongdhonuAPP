@@ -1629,6 +1629,7 @@ export default function App() {
                 onNavigateToEditMenu={() => setCurrentScreen('EDIT_MENU')}
                 onNavigateToSupplierDue={() => setCurrentScreen('SUPPLIER_DUE')}
                 onNavigateToItemSalesReport={() => setCurrentScreen('ITEM_SALES_REPORT')}
+                onNavigateToAnalytics={() => setCurrentScreen('ADMIN_ANALYTICS')}
                 onCloudRestore={handleCloudRestore}
 
                 onMenuRecovery={handleMenuRecovery}
@@ -1696,6 +1697,7 @@ export default function App() {
               onNavigateToEditMenu={() => setCurrentScreen('EDIT_MENU')}
               onNavigateToSupplierDue={() => setCurrentScreen('SUPPLIER_DUE')}
               onNavigateToItemSalesReport={() => setCurrentScreen('ITEM_SALES_REPORT')}
+              onNavigateToAnalytics={() => setCurrentScreen('ADMIN_ANALYTICS')}
               onCloudRestore={handleCloudRestore}
 
               onMenuRecovery={handleMenuRecovery}
@@ -1918,7 +1920,10 @@ export default function App() {
         );
 
       case 'ADMIN_ANALYTICS':
-        if (ACTIVE_APP_PROFILE === 'ADMIN' && String(userRole || '').toLowerCase().trim() === 'admin') {
+        const analyticsRole = String(userRole || '').toLowerCase().trim();
+        const isAuthorizedAdmin = ACTIVE_APP_PROFILE === 'ADMIN' && analyticsRole === 'admin';
+        const isAuthorizedOwner = (ACTIVE_APP_PROFILE === 'OWNER' || ACTIVE_APP_PROFILE === 'ADMIN') && analyticsRole === 'owner';
+        if (isAuthorizedAdmin || isAuthorizedOwner) {
           const AdminAnalyticsScreen = require('./screens/AdminAnalyticsScreen').default;
           return (
             <AdminAnalyticsScreen
