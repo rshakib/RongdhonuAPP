@@ -14,6 +14,19 @@ import {
   Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  getOwnerExpenses,
+  getOwnerExpenseSummary,
+  getOwnerDepositByMonth,
+  saveOwnerExpense,
+  updateOwnerExpense,
+  deleteOwnerExpense,
+  getBusinessDate,
+  getExpenseCategories,
+  addExpenseCategory,
+  deleteExpenseCategory,
+  DEFAULT_OWNER_EXPENSE_CATEGORIES
+} from '../database';
 
 const { width } = Dimensions.get('window');
 
@@ -28,16 +41,6 @@ const AccessDenied = ({ onBack }) => (
   </View>
 );
 
-const DEFAULT_CATEGORIES = [
-  { label: '🏠 দোকান ভাড়া', icon: '🏠' },
-  { label: '⚡ বিদ্যুৎ বিল', icon: '⚡' },
-  { label: '🔥 গ্যাস বিল', icon: '🔥' },
-  { label: '🌐 ইন্টারনেট বিল', icon: '🌐' },
-  { label: '🛒 বাজার', icon: '🛒' },
-  { label: '🔧 মেরামত (Maintenance)', icon: '🔧' },
-  { label: '📦 অন্যান্য', icon: '📦' }
-];
-
 const parseSafeAmount = (val) => {
   if (!val) return 0;
   const bengaliDigits = { '০': '0', '১': '1', '২': '2', '৩': '3', '৪': '4', '৫': '5', '৬': '6', '৭': '7', '৮': '8', '৯': '9' };
@@ -50,15 +53,16 @@ export default function OwnerExpenseScreen({
   onBack,
   refreshData
 }) {
+  const isOwner = String(userRole || '').trim().toLowerCase() === 'owner';
   const [loading, setLoading] = useState(true);
   const [currentMonth, setCurrentMonth] = useState('');
   const [expenses, setExpenses] = useState([]);
   const [summary, setSummary] = useState({ total: 0, utilities: 0, bazar: 0, breakdown: {} });
   const [searchQuery, setSearchQuery] = useState('');
-  const [customCategories, setCustomCategories] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [isClosed, setIsClosed] = useState(false);
 
-  // Modal form states
+  // Modal form states for actual expense transaction
   const [modalVisible, setModalVisible] = useState(false);
   const [editingExpenseId, setEditingExpenseId] = useState(null);
   const [formCategory, setFormCategory] = useState('🛒 বাজার');
@@ -66,15 +70,15 @@ export default function OwnerExpenseScreen({
   const [formDate, setFormDate] = useState('');
   const [formNotes, setFormNotes] = useState('');
 
-  // Custom category modal states
-  const [newCatModalVisible, setNewCatModalVisible] = useState(false);
-  const [newCatName, setNewCatName] = useState('');
+  // Standalone Category Management Modal States (OWNER ONLY)
+  const [categoryManagerVisible, setCategoryManagerVisible] = useState(false);
+  const [newCategoryInput, setNewCategoryInput] = useState('');
 
   useEffect(() => {
     if (userRole === 'owner' || userRole === 'admin') {
       const todayMonth = new Date().toISOString().substring(0, 7);
       setCurrentMonth(todayMonth);
-      loadCustomCategories();
+      loadCategories();
     } else {
       setLoading(false);
     }
@@ -86,15 +90,12 @@ export default function OwnerExpenseScreen({
     }
   }, [currentMonth]);
 
-  const loadCustomCategories = () => {
+  const loadCategories = () => {
     try {
-      const { getAppConfig } = require('../database');
-      const val = getAppConfig('owner_custom_expense_categories');
-      if (val) {
-        setCustomCategories(JSON.parse(val));
-      }
+      const list = getExpenseCategories();
+      setCategories(list);
     } catch (err) {
-      console.error("[OwnerExpenseScreen] Load custom categories error:", err);
+      console.error("[OwnerExpenseScreen] Load categories error:", err);
     }
   };
 
@@ -148,12 +149,10 @@ export default function OwnerExpenseScreen({
     }
     const { getBusinessDate } = require('../database');
     setEditingExpenseId(null);
-    setFormCategory('🏠 দোকান ভাড়া');
+    setFormCategory(categories.length > 0 ? categories[0].label : '🏠 দোকান ভাড়া');
     setFormAmount('');
     setFormDate(getBusinessDate ? getBusinessDate() : new Date().toISOString().substring(0, 10));
     setFormNotes('');
-    setNewCatModalVisible(false);
-    setNewCatName('');
     setModalVisible(true);
   };
 
@@ -167,8 +166,6 @@ export default function OwnerExpenseScreen({
     setFormAmount(item.amount.toString());
     setFormDate(item.expense_date);
     setFormNotes(item.notes || '');
-    setNewCatModalVisible(false);
-    setNewCatName('');
     setModalVisible(true);
   };
 
@@ -268,55 +265,68 @@ export default function OwnerExpenseScreen({
     );
   };
 
-  const handleSaveCustomCategory = () => {
-    if (isClosed) {
-      Alert.alert("সীমাবদ্ধতা", "এই মাসের হিসাব বন্ধ করা হয়েছে (Read-Only)");
+  const handleCreateCategory = () => {
+    if (!isOwner) {
+      Alert.alert("অননুমোদিত", "শুধুমাত্র মালিক নতুন ক্যাটাগরি তৈরি করতে পারেন।");
       return;
     }
 
-    const cleanedName = newCatName.trim();
+    const cleanedName = newCategoryInput.trim();
     if (!cleanedName) {
       Alert.alert("ইনপুট ত্রুটি", "ক্যাটাগরির নাম দেওয়া আবশ্যক।");
       return;
     }
 
-    const allCategories = [...DEFAULT_CATEGORIES, ...customCategories];
-    const nameExists = allCategories.some(c => c.label.toLowerCase() === cleanedName.toLowerCase());
-    if (nameExists) {
-      Alert.alert("তথ্য", "এই ক্যাটাগরি ইতিমধ্যে রয়েছে এবং নির্বাচন করা হয়েছে।");
-      setFormCategory(cleanedName);
-      setNewCatModalVisible(false);
-      setNewCatName('');
-      return;
-    }
-
-    const newCat = { label: cleanedName, icon: '📦' };
-    const updated = [...customCategories, newCat];
-    
     try {
-      const { setAppConfig } = require('../database');
-      setAppConfig('owner_custom_expense_categories', JSON.stringify(updated));
-      
-      setCustomCategories(updated);
-      setFormCategory(cleanedName);
-      setNewCatName('');
-      setNewCatModalVisible(false);
-      
-      Alert.alert("সফল", `"${cleanedName}" ক্যাটাগরি যুক্ত ও নির্বাচন করা হয়েছে। এবার খরচের পরিমাণ লিখুন।`);
-      
-      if (refreshData) {
-        refreshData();
+      const res = addExpenseCategory(cleanedName, userRole);
+      if (res && res.success) {
+        Alert.alert("সফল", `"${cleanedName}" ক্যাটাগরি সফলভাবে তৈরি করা হয়েছে।`);
+        setNewCategoryInput('');
+        loadCategories();
+      } else if (res && res.exists) {
+        Alert.alert("তথ্য", "এই ক্যাটাগরি ইতিমধ্যে রয়েছে।");
       }
     } catch (err) {
-      console.error("[OwnerExpenseScreen] Save custom category error:", err);
-      Alert.alert("ত্রুটি", "ক্যাটাগরি সংরক্ষণ করতে ব্যর্থ হয়েছে।");
+      console.error("[OwnerExpenseScreen] Create category error:", err);
+      Alert.alert("ত্রুটি", err.message || "ক্যাটাগরি তৈরি করতে ব্যর্থ হয়েছে।");
     }
   };
 
+  const handleDeleteCategory = (catLabel) => {
+    if (!isOwner) {
+      Alert.alert("অননুমোদিত", "শুধুমাত্র মালিক ক্যাটাগরি মুছে ফেলতে পারেন।");
+      return;
+    }
+
+    Alert.alert(
+      "ক্যাটাগরি অপসারণ",
+      `আপনি কি নিশ্চিতভাবে "${catLabel}" ক্যাটাগরিটি মুছে ফেলতে চান?\n\n(উল্লেখ্য: ইতিপূর্বে সংরক্ষিত খরচের হিসাব অক্ষুণ্ণ থাকবে)`,
+      [
+        { text: "বাতিল", style: "cancel" },
+        {
+          text: "মুছে ফেলুন",
+          style: "destructive",
+          onPress: () => {
+            try {
+              deleteExpenseCategory(catLabel, userRole);
+              Alert.alert("সফল", `"${catLabel}" ক্যাটাগরি মুছে ফেলা হয়েছে।`);
+              loadCategories();
+              if (formCategory === catLabel) {
+                setFormCategory(categories.length > 0 ? categories[0].label : '🏠 দোকান ভাড়া');
+              }
+            } catch (err) {
+              console.error("[OwnerExpenseScreen] Delete category error:", err);
+              Alert.alert("ত্রুটি", err.message || "ক্যাটাগরি মুছতে ব্যর্থ হয়েছে।");
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const getCategoryIcon = (catName) => {
-    const all = [...DEFAULT_CATEGORIES, ...customCategories];
-    const found = all.find(c => c.label === catName);
-    return found ? found.icon : '📦';
+    const found = categories.find(c => c.label === catName);
+    return found ? (found.icon || '📦') : '📦';
   };
 
   const getMonthNameBangla = (monthStr) => {
@@ -341,7 +351,7 @@ export default function OwnerExpenseScreen({
     return catMatch || notesMatch || amtMatch;
   });
 
-  const allCategoriesList = [...DEFAULT_CATEGORIES, ...customCategories];
+  const allCategoriesList = categories;
 
   if (userRole !== 'owner' && userRole !== 'admin') {
     return <AccessDenied onBack={onBack} />;
@@ -356,15 +366,26 @@ export default function OwnerExpenseScreen({
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="tail">ওনার খরচ</Text>
         
-        {!isClosed ? (
-          <TouchableOpacity style={styles.addButton} onPress={handleOpenAddModal}>
-            <Text style={styles.addButtonText}>➕ খরচ যোগ করুন</Text>
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.closedHeaderBadge}>
-            <Text style={styles.closedHeaderBadgeText}>🔒 CLOSED</Text>
-          </View>
-        )}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          {isOwner && !isClosed && (
+            <TouchableOpacity
+              style={styles.categoryHeaderBtn}
+              onPress={() => setCategoryManagerVisible(true)}
+            >
+              <Text style={styles.categoryHeaderBtnText}>🏷️ ক্যাটাগরি</Text>
+            </TouchableOpacity>
+          )}
+
+          {!isClosed ? (
+            <TouchableOpacity style={styles.addButton} onPress={handleOpenAddModal}>
+              <Text style={styles.addButtonText}>➕ খরচ যোগ</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.closedHeaderBadge}>
+              <Text style={styles.closedHeaderBadgeText}>🔒 CLOSED</Text>
+            </View>
+          )}
+        </View>
       </View>
 
       {/* Month Selector bar */}
@@ -507,53 +528,44 @@ export default function OwnerExpenseScreen({
 
             <ScrollView contentContainerStyle={styles.modalForm}>
               <View style={styles.formGroup}>
-                <Text style={styles.inputLabel}>বিভাগ / ক্যাটাগরি *</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={styles.inputLabel}>বিভাগ / ক্যাটাগরি *</Text>
+                  {isOwner && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setModalVisible(false);
+                        setCategoryManagerVisible(true);
+                      }}
+                    >
+                      <Text style={styles.manageCategoriesInlineLink}>🏷️ ক্যাটাগরি পরিচালনা</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
                 <View style={styles.categoryPickerGrid}>
-                  {allCategoriesList.map(cat => {
+                  {categories.map(cat => {
                     const isSelected = formCategory === cat.label;
+                    const displayLabel = cat.label.includes(' ') && cat.icon
+                      ? cat.label.replace(cat.icon + ' ', '')
+                      : cat.label;
                     return (
                       <TouchableOpacity
                         key={cat.label}
                         style={[styles.catGridBtn, isSelected && styles.catGridBtnActive]}
                         onPress={() => setFormCategory(cat.label)}
                       >
-                        <Text style={styles.catGridIcon}>{cat.icon}</Text>
-                        <Text style={[styles.catGridLabel, isSelected && styles.catGridLabelActive]}>
-                          {cat.label.replace(cat.icon + ' ', '')}
+                        <Text style={styles.catGridIcon}>{cat.icon || '📦'}</Text>
+                        <Text
+                          style={[styles.catGridLabel, isSelected && styles.catGridLabelActive]}
+                          numberOfLines={1}
+                        >
+                          {displayLabel}
                         </Text>
                       </TouchableOpacity>
                     );
                   })}
-                  {/* Add New Category trigger option */}
-                  <TouchableOpacity
-                    style={[styles.catGridBtn, { borderColor: '#FFB703', borderStyle: 'dashed' }, newCatModalVisible && styles.catGridBtnActive]}
-                    onPress={() => setNewCatModalVisible(prev => !prev)}
-                  >
-                    <Text style={styles.catGridIcon}>{newCatModalVisible ? '✖️' : '➕'}</Text>
-                    <Text style={[styles.catGridLabel, { color: '#FFB703' }]}>{newCatModalVisible ? 'বাতিল' : 'নতুন যোগ'}</Text>
-                  </TouchableOpacity>
                 </View>
               </View>
-
-              {/* Inline Custom Category Creator (Avoids nested Modal Android focus freeze) */}
-              {newCatModalVisible && (
-                <View style={styles.inlineCatBox}>
-                  <Text style={styles.inlineCatTitle}>➕ নতুন ক্যাটাগরি তৈরি করুন</Text>
-                  <View style={styles.inlineCatRow}>
-                    <TextInput
-                      style={styles.inlineCatInput}
-                      placeholder="ক্যাটাগরির নাম লিখুন (যেমন: গাড়ি ভাড়া)"
-                      placeholderTextColor="#777"
-                      value={newCatName}
-                      onChangeText={setNewCatName}
-                      autoFocus={true}
-                    />
-                    <TouchableOpacity style={styles.inlineCatAddBtn} onPress={handleSaveCustomCategory}>
-                      <Text style={styles.inlineCatAddBtnText}>যোগ করুন</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              )}
 
               <View style={styles.formGroup}>
                 <Text style={styles.inputLabel}>খরচের পরিমাণ (৳) *</Text>
@@ -609,6 +621,101 @@ export default function OwnerExpenseScreen({
           </KeyboardAvoidingView>
         </View>
       </Modal>
+
+      {/* OWNER ONLY - Standalone Expense Category Management Modal */}
+      {isOwner && (
+        <Modal
+          animationType="fade"
+          transparent={true}
+          visible={categoryManagerVisible}
+          onRequestClose={() => setCategoryManagerVisible(false)}
+        >
+          <View style={styles.catModalOverlay}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              style={styles.catModalContent}
+            >
+              {/* Modal Header */}
+              <View style={styles.catModalHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ fontSize: 22 }}>🏷️</Text>
+                  <Text style={styles.catModalTitle}>খরচের ক্যাটাগরি ব্যবস্থাপনা</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setCategoryManagerVisible(false)}
+                  style={styles.catModalCloseBtn}
+                >
+                  <Text style={styles.catModalCloseBtnText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
+                {/* Add Category Section - ONLY category name input + Save, NO amount/date/notes */}
+                <View style={styles.catCreateCard}>
+                  <Text style={styles.catSectionLabel}>➕ নতুন ক্যাটাগরি তৈরি করুন</Text>
+                  <View style={styles.catInputRow}>
+                    <TextInput
+                      style={styles.catTextInput}
+                      placeholder="যেমন: ময়লা পরিষ্কার, পানি বিল..."
+                      placeholderTextColor="#777"
+                      value={newCategoryInput}
+                      onChangeText={setNewCategoryInput}
+                    />
+                    <TouchableOpacity
+                      style={styles.catAddSubmitBtn}
+                      onPress={handleCreateCategory}
+                    >
+                      <Text style={styles.catAddSubmitBtnText}>সংরক্ষণ</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.catHintText}>
+                    * শুধুমাত্র ক্যাটাগরির নাম লিখুন। খরচের পরিমাণ বা তারিখ দেওয়ার প্রয়োজন নেই।
+                  </Text>
+                </View>
+
+                {/* List of Existing Categories */}
+                <Text style={[styles.catSectionLabel, { marginTop: 14, marginBottom: 8 }]}>
+                  📋 বিদ্যমান ক্যাটাগরি তালিকা ({categories.length} টি)
+                </Text>
+                <View style={styles.catListContainer}>
+                  {categories.map((cat, idx) => {
+                    const displayLabel = cat.label.includes(' ') && cat.icon
+                      ? cat.label.replace(cat.icon + ' ', '')
+                      : cat.label;
+                    return (
+                      <View key={idx} style={styles.catListItem}>
+                        <View style={styles.catItemLeft}>
+                          <Text style={{ fontSize: 16 }}>{cat.icon || '📦'}</Text>
+                          <Text style={styles.catItemLabel}>{displayLabel}</Text>
+                        </View>
+                        {cat.isCustom ? (
+                          <TouchableOpacity
+                            style={styles.catDeleteBtn}
+                            onPress={() => handleDeleteCategory(cat.label)}
+                          >
+                            <Text style={styles.catDeleteBtnText}>🗑️ মুছুন</Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <View style={styles.catDefaultBadge}>
+                            <Text style={styles.catDefaultBadgeText}>ডিফল্ট</Text>
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+
+              <TouchableOpacity
+                style={styles.catDoneBtn}
+                onPress={() => setCategoryManagerVisible(false)}
+              >
+                <Text style={styles.catDoneBtnText}>সম্পন্ন</Text>
+              </TouchableOpacity>
+            </KeyboardAvoidingView>
+          </View>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
@@ -963,47 +1070,169 @@ const styles = StyleSheet.create({
     width: width * 0.9,
     maxHeight: '90%',
   },
-  inlineCatBox: {
-    backgroundColor: '#161616',
-    borderRadius: 12,
+  categoryHeaderBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#1E1E1E',
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#FFB703',
-    padding: 12,
-    marginTop: 4,
-    gap: 8,
   },
-  inlineCatTitle: {
+  categoryHeaderBtnText: {
+    color: '#FFB703',
     fontSize: 12,
     fontWeight: 'bold',
+  },
+  manageCategoriesInlineLink: {
     color: '#FFB703',
+    fontSize: 11,
+    fontWeight: '600',
   },
-  inlineCatRow: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-  },
-  inlineCatInput: {
+  catModalOverlay: {
     flex: 1,
-    height: 42,
-    backgroundColor: '#0D0D0D',
-    borderWidth: 1,
-    borderColor: '#333',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    color: '#FFFFFF',
-    fontSize: 13,
-  },
-  inlineCatAddBtn: {
-    backgroundColor: '#FFB703',
-    height: 42,
-    paddingHorizontal: 14,
-    borderRadius: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 16,
   },
-  inlineCatAddBtnText: {
+  catModalContent: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#121212',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#333333',
+    padding: 16,
+  },
+  catModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#262626',
+    marginBottom: 12,
+  },
+  catModalTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  catModalCloseBtn: {
+    padding: 6,
+  },
+  catModalCloseBtnText: {
+    color: '#888',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  catCreateCard: {
+    backgroundColor: '#1A1A1A',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#2D2D2D',
+  },
+  catSectionLabel: {
+    color: '#FFB703',
+    fontSize: 12,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  catInputRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  catTextInput: {
+    flex: 1,
+    backgroundColor: '#0D0D0D',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#3A3A3A',
+    paddingHorizontal: 12,
+    color: '#FFFFFF',
+    fontSize: 14,
+    height: 42,
+  },
+  catAddSubmitBtn: {
+    backgroundColor: '#FFB703',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: 42,
+  },
+  catAddSubmitBtnText: {
     color: '#000000',
     fontSize: 13,
+    fontWeight: 'bold',
+  },
+  catHintText: {
+    color: '#888',
+    fontSize: 10,
+    marginTop: 6,
+    fontStyle: 'italic',
+  },
+  catListContainer: {
+    gap: 6,
+  },
+  catListItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#181818',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: '#262626',
+  },
+  catItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  catItemLabel: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  catDefaultBadge: {
+    backgroundColor: '#262626',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  catDefaultBadgeText: {
+    color: '#888',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  catDeleteBtn: {
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderWidth: 1,
+    borderColor: '#EF4444',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  catDeleteBtnText: {
+    color: '#EF4444',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  catDoneBtn: {
+    backgroundColor: '#262626',
+    borderRadius: 10,
+    height: 42,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 14,
+  },
+  catDoneBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
     fontWeight: 'bold',
   },
   modalHeaderCircle: {

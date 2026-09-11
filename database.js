@@ -5970,6 +5970,132 @@ export function getLastEmployeePayment(employeeId) {
   }
 }
 
+export const DEFAULT_OWNER_EXPENSE_CATEGORIES = [
+  { label: '🏠 দোকান ভাড়া', icon: '🏠', isCustom: false },
+  { label: '⚡ বিদ্যুৎ বিল', icon: '⚡', isCustom: false },
+  { label: '🔥 গ্যাস বিল', icon: '🔥', isCustom: false },
+  { label: '🌐 ইন্টারনেট বিল', icon: '🌐', isCustom: false },
+  { label: '🛒 বাজার', icon: '🛒', isCustom: false },
+  { label: '🔧 মেরামত (Maintenance)', icon: '🔧', isCustom: false },
+  { label: '📦 অন্যান্য', icon: '📦', isCustom: false }
+];
+
+/**
+ * Get all available expense categories (default built-in + Owner-defined custom categories).
+ * @returns {Array<{label: string, icon: string, isCustom: boolean}>}
+ */
+export function getExpenseCategories() {
+  try {
+    const raw = getAppConfig('owner_custom_expense_categories');
+    let custom = [];
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          custom = parsed.map(c => {
+            if (typeof c === 'string') {
+              return { label: c, icon: '📦', isCustom: true };
+            }
+            return {
+              label: c.label || '',
+              icon: c.icon || '📦',
+              isCustom: true
+            };
+          }).filter(c => c.label.trim().length > 0);
+        }
+      } catch (e) {
+        console.error("[DB] Error parsing owner_custom_expense_categories JSON:", e);
+      }
+    }
+    return [...DEFAULT_OWNER_EXPENSE_CATEGORIES, ...custom];
+  } catch (err) {
+    console.error("[DB] getExpenseCategories error:", err);
+    return [...DEFAULT_OWNER_EXPENSE_CATEGORIES];
+  }
+}
+
+/**
+ * Add a new custom expense category.
+ * OWNER-ONLY: Strictly rejects admin, manager, guest, or invalid roles.
+ * Only saves category metadata to app_config; NEVER creates an owner_expenses transaction.
+ */
+export function addExpenseCategory(categoryName, userRole) {
+  const role = String(userRole || '').trim().toLowerCase();
+  if (role !== 'owner') {
+    throw new Error(`[Security] Unauthorized: Only Owner can create expense categories. Rejected role: '${userRole}'`);
+  }
+
+  const cleaned = String(categoryName || '').trim();
+  if (!cleaned) {
+    throw new Error("Category name cannot be empty.");
+  }
+
+  const allCategories = getExpenseCategories();
+  const exists = allCategories.some(c => c.label.trim().toLowerCase() === cleaned.toLowerCase());
+  if (exists) {
+    return { success: false, message: "Category already exists", exists: true };
+  }
+
+  const raw = getAppConfig('owner_custom_expense_categories');
+  let custom = [];
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) custom = parsed;
+    } catch (e) {}
+  }
+
+  const newEntry = { label: cleaned, icon: '📦', isCustom: true };
+  const updated = [...custom, newEntry];
+  setAppConfig('owner_custom_expense_categories', JSON.stringify(updated));
+  enqueueSync('app_config', 'owner_custom_expense_categories', 'INSERT');
+
+  return { success: true, category: newEntry };
+}
+
+/**
+ * Delete a custom expense category.
+ * OWNER-ONLY: Strictly rejects admin, manager, guest, or invalid roles.
+ * Deleting a custom category does NOT delete historical owner_expenses records.
+ * Default categories cannot be deleted.
+ */
+export function deleteExpenseCategory(categoryName, userRole) {
+  const role = String(userRole || '').trim().toLowerCase();
+  if (role !== 'owner') {
+    throw new Error(`[Security] Unauthorized: Only Owner can delete expense categories. Rejected role: '${userRole}'`);
+  }
+
+  const cleaned = String(categoryName || '').trim();
+  if (!cleaned) {
+    throw new Error("Category name cannot be empty.");
+  }
+
+  // Guard against deleting built-in default categories
+  const isDefault = DEFAULT_OWNER_EXPENSE_CATEGORIES.some(c => c.label.trim().toLowerCase() === cleaned.toLowerCase());
+  if (isDefault) {
+    throw new Error("Default categories cannot be deleted.");
+  }
+
+  const raw = getAppConfig('owner_custom_expense_categories');
+  let custom = [];
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) custom = parsed;
+    } catch (e) {}
+  }
+
+  const updated = custom.filter(c => {
+    const lbl = typeof c === 'string' ? c : (c.label || '');
+    return lbl.trim().toLowerCase() !== cleaned.toLowerCase();
+  });
+
+  setAppConfig('owner_custom_expense_categories', JSON.stringify(updated));
+  enqueueSync('app_config', 'owner_custom_expense_categories', 'INSERT');
+
+  return { success: true };
+}
+
 export function saveOwnerExpense(expense) {
   try {
     const now = new Date().toISOString();
