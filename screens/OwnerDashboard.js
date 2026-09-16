@@ -16,6 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { exportSalesReportPDF, exportDepositReportPDF } from '../pdfHelper';
 import { formatDisplayDate, getBusinessDate } from '../database';
+import { TodaySalesCard, TotalCashCard, ActiveTablesCard, MonthlyTotalCard } from '../components/StatCard';
 
 const { width } = Dimensions.get('window');
 
@@ -555,34 +556,26 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
       <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollBody} contentContainerStyle={{ paddingBottom: 110 }}>
         {/* Horizontal Stats Row */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsContainer}>
-          <View style={[styles.statsCard, styles.cardGreen]}>
-            <View style={styles.statsCardHeader}><Text style={styles.statsCardTitle}>আজকের বিক্রয়</Text><Text style={styles.statsEmoji}>📈</Text></View>
-            <Text style={styles.statsCardAmount}>৳ {todaySale.toLocaleString()}</Text>
-            
-            <View style={{ marginVertical: 4 }}>
-              {bkashSale > 0 && <Text style={{ color: '#34D399', fontSize: 10 }}>বিকাশ: ৳{bkashSale.toLocaleString()}</Text>}
-              {nagadSale > 0 && <Text style={{ color: '#34D399', fontSize: 10 }}>নগদ: ৳{nagadSale.toLocaleString()}</Text>}
-              {rocketSale > 0 && <Text style={{ color: '#34D399', fontSize: 10 }}>রকেট: ৳{rocketSale.toLocaleString()}</Text>}
-            </View>
-            
-            <Text style={styles.statsCardSubGreen}>↑ {totalDoneCount} সফল অর্ডার</Text>
-          </View>
-          <View style={[styles.statsCard, styles.cardBlue]}>
-            <View style={styles.statsCardHeader}><Text style={styles.statsCardTitle}>মোট ক্যাশ</Text><Text style={styles.statsEmoji}>💹</Text></View>
-            <Text style={styles.statsCardAmount}>৳ {totalCash.toLocaleString()}</Text>
-            <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: 'bold', marginBottom: 2 }}>Cashbox: ৳ {(totalCash - (bkashSale + nagadSale + rocketSale)).toLocaleString()}</Text>
-            <Text style={styles.statsCardSubBlue}>বিক্রয় + ইজা - খরচ</Text>
-          </View>
-          <View style={[styles.statsCard, styles.cardOrange]}>
-            <View style={styles.statsCardHeader}><Text style={styles.statsCardTitle}>Active টেবিল</Text><Text style={styles.statsEmoji}>👥</Text></View>
-            <Text style={styles.statsCardAmount}>{totalActiveCount} / {tables.length}</Text>
-            <Text style={styles.statsCardSubOrange}>{totalActiveCount} টি ব্যস্ত আছে</Text>
-          </View>
-          <View style={[styles.statsCard, styles.cardYellow]}>
-            <View style={styles.statsCardHeader}><Text style={styles.statsCardTitle}>এই মাসের মোট</Text><Text style={styles.statsEmoji}>💰</Text></View>
-            <Text style={styles.statsCardAmount}>৳ {monthlyTotalSell.toLocaleString()}</Text>
-            <Text style={styles.statsCardSubYellow}>{getBengaliMonthRange()}</Text>
-          </View>
+          <TodaySalesCard
+            todaySale={todaySale}
+            bkashSale={bkashSale}
+            nagadSale={nagadSale}
+            rocketSale={rocketSale}
+            totalDoneCount={totalDoneCount}
+          />
+          <TotalCashCard
+            totalCash={totalCash}
+            bkashSale={bkashSale}
+            nagadSale={nagadSale}
+            rocketSale={rocketSale}
+          />
+          <ActiveTablesCard
+            activeCount={totalActiveCount}
+            totalTables={tables.length}
+          />
+          <MonthlyTotalCard
+            monthlyTotalSell={monthlyTotalSell}
+          />
         </ScrollView>
 
         {/* Table Grid */}
