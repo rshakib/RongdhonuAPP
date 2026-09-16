@@ -777,3 +777,4 @@ const styles = StyleSheet.create({
   calCloseBtn: { marginTop: 12, backgroundColor: '#222', paddingVertical: 8, borderRadius: 8, alignItems: 'center' },
   calCloseBtnText: { color: '#FFF', fontSize: 12 }
 });
+
