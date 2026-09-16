@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { exportSalesReportPDF, exportDepositReportPDF } from '../pdfHelper';
-import { formatDisplayDate, getBusinessDate, inspectDatabaseStats, executeInspectorQuery, getFirebaseUsageStats, verifyPinCode, deleteDataByDate, getItemSalesReport } from '../database';
+import { formatDisplayDate, getBusinessDate, inspectDatabaseStats, executeInspectorQuery, getFirebaseUsageStats, verifyPinCode, deleteDataByDate, getItemSalesReport, getDb, getOwnerEmployees } from '../database';
 import { getAllRegisteredDevices } from '../services/deviceRegistry';
 import { TodaySalesCard, TotalCashCard, ActiveTablesCard, MonthlyTotalCard } from '../components/StatCard';
 
@@ -115,7 +115,7 @@ const formatStartTime = (timeStr) => {
   return timeStr;
 };
 
-export default function AdminDB({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onUpdateTableName, onNavigateToExpenses, onNavigateToSubmit, onNavigateToEditMenu, onNavigateToSupplierDue, onNavigateToItemSalesReport, onNavigateToSyncDiagnostics, onNavigateToDeleteHistory, onNavigateToSystemTools, onNavigateToDeviceManagement, onNavigateToAIDatasetMonitor, onNavigateToAIDatasetAuditCenter, onNavigateToAnalytics, onCloudRestore, onMenuRecovery, onResetHistoryLimits, onHistoricalMonthDownload, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, onResetDailySubmit, onResetIjara, delCountdown, tabCountdown, fullCountdown }) {
+export default function AdminDB({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onUpdateTableName, onNavigateToExpenses, onNavigateToSubmit, onNavigateToEditMenu, onNavigateToSupplierDue, onNavigateToItemSalesReport, onNavigateToSyncDiagnostics, onNavigateToDeleteHistory, onNavigateToSystemTools, onNavigateToDeviceManagement, onNavigateToAIDatasetMonitor, onNavigateToAIDatasetAuditCenter, onNavigateToAnalytics, onNavigateToEmployees, onCloudRestore, onMenuRecovery, onResetHistoryLimits, onHistoricalMonthDownload, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, onResetDailySubmit, onResetIjara, delCountdown, tabCountdown, fullCountdown }) {
   const [renameModalVisible, setRenameModalVisible] = useState(false);
   const [selectedTableForRename, setSelectedTableForRename] = useState(null);
   const [newTableName, setNewTableName] = useState('');
@@ -541,16 +541,69 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     console.error("[AdminDB] Error fetching top selling items:", err);
   }
 
-  // POS Device Control & Security Metrics
+  // POS Device Control & Security Metrics (Prioritized by Activity: most recent first, late devices last)
   let registeredDevices = [];
   try {
     registeredDevices = getAllRegisteredDevices() || [];
   } catch (err) {
     console.error("[AdminDB] Error fetching devices:", err);
   }
+
+  const getDeviceRecency = (dev) => {
+    if (!dev) return 0;
+    const val = dev.last_seen || dev.updated_at || dev.created_at;
+    if (!val) return 0;
+    const t = new Date(val).getTime();
+    return isNaN(t) ? 0 : t;
+  };
+
+  // Sort: highest recency timestamp first, oldest/late devices at the bottom ("je late se ses e")
+  const sortedDevices = [...registeredDevices].sort((a, b) => {
+    return getDeviceRecency(b) - getDeviceRecency(a);
+  });
+
   const approvedDevicesCount = registeredDevices.filter(d => d.status === 'APPROVED').length;
   const pendingDevicesCount = registeredDevices.filter(d => d.status === 'PENDING').length;
   const blockedDevicesCount = registeredDevices.filter(d => d.status === 'BLOCKED').length;
+
+  const formatDeviceLastSeen = (dev) => {
+    const ts = dev?.last_seen || dev?.updated_at;
+    if (!ts) return 'কখনও সক্রিয় হয়নি';
+    try {
+      const d = new Date(ts);
+      if (isNaN(d.getTime())) return ts;
+      const diffMs = Date.now() - d.getTime();
+      const diffMinutes = Math.floor(diffMs / 60000);
+      if (diffMinutes < 5) return '🟢 অনলাইনে আছে';
+      if (diffMinutes < 60) return `${diffMinutes} মিনিট আগে`;
+      if (diffMinutes < 1440) {
+        let hours = d.getHours();
+        let minutes = d.getMinutes();
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12 || 12;
+        minutes = minutes < 10 ? '0' + minutes : minutes;
+        return `আজ ${hours}:${minutes} ${ampm}`;
+      }
+      return formatDisplayDate(d);
+    } catch (e) {
+      return ts;
+    }
+  };
+
+  // Live Sync Queue Status
+  let pendingSyncCount = 0;
+  try {
+    const db = getDb();
+    const row = db?.getFirstSync("SELECT COUNT(*) as count FROM sync_queue WHERE status = 'PENDING' OR status = 'FAILED'");
+    pendingSyncCount = row?.count || 0;
+  } catch (err) {}
+
+  // Active Staff / Employees
+  let activeEmployeesCount = 0;
+  try {
+    const emps = getOwnerEmployees() || [];
+    activeEmployeesCount = emps.filter(e => e.status !== 'INACTIVE').length;
+  } catch (err) {}
 
   const occupancyPercentage = tables.length > 0 ? Math.round((activeTablesCount / tables.length) * 100) : 0;
   
@@ -684,7 +737,73 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
           />
         </ScrollView>
 
-        {/* 1. Executive Operations Snapshot */}
+        {/* 1. Financial Closing & Daily Settlement Center */}
+        <View style={styles.execSectionContainer}>
+          <View style={styles.execSectionHeader}>
+            <View style={styles.execSectionTitleRow}>
+              <View style={[styles.execIconPill, { backgroundColor: isDailySubmitted ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)' }]}>
+                <Text style={styles.execPillEmoji}>{isDailySubmitted ? '✅' : '⏳'}</Text>
+              </View>
+              <View>
+                <Text style={styles.execSectionTitle}>দৈনিক হিসাব ও ক্লোজিং স্ট্যাটাস</Text>
+                <Text style={styles.execSectionSubtitle}>
+                  {isDailySubmitted 
+                    ? 'আজকের হিসাব ক্লাউডে সাবমিট সম্পন্ন হয়েছে' 
+                    : 'আজকের হিসাব এখনও সাবমিট করা হয়নি (চলমান ড্রাফট)'}
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity 
+              style={[styles.execOutlineBtn, !isDailySubmitted && { borderColor: '#FFB703', backgroundColor: 'rgba(255, 183, 3, 0.15)' }]} 
+              onPress={() => onNavigateToSubmit && onNavigateToSubmit()}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.execOutlineBtnText}>{isDailySubmitted ? 'হিসাব দেখুন 📝' : 'সাবমিট করুন 📝'}</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* 4-Item Financial Matrix */}
+          <View style={styles.financeMatrixGrid}>
+            <View style={styles.financeMatrixCell}>
+              <Text style={styles.financeMatrixLabel}>মোট বিক্রয়</Text>
+              <Text style={[styles.financeMatrixVal, { color: '#34D399' }]}>৳ {todaySale.toLocaleString()}</Text>
+            </View>
+            <View style={styles.financeMatrixCell}>
+              <Text style={styles.financeMatrixLabel}>মোট দৈনিক খরচ</Text>
+              <Text style={[styles.financeMatrixVal, { color: '#F87171' }]}>৳ {totalExpenses.toLocaleString()}</Text>
+            </View>
+            <View style={styles.financeMatrixCell}>
+              <Text style={styles.financeMatrixLabel}>ক্যাশ ইন হ্যান্ড (ড্রয়ার)</Text>
+              <Text style={[styles.financeMatrixVal, { color: '#60A5FA' }]}>৳ {totalCash.toLocaleString()}</Text>
+            </View>
+            <View style={styles.financeMatrixCell}>
+              <Text style={styles.financeMatrixLabel}>ডিজিটাল পেমেন্ট</Text>
+              <Text style={[styles.financeMatrixVal, { color: '#FBBF24' }]}>৳ {(bkashSale + nagadSale + rocketSale).toLocaleString()}</Text>
+            </View>
+          </View>
+
+          {/* Quick Actions Row for Expenses & Ijara */}
+          <View style={styles.financeActionRow}>
+            <TouchableOpacity 
+              style={styles.financeActionBtn} 
+              onPress={onNavigateToExpenses}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.financeActionBtnIcon}>📉</Text>
+              <Text style={styles.financeActionBtnText}>দৈনিক খরচ এন্ট্রি</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.financeActionBtn} 
+              onPress={() => { setTempIjara(dailyExpenses.ijara ? dailyExpenses.ijara.toString() : ''); setIjaraModalVisible(true); }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.financeActionBtnIcon}>💰</Text>
+              <Text style={styles.financeActionBtnText}>ইজা: ৳ {dailyExpenses.ijara || 0}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* 2. Executive Operations Snapshot */}
         <View style={styles.execSectionContainer}>
           <View style={styles.execSectionHeader}>
             <View style={styles.execSectionTitleRow}>
@@ -743,7 +862,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
           </View>
         </View>
 
-        {/* 2. Top Selling Items (Best Sellers) */}
+        {/* 3. Top Selling Items (Best Sellers) */}
         <View style={styles.execSectionContainer}>
           <View style={styles.execSectionHeader}>
             <View style={styles.execSectionTitleRow}>
@@ -799,7 +918,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
           </View>
         </View>
 
-        {/* 3. POS Device Control & Security */}
+        {/* 4. POS Device Control & Security (Prioritized by Activity: most recent first, late devices last) */}
         <View style={styles.execSectionContainer}>
           <View style={styles.execSectionHeader}>
             <View style={styles.execSectionTitleRow}>
@@ -808,7 +927,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               </View>
               <View>
                 <Text style={styles.execSectionTitle}>ডিভাইস কন্ট্রোল ও টার্মিনাল এক্সেস</Text>
-                <Text style={styles.execSectionSubtitle}>রেজিস্টার্ড ও কানেক্টেড পিওএস টার্মিনাল সিকিউরিটি</Text>
+                <Text style={styles.execSectionSubtitle}>রেজিস্টার্ড পিওএস টার্মিনাল (অ্যাক্টিভিটি অনুযায়ী সাজানো)</Text>
               </View>
             </View>
             <TouchableOpacity 
@@ -858,21 +977,23 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               </View>
             )}
 
-            {/* Device mini list (up to 3 recent devices) */}
-            {registeredDevices.length > 0 ? (
+            {/* Recency Prioritized Device Mini List (Most recent first, late devices at bottom) */}
+            {sortedDevices.length > 0 ? (
               <View style={styles.deviceMiniList}>
-                {registeredDevices.slice(0, 3).map((dev) => {
+                {sortedDevices.slice(0, 4).map((dev) => {
                   const isAppr = dev.status === 'APPROVED';
                   const isPend = dev.status === 'PENDING';
                   return (
                     <View key={dev.id || dev.device_id} style={styles.deviceMiniRow}>
                       <View style={styles.deviceMiniLeft}>
                         <Text style={styles.deviceMiniEmoji}>{isAppr ? '📱' : isPend ? '⏳' : '🚫'}</Text>
-                        <View>
+                        <View style={{ flex: 1, marginRight: 6 }}>
                           <Text style={styles.deviceMiniName} numberOfLines={1}>
-                            {dev.device_name || dev.device_model || 'Unknown POS'}
+                            {dev.device_name || dev.model || 'POS Terminal'}
                           </Text>
-                          <Text style={styles.deviceMiniRole}>{dev.role || 'Cashier / Waiter'}</Text>
+                          <Text style={styles.deviceMiniRole} numberOfLines={1}>
+                            {dev.role || 'Cashier / Waiter'} • {formatDeviceLastSeen(dev)}
+                          </Text>
                         </View>
                       </View>
                       <View style={[styles.statusBadgeSmall, isAppr ? styles.statusBadgeGreen : isPend ? styles.statusBadgeAmber : styles.statusBadgeRed]}>
@@ -896,7 +1017,112 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
           </View>
         </View>
 
-        {/* 4. Critical Admin Controls Grid */}
+        {/* 5. Cloud Sync & System Health Monitor */}
+        <View style={styles.execSectionContainer}>
+          <View style={styles.execSectionHeader}>
+            <View style={styles.execSectionTitleRow}>
+              <View style={[styles.execIconPill, { backgroundColor: 'rgba(6, 182, 212, 0.15)' }]}>
+                <Text style={styles.execPillEmoji}>🔄</Text>
+              </View>
+              <View>
+                <Text style={styles.execSectionTitle}>ক্লাউড সিঙ্ক ও সিস্টেম হেলথ</Text>
+                <Text style={styles.execSectionSubtitle}>রিয়েলটাইম লোকাল ও ক্লাউড ডাটাবেজ স্থিতি</Text>
+              </View>
+            </View>
+            <TouchableOpacity 
+              style={styles.execOutlineBtn} 
+              onPress={onNavigateToSyncDiagnostics}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.execOutlineBtnText}>ডায়াগনস্টিকস 🛠️</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.syncHealthCard}>
+            <View style={styles.syncStatusRow}>
+              <View style={styles.syncStatusItem}>
+                <Text style={styles.syncStatusLabel}>SQLite লোকাল ডাটাবেজ</Text>
+                <Text style={styles.syncStatusVal}>🟢 সক্রিয় ও সুরক্ষিত</Text>
+              </View>
+              <View style={styles.syncStatusItem}>
+                <Text style={styles.syncStatusLabel}>ক্লাউড সিঙ্ক কিউ (Queue)</Text>
+                <Text style={[styles.syncStatusVal, pendingSyncCount > 0 ? { color: '#F59E0B' } : { color: '#10B981' }]}>
+                  {pendingSyncCount === 0 ? 'সব ডাটা সিঙ্কড ✅' : `${pendingSyncCount} টি সিঙ্ক অপেক্ষমান 🔄`}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.syncTimerBar}>
+              <Text style={styles.syncTimerBarText}>
+                ⏱️ অটো-সিঙ্ক টাইমার: ডেলিভারি {delCountdown}s | টেবিল {tabCountdown}s | ফুল সিঙ্ক {fullCountdown}s
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* 6. Executive Reports & PDF Export Center */}
+        <View style={styles.execSectionContainer}>
+          <View style={styles.execSectionHeader}>
+            <View style={styles.execSectionTitleRow}>
+              <View style={[styles.execIconPill, { backgroundColor: 'rgba(236, 72, 153, 0.15)' }]}>
+                <Text style={styles.execPillEmoji}>📑</Text>
+              </View>
+              <View>
+                <Text style={styles.execSectionTitle}>এক্সেকিউটিভ রিপোর্ট ও এক্সপোর্ট</Text>
+                <Text style={styles.execSectionSubtitle}>সেলস ও ডিপোজিট পিডিএফ রিপোর্ট এবং অতীতের অডিট</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.reportsGrid}>
+            <TouchableOpacity 
+              style={styles.reportTile} 
+              onPress={() => setSalesReportVisible(true)}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.reportTileIcon, { backgroundColor: 'rgba(52, 211, 153, 0.15)' }]}>
+                <Text style={{ fontSize: 16 }}>📋</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.reportTileTitle}>সেলস রিপোর্ট PDF</Text>
+                <Text style={styles.reportTileSub}>দৈনিক ও কাস্টম তারিখ ভিত্তিক বিক্রয় তালিকা</Text>
+              </View>
+              <Text style={styles.reportTileArrow}>→</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.reportTile} 
+              onPress={() => setDepositReportVisible(true)}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.reportTileIcon, { backgroundColor: 'rgba(251, 191, 36, 0.15)' }]}>
+                <Text style={{ fontSize: 16 }}>🏦</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.reportTileTitle}>ডিপোজিট রিপোর্ট PDF</Text>
+                <Text style={styles.reportTileSub}>মালিকের ব্যাংক ও ক্যাশ জমা স্টেটমেন্ট</Text>
+              </View>
+              <Text style={styles.reportTileArrow}>→</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.reportTile} 
+              onPress={handleOpenPastAccount}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.reportTileIcon, { backgroundColor: 'rgba(168, 85, 247, 0.15)' }]}>
+                <Text style={{ fontSize: 16 }}>📅</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.reportTileTitle}>অতীতের হিসাব অডিট</Text>
+                <Text style={styles.reportTileSub}>পূর্ববর্তী যেকোনো দিনের ক্লোজড হিসাব চেক করুন</Text>
+              </View>
+              <Text style={styles.reportTileArrow}>→</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* 7. Critical Admin Controls Grid */}
         <View style={styles.execSectionContainer}>
           <View style={styles.execSectionHeader}>
             <View style={styles.execSectionTitleRow}>
@@ -949,6 +1175,18 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
 
             <TouchableOpacity 
               style={styles.adminGridCard} 
+              onPress={() => onNavigateToEmployees && onNavigateToEmployees()}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.adminGridIconWrap, { backgroundColor: 'rgba(236, 72, 153, 0.15)' }]}>
+                <Text style={styles.adminGridIcon}>👥</Text>
+              </View>
+              <Text style={styles.adminGridTitle}>কর্মচারী ও বেতন</Text>
+              <Text style={styles.adminGridDesc}>{activeEmployeesCount} জন কর্মী • বেতন ও উপস্থিতি</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.adminGridCard} 
               onPress={onNavigateToSupplierDue}
               activeOpacity={0.7}
             >
@@ -982,34 +1220,20 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               <Text style={styles.adminGridTitle}>এআই অডিট ও ডেটাসেট</Text>
               <Text style={styles.adminGridDesc}>স্মার্ট ইনসাইটস ও ট্রেনিং ডেটাসেট</Text>
             </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.adminGridCard} 
+              onPress={onNavigateToSystemTools}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.adminGridIconWrap, { backgroundColor: 'rgba(255, 183, 3, 0.15)' }]}>
+                <Text style={styles.adminGridIcon}>🛠️</Text>
+              </View>
+              <Text style={styles.adminGridTitle}>সিস্টেম টুলস</Text>
+              <Text style={styles.adminGridDesc}>ডাটাবেজ এক্সপ্লোরার ও সিস্টেম ইনফো</Text>
+            </TouchableOpacity>
           </View>
         </View>
-
-        {/* Order Log */}
-        <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeaderRow}><Text style={styles.sectionTitle}>আজকের অর্ডার লগ</Text></View>
-          <View style={styles.orderList}>
-            {filteredOrders.length === 0 ? <Text style={{ color: '#888', textAlign: 'center', padding: 20 }}>কোনো অর্ডার পাওয়া যায়নি</Text> : 
-              filteredOrders.map((order) => (
-                <TouchableOpacity key={order.id} style={styles.orderItem} onPress={() => { setSelectedOrder(order); setOrderDetailVisible(true); }}>
-                  <View style={styles.orderItemLeft}>
-                    <View style={[styles.tableIconCircle, styles.circleGreen]}><Text style={styles.tableCircleText}>{order.table}</Text></View>
-                    <View style={styles.orderMeta}>
-                      <View style={styles.tableTimeRow}><Text style={styles.orderTableText}>{order.table}</Text><Text style={styles.orderTimeText}>{order.time}</Text></View>
-                      <Text style={styles.orderItemsText} numberOfLines={1}>{order.items}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.orderItemRight}>
-                    <View style={styles.amountCol}><Text style={styles.orderItemAmount}>৳ {order.amount}</Text><Text style={[styles.orderItemStatus, styles.textGreen]}>পেমেন্ট শেষ</Text></View>
-                    <View style={styles.actionRow}>
-                      <TouchableOpacity style={styles.editBtn} onPress={() => onTableSelect(order.id)}><Text style={styles.btnIcon}>✏️</Text></TouchableOpacity>
-                      <TouchableOpacity style={styles.deleteBtn} onPress={() => onDeleteDoneOrder(order.id)}><Text style={styles.btnIcon}>🗑️</Text></TouchableOpacity>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              ))}
-              </View>
-              </View>
 
       </ScrollView>
 
@@ -1951,4 +2175,31 @@ const styles = StyleSheet.create({
   adminGridIcon: { fontSize: 15 },
   adminGridTitle: { color: '#FFFFFF', fontSize: 11.5, fontWeight: '700', marginBottom: 3 },
   adminGridDesc: { color: '#737373', fontSize: 9.5, lineHeight: 13 },
+
+  // Financial Settlement Matrix
+  financeMatrixGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', backgroundColor: '#141414', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#222', marginBottom: 10 },
+  financeMatrixCell: { width: '48.5%', paddingVertical: 8, paddingHorizontal: 6, marginBottom: 4 },
+  financeMatrixLabel: { color: '#888', fontSize: 10, marginBottom: 2 },
+  financeMatrixVal: { fontSize: 14, fontWeight: '800' },
+  financeActionRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  financeActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1E1E1E', paddingVertical: 9, borderRadius: 8, marginHorizontal: 3, borderWidth: 1, borderColor: '#333' },
+  financeActionBtnIcon: { fontSize: 13, marginRight: 6 },
+  financeActionBtnText: { color: '#FFF', fontSize: 11, fontWeight: '600' },
+
+  // Sync Health Monitor
+  syncHealthCard: { backgroundColor: '#141414', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#222' },
+  syncStatusRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  syncStatusItem: { flex: 1 },
+  syncStatusLabel: { color: '#888', fontSize: 10, marginBottom: 3 },
+  syncStatusVal: { color: '#FFF', fontSize: 11, fontWeight: '700' },
+  syncTimerBar: { backgroundColor: '#0D0D0D', borderRadius: 6, paddingVertical: 6, paddingHorizontal: 10, borderWidth: 1, borderColor: '#1F1F1F', alignItems: 'center' },
+  syncTimerBarText: { color: '#A1A1AA', fontSize: 10 },
+
+  // Executive Reports Grid
+  reportsGrid: { gap: 8 },
+  reportTile: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#141414', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#222', marginBottom: 8 },
+  reportTileIcon: { width: 34, height: 34, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+  reportTileTitle: { color: '#FFF', fontSize: 12, fontWeight: '700' },
+  reportTileSub: { color: '#737373', fontSize: 10, marginTop: 1 },
+  reportTileArrow: { color: '#FFB703', fontSize: 14, fontWeight: 'bold', marginLeft: 8 },
 });

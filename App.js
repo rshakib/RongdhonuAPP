@@ -1583,6 +1583,7 @@ export default function App() {
                 onNavigateToAIDatasetMonitor={() => setCurrentScreen('AI_DATASET_MONITOR')}
                 onNavigateToAIDatasetAuditCenter={() => setCurrentScreen('AI_DATASET_AUDIT_CENTER')}
                 onNavigateToAnalytics={() => setCurrentScreen('ADMIN_ANALYTICS')}
+                onNavigateToEmployees={() => setCurrentScreen('EMPLOYEE_LIST')}
                 onCloudRestore={handleCloudRestore}
                 onMenuRecovery={handleMenuRecovery}
                 onResetHistoryLimits={handleResetHistoryLimits}
@@ -2104,7 +2105,7 @@ export default function App() {
         return (
           <EmployeeListScreen
             userRole={userRole}
-            onBack={() => setCurrentScreen('OWNER_FINANCE_DASHBOARD')}
+            onBack={() => setCurrentScreen(String(userRole || '').toLowerCase().trim() === 'admin' ? 'DASHBOARD' : 'OWNER_FINANCE_DASHBOARD')}
             onAddEmployee={() => {
               setSelectedEmployeeId(null);
               setCurrentScreen('ADD_EMPLOYEE');
