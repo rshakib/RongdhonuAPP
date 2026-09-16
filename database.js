@@ -6321,8 +6321,7 @@ export async function fetchActivityLogsForDate(businessDate) {
             op: 'EQUAL',
             value: { stringValue: businessDate }
           }
-        },
-        orderBy: [{ field: { fieldPath: 'timestamp' }, direction: 'DESCENDING' }]
+        }
       }
     };
 
@@ -6333,7 +6332,8 @@ export async function fetchActivityLogsForDate(businessDate) {
     });
 
     if (!res.ok) {
-      console.warn(`[ActivitySync] Cloud fetch returned status ${res.status}`);
+      const errText = await res.text();
+      console.warn(`[ActivitySync] Cloud fetch returned status ${res.status}: ${errText}`);
       return { success: false, count: 0 };
     }
 
