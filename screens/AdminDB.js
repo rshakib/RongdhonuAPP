@@ -562,7 +562,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     return getDeviceRecency(b) - getDeviceRecency(a);
   });
 
-  const approvedDevicesCount = registeredDevices.filter(d => d.status === 'APPROVED').length;
+  const approvedDevicesCount = registeredDevices.filter(d => d.status === 'ACTIVE' || d.status === 'APPROVED').length;
   const pendingDevicesCount = registeredDevices.filter(d => d.status === 'PENDING').length;
   const blockedDevicesCount = registeredDevices.filter(d => d.status === 'BLOCKED').length;
 
@@ -734,17 +734,17 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               <View style={[styles.execIconPill, { backgroundColor: isDailySubmitted ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)' }]}>
                 <Text style={styles.execPillEmoji}>{isDailySubmitted ? '✅' : '⏳'}</Text>
               </View>
-              <View>
-                <Text style={styles.execSectionTitle}>দৈনিক হিসাব ও ক্লোজিং স্ট্যাটাস</Text>
-                <Text style={styles.execSectionSubtitle}>
+              <View style={styles.execTitleTextCol}>
+                <Text style={styles.execSectionTitle} numberOfLines={1}>দৈনিক হিসাব ও ক্লোজিং</Text>
+                <Text style={styles.execSectionSubtitle} numberOfLines={1}>
                   {isDailySubmitted 
-                    ? 'আজকের হিসাব ক্লাউডে সাবমিট সম্পন্ন হয়েছে' 
-                    : 'আজকের হিসাব এখনও সাবমিট করা হয়নি (চলমান ড্রাফট)'}
+                    ? 'আজকের ক্লোজিং সম্পন্ন ✅' 
+                    : 'চলমান ড্রাফট হিসাব ⏳'}
                 </Text>
               </View>
             </View>
-            <View style={[styles.statusBadgeSmall, isDailySubmitted ? styles.statusBadgeGreen : styles.statusBadgeAmber, { paddingHorizontal: 8, paddingVertical: 4 }]}>
-              <Text style={[styles.statusBadgeTextSmall, isDailySubmitted ? styles.textGreen : styles.textAmber, { fontSize: 11 }]}>
+            <View style={[styles.statusBadgeSmall, isDailySubmitted ? styles.statusBadgeGreen : styles.statusBadgeAmber, { paddingHorizontal: 8, paddingVertical: 4, flexShrink: 0 }]}>
+              <Text style={[styles.statusBadgeTextSmall, isDailySubmitted ? styles.textGreen : styles.textAmber, { fontSize: 10.5 }]}>
                 {isDailySubmitted ? 'সাবমিট সম্পন্ন ✅' : 'চলমান ড্রাফট ⏳'}
               </Text>
             </View>
@@ -790,9 +790,9 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               <View style={[styles.execIconPill, { backgroundColor: 'rgba(59, 130, 246, 0.15)' }]}>
                 <Text style={styles.execPillEmoji}>🏢</Text>
               </View>
-              <View>
-                <Text style={styles.execSectionTitle}>লাইভ ফ্লোর ও অপারেশনাল অবস্থা</Text>
-                <Text style={styles.execSectionSubtitle}>রিয়েলটাইম রেস্টুরেন্ট টেবিল ও ডেলিভারি ট্র্যাকার</Text>
+              <View style={styles.execTitleTextCol}>
+                <Text style={styles.execSectionTitle} numberOfLines={1}>লাইভ ফ্লোর মনিটর</Text>
+                <Text style={styles.execSectionSubtitle} numberOfLines={1}>টেবিল ও ডেলিভারি স্থিতি</Text>
               </View>
             </View>
             <TouchableOpacity 
@@ -849,9 +849,9 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               <View style={[styles.execIconPill, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
                 <Text style={styles.execPillEmoji}>🔥</Text>
               </View>
-              <View>
-                <Text style={styles.execSectionTitle}>শীর্ষ বিক্রিত খাবার (আজকে)</Text>
-                <Text style={styles.execSectionSubtitle}>সর্বোচ্চ বিক্রিত সেরা ৫টি খাবার ও মোট রেভিনিউ</Text>
+              <View style={styles.execTitleTextCol}>
+                <Text style={styles.execSectionTitle} numberOfLines={1}>শীর্ষ বিক্রিত খাবার</Text>
+                <Text style={styles.execSectionSubtitle} numberOfLines={1}>আজকের সেরা ৫টি খাবার</Text>
               </View>
             </View>
             <TouchableOpacity 
@@ -905,9 +905,9 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               <View style={[styles.execIconPill, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
                 <Text style={styles.execPillEmoji}>🛡️</Text>
               </View>
-              <View>
-                <Text style={styles.execSectionTitle}>ডিভাইস কন্ট্রোল ও টার্মিনাল এক্সেস</Text>
-                <Text style={styles.execSectionSubtitle}>রেজিস্টার্ড পিওএস টার্মিনাল (অ্যাক্টিভিটি অনুযায়ী সাজানো)</Text>
+              <View style={styles.execTitleTextCol}>
+                <Text style={styles.execSectionTitle} numberOfLines={1}>ডিভাইস ও পস কন্ট্রোল</Text>
+                <Text style={styles.execSectionSubtitle} numberOfLines={1}>রেজিস্টার্ড পিওএস সিকিউরিটি</Text>
               </View>
             </View>
             <TouchableOpacity 
@@ -961,13 +961,13 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
             {sortedDevices.length > 0 ? (
               <View style={styles.deviceMiniList}>
                 {sortedDevices.slice(0, 4).map((dev) => {
-                  const isAppr = dev.status === 'APPROVED';
+                  const isAppr = dev.status === 'ACTIVE' || dev.status === 'APPROVED';
                   const isPend = dev.status === 'PENDING';
                   return (
                     <View key={dev.id || dev.device_id} style={styles.deviceMiniRow}>
                       <View style={styles.deviceMiniLeft}>
                         <Text style={styles.deviceMiniEmoji}>{isAppr ? '📱' : isPend ? '⏳' : '🚫'}</Text>
-                        <View style={{ flex: 1, marginRight: 6 }}>
+                        <View style={{ flex: 1, marginRight: 6, minWidth: 0 }}>
                           <Text style={styles.deviceMiniName} numberOfLines={1}>
                             {dev.device_name || dev.model || 'POS Terminal'}
                           </Text>
@@ -1004,9 +1004,9 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               <View style={[styles.execIconPill, { backgroundColor: 'rgba(6, 182, 212, 0.15)' }]}>
                 <Text style={styles.execPillEmoji}>🔄</Text>
               </View>
-              <View>
-                <Text style={styles.execSectionTitle}>ক্লাউড সিঙ্ক ও সিস্টেম হেলথ</Text>
-                <Text style={styles.execSectionSubtitle}>রিয়েলটাইম লোকাল ও ক্লাউড ডাটাবেজ স্থিতি</Text>
+              <View style={styles.execTitleTextCol}>
+                <Text style={styles.execSectionTitle} numberOfLines={1}>ক্লাউড সিঙ্ক ও হেলথ</Text>
+                <Text style={styles.execSectionSubtitle} numberOfLines={1}>ডাটাবেজ সিঙ্ক স্থিতি</Text>
               </View>
             </View>
             <TouchableOpacity 
@@ -1047,9 +1047,9 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               <View style={[styles.execIconPill, { backgroundColor: 'rgba(236, 72, 153, 0.15)' }]}>
                 <Text style={styles.execPillEmoji}>📑</Text>
               </View>
-              <View>
-                <Text style={styles.execSectionTitle}>এক্সেকিউটিভ রিপোর্ট ও এক্সপোর্ট</Text>
-                <Text style={styles.execSectionSubtitle}>সেলস ও ডিপোজিট পিডিএফ রিপোর্ট এবং অতীতের অডিট</Text>
+              <View style={styles.execTitleTextCol}>
+                <Text style={styles.execSectionTitle} numberOfLines={1}>রিপোর্ট ও অতীত অডিট</Text>
+                <Text style={styles.execSectionSubtitle} numberOfLines={1}>সেলস ও ডিপোজিট পিডিএফ</Text>
               </View>
             </View>
           </View>
@@ -1063,9 +1063,9 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               <View style={[styles.reportTileIcon, { backgroundColor: 'rgba(52, 211, 153, 0.15)' }]}>
                 <Text style={{ fontSize: 16 }}>📋</Text>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.reportTileTitle}>সেলস রিপোর্ট PDF</Text>
-                <Text style={styles.reportTileSub}>দৈনিক ও কাস্টম তারিখ ভিত্তিক বিক্রয় তালিকা</Text>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.reportTileTitle} numberOfLines={1}>সেলস রিপোর্ট PDF</Text>
+                <Text style={styles.reportTileSub} numberOfLines={1}>দৈনিক ও কাস্টম তারিখ ভিত্তিক বিক্রয় তালিকা</Text>
               </View>
               <Text style={styles.reportTileArrow}>→</Text>
             </TouchableOpacity>
@@ -1078,9 +1078,9 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               <View style={[styles.reportTileIcon, { backgroundColor: 'rgba(251, 191, 36, 0.15)' }]}>
                 <Text style={{ fontSize: 16 }}>🏦</Text>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.reportTileTitle}>ডিপোজিট রিপোর্ট PDF</Text>
-                <Text style={styles.reportTileSub}>মালিকের ব্যাংক ও ক্যাশ জমা স্টেটমেন্ট</Text>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.reportTileTitle} numberOfLines={1}>ডিপোজিট রিপোর্ট PDF</Text>
+                <Text style={styles.reportTileSub} numberOfLines={1}>মালিকের ব্যাংক ও ক্যাশ জমা স্টেটমেন্ট</Text>
               </View>
               <Text style={styles.reportTileArrow}>→</Text>
             </TouchableOpacity>
@@ -1093,9 +1093,9 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               <View style={[styles.reportTileIcon, { backgroundColor: 'rgba(168, 85, 247, 0.15)' }]}>
                 <Text style={{ fontSize: 16 }}>📅</Text>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.reportTileTitle}>অতীতের হিসাব অডিট</Text>
-                <Text style={styles.reportTileSub}>পূর্ববর্তী যেকোনো দিনের ক্লোজড হিসাব চেক করুন</Text>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.reportTileTitle} numberOfLines={1}>অতীতের হিসাব অডিট</Text>
+                <Text style={styles.reportTileSub} numberOfLines={1}>পূর্ববর্তী যেকোনো দিনের ক্লোজড হিসাব চেক করুন</Text>
               </View>
               <Text style={styles.reportTileArrow}>→</Text>
             </TouchableOpacity>
@@ -1109,9 +1109,9 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               <View style={[styles.execIconPill, { backgroundColor: 'rgba(168, 85, 247, 0.15)' }]}>
                 <Text style={styles.execPillEmoji}>⚙️</Text>
               </View>
-              <View>
-                <Text style={styles.execSectionTitle}>জরুরি অ্যাডমিন কন্ট্রোল ও ম্যানেজমেন্ট</Text>
-                <Text style={styles.execSectionSubtitle}>গুরুত্বপূর্ণ ফিচার ও সিস্টেম টুলস কুইক এক্সেস</Text>
+              <View style={styles.execTitleTextCol}>
+                <Text style={styles.execSectionTitle} numberOfLines={1}>জরুরি অ্যাডমিন কন্ট্রোল</Text>
+                <Text style={styles.execSectionSubtitle} numberOfLines={1}>সিস্টেম টুলস ও ম্যানেজমেন্ট</Text>
               </View>
             </View>
           </View>
@@ -2050,30 +2050,31 @@ const styles = StyleSheet.create({
 
   // Executive Command Center Styles
   execSectionContainer: { backgroundColor: '#0D0D0D', borderRadius: 14, borderWidth: 1, borderColor: '#1A1A1A', padding: 14, marginHorizontal: 16, marginBottom: 14 },
-  execSectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  execSectionTitleRow: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 },
-  execIconPill: { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+  execSectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 8 },
+  execSectionTitleRow: { flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0, marginRight: 6 },
+  execTitleTextCol: { flex: 1, minWidth: 0, justifyContent: 'center' },
+  execIconPill: { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginRight: 9, flexShrink: 0 },
   execPillEmoji: { fontSize: 16 },
-  execSectionTitle: { color: '#FFFFFF', fontSize: 13, fontWeight: '700', letterSpacing: 0.2 },
-  execSectionSubtitle: { color: '#737373', fontSize: 10, marginTop: 1 },
-  execOutlineBtn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255, 183, 3, 0.4)', backgroundColor: 'rgba(255, 183, 3, 0.08)' },
+  execSectionTitle: { color: '#FFFFFF', fontSize: 13, fontWeight: '700', letterSpacing: 0.2, lineHeight: 18 },
+  execSectionSubtitle: { color: '#888888', fontSize: 10, marginTop: 1, lineHeight: 14 },
+  execOutlineBtn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255, 183, 3, 0.4)', backgroundColor: 'rgba(255, 183, 3, 0.08)', flexShrink: 0 },
   execOutlineBtnText: { color: '#FFB703', fontSize: 11, fontWeight: '600' },
   occupancyCard: { backgroundColor: '#141414', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#222' },
   occupancyStatsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  occupancyMetric: { flex: 1 },
+  occupancyMetric: { flex: 1, minWidth: 0 },
   occupancyMetricLabel: { color: '#888', fontSize: 11, marginBottom: 2 },
   occupancyValueRow: { flexDirection: 'row', alignItems: 'baseline' },
   occupancyValueBig: { color: '#FFFFFF', fontSize: 18, fontWeight: '800' },
   occupancyValueSub: { color: '#A3A3A3', fontSize: 12, fontWeight: '500' },
-  occupancyBadge: { backgroundColor: 'rgba(16, 185, 129, 0.15)', borderWidth: 1, borderColor: 'rgba(16, 185, 129, 0.3)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  occupancyBadge: { backgroundColor: 'rgba(16, 185, 129, 0.15)', borderWidth: 1, borderColor: 'rgba(16, 185, 129, 0.3)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, flexShrink: 0 },
   occupancyBadgeText: { color: '#10B981', fontSize: 11, fontWeight: '700' },
   occupancyTrack: { height: 6, backgroundColor: '#262626', borderRadius: 3, overflow: 'hidden', marginBottom: 10 },
   occupancyFill: { height: '100%', backgroundColor: '#10B981', borderRadius: 3 },
-  liveDeliveriesRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, borderTopWidth: 1, borderColor: '#1F1F1F' },
-  deliveryIndicator: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  dotLive: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
-  liveDeliveryText: { color: '#CCC', fontSize: 11 },
-  viewTablesActionBtn: { paddingVertical: 3, paddingHorizontal: 6 },
+  liveDeliveriesRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, borderTopWidth: 1, borderColor: '#1F1F1F', gap: 6 },
+  deliveryIndicator: { flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 },
+  dotLive: { width: 8, height: 8, borderRadius: 4, marginRight: 6, flexShrink: 0 },
+  liveDeliveryText: { color: '#CCC', fontSize: 11, flex: 1 },
+  viewTablesActionBtn: { paddingVertical: 3, paddingHorizontal: 6, flexShrink: 0 },
   viewTablesActionBtnText: { color: '#3B82F6', fontSize: 11, fontWeight: '600' },
   bestSellerContainer: { backgroundColor: '#141414', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#222' },
   emptyItemsNotice: { alignItems: 'center', paddingVertical: 18 },
@@ -2081,12 +2082,12 @@ const styles = StyleSheet.create({
   emptyItemsText: { color: '#CCC', fontSize: 12, fontWeight: '600', marginBottom: 2 },
   emptyItemsSub: { color: '#666', fontSize: 10, textAlign: 'center', paddingHorizontal: 20 },
   bestSellerRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderColor: '#1F1F1F' },
-  rankBadge: { width: 26, height: 26, borderRadius: 13, borderWidth: 1.2, justifyContent: 'center', alignItems: 'center', marginRight: 10, backgroundColor: 'rgba(255, 255, 255, 0.04)' },
+  rankBadge: { width: 26, height: 26, borderRadius: 13, borderWidth: 1.2, justifyContent: 'center', alignItems: 'center', marginRight: 10, backgroundColor: 'rgba(255, 255, 255, 0.04)', flexShrink: 0 },
   rankText: { fontSize: 10, fontWeight: '800' },
-  bestSellerInfo: { flex: 1, marginRight: 8 },
-  bestSellerName: { color: '#FFFFFF', fontSize: 12, fontWeight: '600' },
-  bestSellerCategory: { color: '#737373', fontSize: 10, marginTop: 1 },
-  bestSellerMetrics: { alignItems: 'flex-end' },
+  bestSellerInfo: { flex: 1, marginRight: 8, minWidth: 0 },
+  bestSellerName: { color: '#FFFFFF', fontSize: 12, fontWeight: '600', lineHeight: 16 },
+  bestSellerCategory: { color: '#737373', fontSize: 10, marginTop: 1, lineHeight: 14 },
+  bestSellerMetrics: { alignItems: 'flex-end', flexShrink: 0 },
   qtyBadge: { backgroundColor: 'rgba(16, 185, 129, 0.12)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginBottom: 2 },
   qtyBadgeText: { color: '#10B981', fontSize: 9, fontWeight: '700' },
   itemSalesAmount: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
@@ -2099,15 +2100,15 @@ const styles = StyleSheet.create({
   pendingDeviceAlert: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(245, 158, 11, 0.12)', borderWidth: 1, borderColor: 'rgba(245, 158, 11, 0.35)', borderRadius: 8, padding: 8, marginBottom: 10 },
   pendingDeviceAlertEmoji: { fontSize: 14, marginRight: 6 },
   pendingDeviceAlertText: { color: '#F59E0B', fontSize: 10, fontWeight: '600', flex: 1 },
-  pendingReviewBtn: { backgroundColor: '#F59E0B', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  pendingReviewBtn: { backgroundColor: '#F59E0B', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, flexShrink: 0 },
   pendingReviewBtnText: { color: '#000', fontSize: 10, fontWeight: '700' },
   deviceMiniList: { marginBottom: 10 },
-  deviceMiniRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 0.8, borderColor: '#1F1F1F' },
-  deviceMiniLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 },
-  deviceMiniEmoji: { fontSize: 14, marginRight: 8 },
-  deviceMiniName: { color: '#FFF', fontSize: 11, fontWeight: '600' },
-  deviceMiniRole: { color: '#737373', fontSize: 9 },
-  statusBadgeSmall: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 0.8 },
+  deviceMiniRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 0.8, borderColor: '#1F1F1F', gap: 6 },
+  deviceMiniLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 6, minWidth: 0 },
+  deviceMiniEmoji: { fontSize: 14, marginRight: 8, flexShrink: 0 },
+  deviceMiniName: { color: '#FFF', fontSize: 11, fontWeight: '600', lineHeight: 15 },
+  deviceMiniRole: { color: '#737373', fontSize: 9, lineHeight: 13 },
+  statusBadgeSmall: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 0.8, flexShrink: 0 },
   statusBadgeGreen: { backgroundColor: 'rgba(16, 185, 129, 0.12)', borderColor: 'rgba(16, 185, 129, 0.3)' },
   statusBadgeAmber: { backgroundColor: 'rgba(245, 158, 11, 0.12)', borderColor: 'rgba(245, 158, 11, 0.3)' },
   statusBadgeRed: { backgroundColor: 'rgba(239, 68, 68, 0.12)', borderColor: 'rgba(239, 68, 68, 0.3)' },
