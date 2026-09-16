@@ -712,8 +712,8 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
         <View style={{ width: 40 }} /> 
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollBody} contentContainerStyle={{ paddingBottom: 110 }}>
-        {/* Horizontal Stats Row */}
+      <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollBody} contentContainerStyle={{ paddingBottom: 30 }}>
+        {/* Horizontal Stats Row: Today's Sales and Monthly Total Only */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsContainer}>
           <TodaySalesCard
             todaySale={todaySale}
@@ -722,22 +722,12 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
             rocketSale={rocketSale}
             totalDoneCount={totalDoneCount}
           />
-          <TotalCashCard
-            totalCash={totalCash}
-            bkashSale={bkashSale}
-            nagadSale={nagadSale}
-            rocketSale={rocketSale}
-          />
-          <ActiveTablesCard
-            activeCount={totalActiveCount}
-            totalTables={tables.length}
-          />
           <MonthlyTotalCard
             monthlyTotalSell={monthlyTotalSell}
           />
         </ScrollView>
 
-        {/* 1. Financial Closing & Daily Settlement Center */}
+        {/* 1. Financial Closing & Daily Settlement Center (Read-Only Overview) */}
         <View style={styles.execSectionContainer}>
           <View style={styles.execSectionHeader}>
             <View style={styles.execSectionTitleRow}>
@@ -753,13 +743,11 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                 </Text>
               </View>
             </View>
-            <TouchableOpacity 
-              style={[styles.execOutlineBtn, !isDailySubmitted && { borderColor: '#FFB703', backgroundColor: 'rgba(255, 183, 3, 0.15)' }]} 
-              onPress={() => onNavigateToSubmit && onNavigateToSubmit()}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.execOutlineBtnText}>{isDailySubmitted ? 'হিসাব দেখুন 📝' : 'সাবমিট করুন 📝'}</Text>
-            </TouchableOpacity>
+            <View style={[styles.statusBadgeSmall, isDailySubmitted ? styles.statusBadgeGreen : styles.statusBadgeAmber, { paddingHorizontal: 8, paddingVertical: 4 }]}>
+              <Text style={[styles.statusBadgeTextSmall, isDailySubmitted ? styles.textGreen : styles.textAmber, { fontSize: 11 }]}>
+                {isDailySubmitted ? 'সাবমিট সম্পন্ন ✅' : 'চলমান ড্রাফট ⏳'}
+              </Text>
+            </View>
           </View>
 
           {/* 4-Item Financial Matrix */}
@@ -782,24 +770,16 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
             </View>
           </View>
 
-          {/* Quick Actions Row for Expenses & Ijara */}
-          <View style={styles.financeActionRow}>
-            <TouchableOpacity 
-              style={styles.financeActionBtn} 
-              onPress={onNavigateToExpenses}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.financeActionBtnIcon}>📉</Text>
-              <Text style={styles.financeActionBtnText}>দৈনিক খরচ এন্ট্রি</Text>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.financeActionBtn} 
-              onPress={() => { setTempIjara(dailyExpenses.ijara ? dailyExpenses.ijara.toString() : ''); setIjaraModalVisible(true); }}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.financeActionBtnIcon}>💰</Text>
-              <Text style={styles.financeActionBtnText}>ইজা: ৳ {dailyExpenses.ijara || 0}</Text>
-            </TouchableOpacity>
+          {/* Read-Only Info Row */}
+          <View style={styles.financeInfoRow}>
+            <View style={styles.financeInfoCard}>
+              <Text style={styles.financeInfoLabel}>শুরু ক্যাশ (ইজা):</Text>
+              <Text style={styles.financeInfoVal}>৳ {dailyExpenses.ijara || 0}</Text>
+            </View>
+            <View style={styles.financeInfoCard}>
+              <Text style={styles.financeInfoLabel}>চলমান ডেলিভারি চেঞ্জ:</Text>
+              <Text style={styles.financeInfoVal}>৳ {ongoingChangeMoney || 0}</Text>
+            </View>
           </View>
         </View>
 
@@ -1237,12 +1217,6 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
 
       </ScrollView>
 
-      {/* Floating Buttons */}
-      <View style={styles.fabContainer}>
-        <TouchableOpacity style={styles.fabItemUnified} onPress={onCreateDelivery}><Text style={styles.fabIconSmall}>🛵</Text><Text style={styles.fabLabelSmall}>ডেলিভারি</Text></TouchableOpacity>
-        <TouchableOpacity style={styles.fabItemUnified} onPress={onNavigateToExpenses}><Text style={styles.fabIconSmall}>📉</Text><Text style={styles.fabLabelSmall}>খরচ</Text></TouchableOpacity>
-        <TouchableOpacity style={[styles.fabItemUnified, styles.fabHighlight]} onPress={onNavigateToSubmit}><Text style={[styles.fabIconSmall, { color: '#000' }]}>📝</Text><Text style={[styles.fabLabelSmall, { color: '#000' }]}>সাবমিট</Text></TouchableOpacity>
-      </View>
 
       {/* MODALS */}
       {/* FLOOR & TABLE MANAGEMENT MODAL */}
@@ -1319,15 +1293,9 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                       </View>
                     </TouchableOpacity>
                   ))}
-                  <TouchableOpacity
-                    style={styles.emptyDeliveryPlaceholder}
-                    onPress={() => {
-                      setFloorModalVisible(false);
-                      onCreateDelivery();
-                    }}
-                  >
-                    <Text style={styles.emptyDeliveryText}>➕ নতুন ডেলিভারি শুরু করুন</Text>
-                  </TouchableOpacity>
+                  {deliveries.filter(d => d.status === 'BUSY').length === 0 && (
+                    <Text style={{ color: '#777', fontSize: 11, textAlign: 'center', paddingVertical: 12 }}>কোনো চলমান ডেলিভারি নেই</Text>
+                  )}
                 </View>
               </View>
             </ScrollView>
@@ -1400,11 +1368,6 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
 
             <View style={styles.menuSectionHeader}><Text style={styles.menuSectionText}>CORE OPERATIONS</Text></View>
 
-            {dailyExpenses.ijara > 0 ? (
-              <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); Alert.alert("ইতিমধ্যে যোগ করা হয়েছে", "ইজা শুধুমাত্র একবার যোগ করা যাবে!"); }}><Text style={[styles.menuOptionText, { color: '#888' }]}>🔒 ইজা যুক্ত করা হয়েছে</Text></TouchableOpacity>
-            ) : (
-              <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); setTempIjara(''); setIjaraModalVisible(true); }}><Text style={styles.menuOptionText}>➕ Add Ijara</Text></TouchableOpacity>
-            )}
 
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onNavigateToEditMenu(); }}><Text style={styles.menuOptionText}>🍴 Edit Menu</Text></TouchableOpacity>
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); if (onNavigateToAnalytics) onNavigateToAnalytics(); }}><Text style={styles.menuOptionText}>📈 Business Analytics</Text></TouchableOpacity>
@@ -2181,6 +2144,10 @@ const styles = StyleSheet.create({
   financeMatrixCell: { width: '48.5%', paddingVertical: 8, paddingHorizontal: 6, marginBottom: 4 },
   financeMatrixLabel: { color: '#888', fontSize: 10, marginBottom: 2 },
   financeMatrixVal: { fontSize: 14, fontWeight: '800' },
+  financeInfoRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 },
+  financeInfoCard: { flex: 1, backgroundColor: '#1A1A1A', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12, marginHorizontal: 3, borderWidth: 1, borderColor: '#262626', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  financeInfoLabel: { color: '#888', fontSize: 10 },
+  financeInfoVal: { color: '#FFF', fontSize: 11, fontWeight: '700' },
   financeActionRow: { flexDirection: 'row', justifyContent: 'space-between' },
   financeActionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1E1E1E', paddingVertical: 9, borderRadius: 8, marginHorizontal: 3, borderWidth: 1, borderColor: '#333' },
   financeActionBtnIcon: { fontSize: 13, marginRight: 6 },
