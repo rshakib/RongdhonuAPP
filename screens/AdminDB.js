@@ -115,7 +115,7 @@ const formatStartTime = (timeStr) => {
   return timeStr;
 };
 
-export default function AdminDB({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onUpdateTableName, onNavigateToExpenses, onNavigateToSubmit, onNavigateToEditMenu, onNavigateToSupplierDue, onNavigateToItemSalesReport, onNavigateToSyncDiagnostics, onNavigateToDeleteHistory, onNavigateToSystemTools, onNavigateToDeviceManagement, onNavigateToAIDatasetMonitor, onNavigateToAIDatasetAuditCenter, onNavigateToAnalytics, onNavigateToEmployees, onCloudRestore, onMenuRecovery, onResetHistoryLimits, onHistoricalMonthDownload, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, onResetDailySubmit, onResetIjara, delCountdown, tabCountdown, fullCountdown }) {
+export default function AdminDB({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onUpdateTableName, onNavigateToExpenses, onNavigateToSubmit, onNavigateToEditMenu, onNavigateToSupplierDue, onNavigateToItemSalesReport, onNavigateToSyncDiagnostics, onNavigateToDeleteHistory, onNavigateToSystemTools, onNavigateToDeviceManagement, onNavigateToAIDatasetMonitor, onNavigateToAIDatasetAuditCenter, onNavigateToAnalytics, onNavigateToEmployees, onNavigateToActivityLog, onCloudRestore, onMenuRecovery, onResetHistoryLimits, onHistoricalMonthDownload, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, onResetDailySubmit, onResetIjara, delCountdown, tabCountdown, fullCountdown }) {
   const [renameModalVisible, setRenameModalVisible] = useState(false);
   const [selectedTableForRename, setSelectedTableForRename] = useState(null);
   const [newTableName, setNewTableName] = useState('');
@@ -1212,6 +1212,18 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               <Text style={styles.adminGridTitle}>সিস্টেম টুলস</Text>
               <Text style={styles.adminGridDesc}>ডাটাবেজ এক্সপ্লোরার ও সিস্টেম ইনফো</Text>
             </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.adminGridCard} 
+              onPress={onNavigateToActivityLog}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.adminGridIconWrap, { backgroundColor: 'rgba(99, 102, 241, 0.15)' }]}>
+                <Text style={styles.adminGridIcon}>📜</Text>
+              </View>
+              <Text style={styles.adminGridTitle}>অ্যাক্টিভিটি ও অডিট লগ</Text>
+              <Text style={styles.adminGridDesc}>ডিভাইস ও অ্যাপের লাইভ কার্যক্রম ও হিস্ট্রি</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -1375,6 +1387,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
             )}
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); if (onNavigateToDeviceManagement) onNavigateToDeviceManagement(); }}><Text style={styles.menuOptionText}>📱 Device Control</Text></TouchableOpacity>
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onNavigateToSystemTools(); }}><Text style={styles.menuOptionText}>🛠️ System Tools</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); if (onNavigateToActivityLog) onNavigateToActivityLog(); }}><Text style={styles.menuOptionText}>📜 Activity & Audit Logs</Text></TouchableOpacity>
 
             <TouchableOpacity style={styles.menuOption} onPress={handleOpenPastAccount}><Text style={styles.menuOptionText}>📅 অতীতের হিসাব</Text></TouchableOpacity>
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); setSalesReportVisible(true); }}><Text style={styles.menuOptionText}>📋 Sales Report</Text></TouchableOpacity>

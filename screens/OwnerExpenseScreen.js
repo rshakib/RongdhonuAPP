@@ -213,6 +213,18 @@ export default function OwnerExpenseScreen({
       }
 
       if (success) {
+        try {
+          const { logActivity, ACTION_TYPES } = require('../services/activityLogger');
+          logActivity({
+            actionType: ACTION_TYPES.EXPENSE,
+            actionTitle: editingExpenseId ? 'ওনারের খরচ আপডেট' : 'ওনারের খরচ যুক্ত',
+            description: `${formCategory}: ৳${amountNum} (${cleanDate})`,
+            metadata: { category: formCategory, amount: amountNum, date: cleanDate, notes: formNotes.trim() },
+            userRole: userRole,
+            userName: 'Owner'
+          });
+        } catch (logErr) {}
+
         Alert.alert("সফল", "খরচের তথ্য সংরক্ষণ করা হয়েছে।");
         setModalVisible(false);
         loadData();
@@ -247,6 +259,18 @@ export default function OwnerExpenseScreen({
               const { deleteOwnerExpense } = require('../database');
               const success = deleteOwnerExpense(item.id);
               if (success) {
+                try {
+                  const { logActivity, ACTION_TYPES } = require('../services/activityLogger');
+                  logActivity({
+                    actionType: ACTION_TYPES.EXPENSE,
+                    actionTitle: 'ওনারের খরচ ডিলিট',
+                    description: `${item.category}: ৳${item.amount} (${item.expense_date})`,
+                    metadata: { id: item.id, category: item.category, amount: item.amount },
+                    userRole: userRole,
+                    userName: 'Owner'
+                  });
+                } catch (logErr) {}
+
                 Alert.alert("সফল", "খরচ সফলভাবে মুছে ফেলা হয়েছে।");
                 loadData();
                 if (refreshData) {
@@ -280,6 +304,18 @@ export default function OwnerExpenseScreen({
     try {
       const res = addExpenseCategory(cleanedName, userRole);
       if (res && res.success) {
+        try {
+          const { logActivity, ACTION_TYPES } = require('../services/activityLogger');
+          logActivity({
+            actionType: ACTION_TYPES.EXPENSE,
+            actionTitle: 'নতুন খরচ ক্যাটাগরি',
+            description: `ক্যাটাগরি: "${cleanedName}"`,
+            metadata: { category: cleanedName },
+            userRole: userRole,
+            userName: 'Owner'
+          });
+        } catch (logErr) {}
+
         Alert.alert("সফল", `"${cleanedName}" ক্যাটাগরি সফলভাবে তৈরি করা হয়েছে।`);
         setNewCategoryInput('');
         loadCategories();
@@ -309,6 +345,18 @@ export default function OwnerExpenseScreen({
           onPress: () => {
             try {
               deleteExpenseCategory(catLabel, userRole);
+              try {
+                const { logActivity, ACTION_TYPES } = require('../services/activityLogger');
+                logActivity({
+                  actionType: ACTION_TYPES.EXPENSE,
+                  actionTitle: 'খরচ ক্যাটাগরি অপসারণ',
+                  description: `ক্যাটাগরি: "${catLabel}"`,
+                  metadata: { category: catLabel },
+                  userRole: userRole,
+                  userName: 'Owner'
+                });
+              } catch (logErr) {}
+
               Alert.alert("সফল", `"${catLabel}" ক্যাটাগরি মুছে ফেলা হয়েছে।`);
               loadCategories();
               if (formCategory === catLabel) {

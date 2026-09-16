@@ -164,6 +164,17 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
             const success = softDeleteDevice(device.device_id, 'admin');
             setSelectedDevice(null);
             if (success) {
+              try {
+                const { logActivity, ACTION_TYPES } = require('../services/activityLogger');
+                logActivity({
+                  actionType: ACTION_TYPES.DEVICE,
+                  actionTitle: 'ডিভাইস অপসারণ (রিসাইকেল বিন)',
+                  description: `${device.device_name || device.device_id}`,
+                  metadata: { deviceId: device.device_id, deviceName: device.device_name },
+                  userRole: userRole,
+                  userName: 'Admin'
+                });
+              } catch (e) {}
               Alert.alert('সফল', 'ডিভাইসটি মুছে ফেলা হয়েছে এবং "Deleted Devices" তালিকায় রাখা হয়েছে।');
               loadDevices();
             } else {
@@ -187,6 +198,17 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
           onPress: () => {
             const success = restoreDevice(device.device_id, 'admin');
             if (success) {
+              try {
+                const { logActivity, ACTION_TYPES } = require('../services/activityLogger');
+                logActivity({
+                  actionType: ACTION_TYPES.DEVICE,
+                  actionTitle: 'ডিভাইস পুনরুদ্ধার',
+                  description: `${device.device_name || device.device_id}`,
+                  metadata: { deviceId: device.device_id, deviceName: device.device_name },
+                  userRole: userRole,
+                  userName: 'Admin'
+                });
+              } catch (e) {}
               Alert.alert('সফল', 'ডিভাইসটি সফলভাবে পূর্বের কনফিগারেশনে রিকভার করা হয়েছে।');
               loadDevices();
             } else {
@@ -212,6 +234,17 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
           onPress: () => {
             const success = updateDeviceStatus(deviceId, newStatus, 'admin');
             if (success) {
+              try {
+                const { logActivity, ACTION_TYPES } = require('../services/activityLogger');
+                logActivity({
+                  actionType: ACTION_TYPES.DEVICE,
+                  actionTitle: `ডিভাইস স্ট্যাটাস: ${actionText}`,
+                  description: `${deviceName || deviceId} (${newStatus})`,
+                  metadata: { deviceId, deviceName, newStatus },
+                  userRole: userRole,
+                  userName: 'Admin'
+                });
+              } catch (e) {}
               Alert.alert('সফল', `ডিভাইস স্ট্যাটাস '${newStatus}' এ পরিবর্তন করা হয়েছে।`);
               loadDevices();
             } else {
@@ -239,6 +272,17 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
           onPress: () => {
             const success = updateDeviceOfflinePermission(device.device_id, nextAllowed, 'admin');
             if (success) {
+              try {
+                const { logActivity, ACTION_TYPES } = require('../services/activityLogger');
+                logActivity({
+                  actionType: ACTION_TYPES.DEVICE,
+                  actionTitle: `অফলাইন পারমিশন ${actionText}`,
+                  description: `${device.device_name || device.device_id}`,
+                  metadata: { deviceId: device.device_id, allowOffline: nextAllowed },
+                  userRole: userRole,
+                  userName: 'Admin'
+                });
+              } catch (e) {}
               Alert.alert('সফল', `ডিভাইসটির Offline Permission ${actionText} করা হয়েছে।`);
               loadDevices();
             } else {
@@ -292,6 +336,17 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
     setTargetLockDevice(null);
 
     if (success) {
+      try {
+        const { logActivity, ACTION_TYPES } = require('../services/activityLogger');
+        logActivity({
+          actionType: ACTION_TYPES.DEVICE,
+          actionTitle: 'ডিভাইস অ্যাডমিন লক',
+          description: `${targetLockDevice.device_name || targetLockDevice.device_id}`,
+          metadata: { deviceId: targetLockDevice.device_id },
+          userRole: userRole,
+          userName: 'Admin'
+        });
+      } catch (e) {}
       Alert.alert('সফল', 'ডিভাইস এক্সেস স্থায়ীভাবে ব্লক করা হয়েছে।');
       loadDevices();
     } else {
@@ -311,6 +366,17 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
           onPress: () => {
             const success = setAdminDeviceLock(device.device_id, false, 'admin');
             if (success) {
+              try {
+                const { logActivity, ACTION_TYPES } = require('../services/activityLogger');
+                logActivity({
+                  actionType: ACTION_TYPES.DEVICE,
+                  actionTitle: 'ডিভাইস অ্যাডমিন আনলক',
+                  description: `${device.device_name || device.device_id}`,
+                  metadata: { deviceId: device.device_id },
+                  userRole: userRole,
+                  userName: 'Admin'
+                });
+              } catch (e) {}
               Alert.alert('সফল', 'সাকিব লক সফলভাবে অপসারিত হয়েছে।');
               loadDevices();
             } else {
@@ -335,6 +401,17 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
           onPress: () => {
             const success = triggerForceLogout(device.device_id, 'admin');
             if (success) {
+              try {
+                const { logActivity, ACTION_TYPES } = require('../services/activityLogger');
+                logActivity({
+                  actionType: ACTION_TYPES.DEVICE,
+                  actionTitle: 'ফোর্স লগআউট শিডিউল',
+                  description: `${device.device_name || device.device_id}`,
+                  metadata: { deviceId: device.device_id },
+                  userRole: userRole,
+                  userName: 'Admin'
+                });
+              } catch (e) {}
               Alert.alert('সফল', 'ডিভাইসটিতে রিমোট লগআউট নির্দেশ পাঠানো হয়েছে।');
               loadDevices();
             } else {

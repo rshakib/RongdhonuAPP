@@ -622,6 +622,27 @@ const TABLE_SCHEMAS = {
       updated_at TEXT NOT NULL,
       is_synced INTEGER DEFAULT 0
     );
+  `,
+  activity_logs: `
+    CREATE TABLE IF NOT EXISTS activity_logs (
+      id TEXT PRIMARY KEY,
+      business_date TEXT NOT NULL,
+      timestamp TEXT NOT NULL,
+      action_type TEXT NOT NULL,
+      action_title TEXT NOT NULL,
+      description TEXT,
+      app_profile TEXT NOT NULL,
+      user_role TEXT,
+      user_name TEXT,
+      device_id TEXT,
+      device_name TEXT,
+      device_model TEXT,
+      device_platform TEXT,
+      metadata TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      is_synced INTEGER DEFAULT 0
+    );
   `
 };
 
@@ -924,6 +945,12 @@ export function initDatabase(skipSeeding = false) {
     for (const [tableName, sql] of Object.entries(TABLE_SCHEMAS)) {
       db.execSync(sql);
     }
+    try {
+      db.execSync(`
+        CREATE INDEX IF NOT EXISTS idx_activity_logs_date ON activity_logs (business_date);
+        CREATE INDEX IF NOT EXISTS idx_activity_logs_time ON activity_logs (timestamp);
+      `);
+    } catch (idxErr) {}
     migrateSyncQueueDiagnostics();
     console.log("[DB] SQLite Tables Verified/Created successfully.");
 
@@ -6266,6 +6293,147 @@ export function getMonthlyTotalHomeDeposits(month) {
   } catch (err) {
     console.error("[DB] getMonthlyTotalHomeDeposits error:", err);
     return 0;
+  }
+}
+
+// ==========================================
+// ACTIVITY LOGS & AUDIT TRAIL FUNCTIONS
+// ==========================================
+
+/**
+ * On-Demand Cloud Fetch for Activity Logs (Date-Partitioned)
+ * Downloads activity logs for a specific business date only when explicitly viewed.
+ * Saves fetched records to local SQLite so subsequent views cost 0 reads.
+ */
+export async function fetchActivityLogsForDate(businessDate) {
+  const projectId = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID);
+  const apiKey = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_API_KEY);
+  if (!projectId || !apiKey || !businessDate) return { success: false, count: 0 };
+
+  try {
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery?key=${apiKey}`;
+    const query = {
+      structuredQuery: {
+        from: [{ collectionId: 'activity_logs' }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: 'business_date' },
+            op: 'EQUAL',
+            value: { stringValue: businessDate }
+          }
+        },
+        orderBy: [{ field: { fieldPath: 'timestamp' }, direction: 'DESCENDING' }]
+      }
+    };
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(query)
+    });
+
+    if (!res.ok) {
+      console.warn(`[ActivitySync] Cloud fetch returned status ${res.status}`);
+      return { success: false, count: 0 };
+    }
+
+    const data = await res.json();
+    let count = 0;
+
+    if (Array.isArray(data) && db) {
+      for (const item of data) {
+        if (!item.document || !item.document.fields) continue;
+        const row = fromFirestoreDocument(item.document);
+        if (row && row.id) {
+          try {
+            db.runSync(`
+              INSERT OR REPLACE INTO activity_logs (
+                id, business_date, timestamp, action_type, action_title,
+                description, app_profile, user_role, user_name,
+                device_id, device_name, device_model, device_platform,
+                metadata, created_at, updated_at, is_synced
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+            `, [
+              String(row.id),
+              String(row.business_date || businessDate),
+              String(row.timestamp || row.created_at || new Date().toISOString()),
+              String(row.action_type || 'SYSTEM'),
+              String(row.action_title || 'Activity'),
+              String(row.description || ''),
+              String(row.app_profile || 'UNKNOWN'),
+              String(row.user_role || ''),
+              String(row.user_name || ''),
+              String(row.device_id || ''),
+              String(row.device_name || ''),
+              String(row.device_model || ''),
+              String(row.device_platform || ''),
+              typeof row.metadata === 'object' ? JSON.stringify(row.metadata) : (row.metadata || ''),
+              String(row.created_at || new Date().toISOString()),
+              String(row.updated_at || new Date().toISOString())
+            ]);
+            count++;
+          } catch (rowErr) {
+            console.error('[ActivitySync] Error caching row:', rowErr);
+          }
+        }
+      }
+    }
+    syncDownloadsToday += count;
+    return { success: true, count };
+  } catch (err) {
+    console.error('[ActivitySync] Error fetching activity logs:', err);
+    return { success: false, error: err.message, count: 0 };
+  }
+}
+
+/**
+ * Retrieve Activity Logs from local SQLite with optional filters
+ */
+export function getActivityLogsFromDb(businessDate, filters = {}) {
+  try {
+    if (!db || !businessDate) return [];
+    let sql = "SELECT * FROM activity_logs WHERE business_date = ?";
+    const params = [businessDate];
+
+    if (filters.appProfile && filters.appProfile !== 'ALL') {
+      sql += " AND app_profile = ?";
+      params.push(filters.appProfile);
+    }
+    if (filters.actionType && filters.actionType !== 'ALL') {
+      sql += " AND action_type = ?";
+      params.push(filters.actionType);
+    }
+    if (filters.deviceId && filters.deviceId !== 'ALL') {
+      sql += " AND device_id = ?";
+      params.push(filters.deviceId);
+    }
+
+    sql += " ORDER BY timestamp DESC";
+    return db.getAllSync(sql, params);
+  } catch (err) {
+    console.error('[DB] getActivityLogsFromDb error:', err);
+    return [];
+  }
+}
+
+/**
+ * Get distinct devices present in activity_logs for filtering
+ */
+export function getDistinctActivityDevices(businessDate = null) {
+  try {
+    if (!db) return [];
+    if (businessDate) {
+      return db.getAllSync(
+        "SELECT DISTINCT device_id, device_name, device_model, app_profile FROM activity_logs WHERE business_date = ? AND device_name IS NOT NULL",
+        [businessDate]
+      );
+    }
+    return db.getAllSync(
+      "SELECT DISTINCT device_id, device_name, device_model, app_profile FROM activity_logs WHERE device_name IS NOT NULL"
+    );
+  } catch (err) {
+    console.error('[DB] getDistinctActivityDevices error:', err);
+    return [];
   }
 }
 

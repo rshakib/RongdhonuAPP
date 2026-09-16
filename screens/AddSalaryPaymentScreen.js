@@ -98,6 +98,18 @@ export default function AddSalaryPaymentScreen({
 
       const newId = saveSalaryLedgerEntry(payload);
       if (newId) {
+        try {
+          const { logActivity, ACTION_TYPES } = require('../services/activityLogger');
+          logActivity({
+            actionType: ACTION_TYPES.EXPENSE,
+            actionTitle: 'কর্মচারীর বেতন/অগ্রিম প্রদান',
+            description: `${employee?.name || 'কর্মী'}: ৳${numAmount} (${paymentType})`,
+            metadata: { employeeId, employeeName: employee?.name, amount: numAmount, paymentType, date: paymentDate.trim() },
+            userRole: userRole,
+            userName: 'Owner'
+          });
+        } catch (e) {}
+
         Alert.alert("সফল", "বেতন পরিশোধ বিবরণী সফলভাবে যুক্ত হয়েছে।");
         onSaveSuccess();
       } else {

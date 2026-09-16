@@ -229,6 +229,17 @@ export default function OwnerFinanceDashboard({
           notes: depositNotesInput.trim()
         });
         if (success) {
+          try {
+            const { logActivity, ACTION_TYPES } = require('../services/activityLogger');
+            logActivity({
+              actionType: ACTION_TYPES.EXPENSE,
+              actionTitle: 'বাসায় জমা আপডেট',
+              description: `৳${num} (${depositDateInput})`,
+              metadata: { amount: num, date: depositDateInput },
+              userRole: userRole,
+              userName: 'Owner'
+            });
+          } catch (e) {}
           Alert.alert("সফল", "বাসায় জমা আপডেট করা হয়েছে");
         } else {
           Alert.alert("ত্রুটি", "আপডেট করতে সমস্যা হয়েছে");
@@ -240,6 +251,17 @@ export default function OwnerFinanceDashboard({
           notes: depositNotesInput.trim()
         });
         if (id) {
+          try {
+            const { logActivity, ACTION_TYPES } = require('../services/activityLogger');
+            logActivity({
+              actionType: ACTION_TYPES.EXPENSE,
+              actionTitle: 'নতুন বাসায় জমা এন্ট্রি',
+              description: `৳${num} (${depositDateInput})`,
+              metadata: { amount: num, date: depositDateInput },
+              userRole: userRole,
+              userName: 'Owner'
+            });
+          } catch (e) {}
           Alert.alert("সফল", "বাসায় জমা সংরক্ষণ করা হয়েছে");
         } else {
           Alert.alert("ত্রুটি", "সংরক্ষণ করতে সমস্যা হয়েছে");
@@ -268,6 +290,17 @@ export default function OwnerFinanceDashboard({
               const { deleteHomeDeposit } = require('../database');
               const success = deleteHomeDeposit(id);
               if (success) {
+                try {
+                  const { logActivity, ACTION_TYPES } = require('../services/activityLogger');
+                  logActivity({
+                    actionType: ACTION_TYPES.EXPENSE,
+                    actionTitle: 'বাসায় জমা ডিলিট',
+                    description: `জমা আইডি: ${id}`,
+                    metadata: { id },
+                    userRole: userRole,
+                    userName: 'Owner'
+                  });
+                } catch (e) {}
                 Alert.alert("সফল", "জমা সফলভাবে ডিলিট করা হয়েছে");
                 loadHomeDepositsList();
                 loadDashboardData();
@@ -379,6 +412,18 @@ export default function OwnerFinanceDashboard({
           const displayRole = role === 'owner' ? 'Owner' : 'Admin';
           insertNotification("Owner Finance", `Owner Finance: ${currentMonth} month unlocked by ${displayRole}`);
           
+          try {
+            const { logActivity, ACTION_TYPES } = require('../services/activityLogger');
+            logActivity({
+              actionType: ACTION_TYPES.SECURITY,
+              actionTitle: 'মাসিক হিসাব আনলক',
+              description: `মাস: ${getMonthNameBangla(currentMonth)} (${currentMonth})`,
+              metadata: { month: currentMonth },
+              userRole: userRole,
+              userName: 'Owner'
+            });
+          } catch (e) {}
+
           Alert.alert("সফল", `${getMonthNameBangla(currentMonth)} মাস সফলভাবে আনলক করা হয়েছে।`);
           loadDashboardData();
         } else {
@@ -403,6 +448,18 @@ export default function OwnerFinanceDashboard({
 
       const successId = saveOwnerDeposit(payload);
       if (successId) {
+        try {
+          const { logActivity, ACTION_TYPES } = require('../services/activityLogger');
+          logActivity({
+            actionType: ACTION_TYPES.SECURITY,
+            actionTitle: 'মাসিক হিসাব ক্লোজ (লক)',
+            description: `মাস: ${getMonthNameBangla(currentMonth)} (${currentMonth}) - জমা: ৳${depositAmount}`,
+            metadata: { month: currentMonth, depositAmount },
+            userRole: userRole,
+            userName: 'Owner'
+          });
+        } catch (e) {}
+
         Alert.alert("সফল", `${getMonthNameBangla(currentMonth)} এর হিসাব বন্ধ করা হয়েছে।`);
         loadDashboardData();
       } else {
