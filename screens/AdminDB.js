@@ -836,7 +836,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                 style={styles.viewTablesActionBtn}
                 onPress={() => setFloorModalVisible(true)}
               >
-                <Text style={styles.viewTablesActionBtnText}>টেবিল ম্যানেজ করুন →</Text>
+                <Text style={styles.viewTablesActionBtnText}>ফ্লোর ম্যাপ দেখুন →</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1155,26 +1155,26 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
 
             <TouchableOpacity 
               style={styles.adminGridCard} 
-              onPress={() => onNavigateToEmployees && onNavigateToEmployees()}
+              onPress={onNavigateToItemSalesReport}
               activeOpacity={0.7}
             >
               <View style={[styles.adminGridIconWrap, { backgroundColor: 'rgba(236, 72, 153, 0.15)' }]}>
-                <Text style={styles.adminGridIcon}>👥</Text>
+                <Text style={styles.adminGridIcon}>📋</Text>
               </View>
-              <Text style={styles.adminGridTitle}>কর্মচারী ও বেতন</Text>
-              <Text style={styles.adminGridDesc}>{activeEmployeesCount} জন কর্মী • বেতন ও উপস্থিতি</Text>
+              <Text style={styles.adminGridTitle}>আইটেম বিক্রয় রিপোর্ট</Text>
+              <Text style={styles.adminGridDesc}>খাবার ভিত্তিক বিক্রয় ও পরিমাণের বিস্তারিত রিপোর্ট</Text>
             </TouchableOpacity>
 
             <TouchableOpacity 
               style={styles.adminGridCard} 
-              onPress={onNavigateToSupplierDue}
+              onPress={onNavigateToDeleteHistory}
               activeOpacity={0.7}
             >
               <View style={[styles.adminGridIconWrap, { backgroundColor: 'rgba(239, 68, 68, 0.15)' }]}>
-                <Text style={styles.adminGridIcon}>📉</Text>
+                <Text style={styles.adminGridIcon}>🗑️</Text>
               </View>
-              <Text style={styles.adminGridTitle}>সাপ্লায়ার বাকি ও হিসাব</Text>
-              <Text style={styles.adminGridDesc}>কাঁচামাল সরবরাহকারী বকেয়া হিসাব</Text>
+              <Text style={styles.adminGridTitle}>ডিলিট হিস্ট্রি অডিট</Text>
+              <Text style={styles.adminGridDesc}>মুছে ফেলা অর্ডারের নিরাপত্তা অডিট লগ</Text>
             </TouchableOpacity>
 
             <TouchableOpacity 
@@ -1350,13 +1350,6 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
         </View></View>
       </Modal>
 
-      {/* IJARA */}
-      <Modal animationType="slide" transparent={true} visible={ijaraModalVisible} onRequestClose={() => setIjaraModalVisible(false)}>
-        <View style={styles.modalOverlay}><View style={styles.modalContent}><View style={styles.modalIconCircle}><Text style={styles.modalIconEmoji}>💰</Text></View>
-            <Text style={styles.modalTitle}>ইজা যোগ করুন</Text><View style={styles.ijaraInputWrapper}><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={tempIjara} onChangeText={setTempIjara} placeholder="ইজা পরিমাণ" placeholderTextColor="#AAA" autoFocus={true}/></View>
-            <View style={styles.modalBtnRow}><TouchableOpacity style={styles.modalCancelBtn} onPress={() => setIjaraModalVisible(false)}><Text style={styles.modalCancelBtnText}>বাতিল</Text></TouchableOpacity><TouchableOpacity style={styles.modalSaveBtn} onPress={handleSaveIjara}><Text style={styles.modalSaveBtnText}>নিশ্চিত</Text></TouchableOpacity></View>
-        </View></View>
-      </Modal>
 
       {/* 3-DOT MENU */}
       <Modal animationType="fade" transparent={true} visible={menuModalVisible} onRequestClose={() => setMenuModalVisible(false)}>
@@ -1384,7 +1377,6 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onNavigateToSystemTools(); }}><Text style={styles.menuOptionText}>🛠️ System Tools</Text></TouchableOpacity>
 
             <TouchableOpacity style={styles.menuOption} onPress={handleOpenPastAccount}><Text style={styles.menuOptionText}>📅 অতীতের হিসাব</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onNavigateToSupplierDue(); }}><Text style={styles.menuOptionText}>📒 সাপ্লায়ার পেমেন্ট</Text></TouchableOpacity>
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); setSalesReportVisible(true); }}><Text style={styles.menuOptionText}>📋 Sales Report</Text></TouchableOpacity>
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); setDepositReportVisible(true); }}><Text style={styles.menuOptionText}>📊 Deposit Report</Text></TouchableOpacity>
 
@@ -1400,14 +1392,6 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onLogout(); }}><Text style={[styles.menuOptionText, { color: '#FF4D4D' }]}>Logout</Text></TouchableOpacity>
           </View>
         </TouchableOpacity>
-      </Modal>
-
-      {/* IJARA */}
-      <Modal animationType="slide" transparent={true} visible={ijaraModalVisible} onRequestClose={() => setIjaraModalVisible(false)}>
-        <View style={styles.modalOverlay}><View style={styles.modalContent}><View style={styles.modalIconCircle}><Text style={styles.modalIconEmoji}>💰</Text></View>
-            <Text style={styles.modalTitle}>ইজা যোগ করুন</Text><View style={styles.ijaraInputWrapper}><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={tempIjara} onChangeText={setTempIjara} placeholder="ইজা পরিমাণ" placeholderTextColor="#AAA" autoFocus={true}/></View>
-            <View style={styles.modalBtnRow}><TouchableOpacity style={styles.modalCancelBtn} onPress={() => setIjaraModalVisible(false)}><Text style={styles.modalCancelBtnText}>বাতিল</Text></TouchableOpacity><TouchableOpacity style={styles.modalSaveBtn} onPress={handleSaveIjara}><Text style={styles.modalSaveBtnText}>নিশ্চিত</Text></TouchableOpacity></View>
-        </View></View>
       </Modal>
 
       {/* SALES REPORT */}
