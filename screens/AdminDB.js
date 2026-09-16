@@ -15,7 +15,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { exportSalesReportPDF, exportDepositReportPDF } from '../pdfHelper';
-import { formatDisplayDate, getBusinessDate, inspectDatabaseStats, executeInspectorQuery, getFirebaseUsageStats, verifyPinCode, deleteDataByDate } from '../database';
+import { formatDisplayDate, getBusinessDate, inspectDatabaseStats, executeInspectorQuery, getFirebaseUsageStats, verifyPinCode, deleteDataByDate, getItemSalesReport } from '../database';
+import { getAllRegisteredDevices } from '../services/deviceRegistry';
 import { TodaySalesCard, TotalCashCard, ActiveTablesCard, MonthlyTotalCard } from '../components/StatCard';
 
 const { width } = Dimensions.get('window');
@@ -118,6 +119,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
   const [renameModalVisible, setRenameModalVisible] = useState(false);
   const [selectedTableForRename, setSelectedTableForRename] = useState(null);
   const [newTableName, setNewTableName] = useState('');
+  const [floorModalVisible, setFloorModalVisible] = useState(false);
 
   // 3-Dot Menu and Report States
   const [menuModalVisible, setMenuModalVisible] = useState(false);
@@ -527,6 +529,31 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
 
   const totalDoneCount = todaysOrders.length;
   
+  // Executive Dashboard Insights: Top Selling Items for Today
+  let topSellingItems = [];
+  try {
+    const rawReport = getItemSalesReport(todayStr, todayStr) || [];
+    topSellingItems = rawReport
+      .filter(item => (item.quantitySold || 0) > 0)
+      .sort((a, b) => (b.quantitySold || 0) - (a.quantitySold || 0))
+      .slice(0, 5);
+  } catch (err) {
+    console.error("[AdminDB] Error fetching top selling items:", err);
+  }
+
+  // POS Device Control & Security Metrics
+  let registeredDevices = [];
+  try {
+    registeredDevices = getAllRegisteredDevices() || [];
+  } catch (err) {
+    console.error("[AdminDB] Error fetching devices:", err);
+  }
+  const approvedDevicesCount = registeredDevices.filter(d => d.status === 'APPROVED').length;
+  const pendingDevicesCount = registeredDevices.filter(d => d.status === 'PENDING').length;
+  const blockedDevicesCount = registeredDevices.filter(d => d.status === 'BLOCKED').length;
+
+  const occupancyPercentage = tables.length > 0 ? Math.round((activeTablesCount / tables.length) * 100) : 0;
+  
   const availableMonthsRaw = Array.from(new Set(submissionHistory.map(item => getMonthName(item.date)).filter(Boolean)));
 
   const sortMonths = (months) => {
@@ -657,37 +684,304 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
           />
         </ScrollView>
 
-        {/* Table Grid */}
-        <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeaderRow}><Text style={styles.sectionTitle}>টেবিল স্ট্যাটাস <Text style={styles.sectionSubtitle}>(রিনেম করতে লং প্রেস)</Text></Text><Text style={styles.infoIcon}>ℹ️</Text></View>
-          <View style={styles.tableGrid}>
-             {tables.map((table) => {
-               const isBusy = table.status === 'BUSY';
-               const amount = table.items?.reduce((sum, i) => sum + (i.price * i.qty), 0) || 0;
-               return (
-                 <TouchableOpacity key={table.id} onPress={() => onTableSelect(table.id)} onLongPress={() => handleTableLongPress(table)} style={[styles.tableCard, isBusy ? styles.tableBusyBorder : styles.tableFreeBorder]}>
-                   <Text style={styles.tableId}>{table.name || table.id}</Text>
-                   <View style={styles.tableStatusRow}><View style={[styles.statusDot, isBusy ? styles.dotOrange : styles.dotGreen]} /><Text style={[styles.tableStatusText, isBusy ? styles.textOrange : styles.textGreen]}>{table.status}</Text></View>
-                   {isBusy ? <Text style={styles.tableAmount}>৳ {amount}</Text> : <View style={{height:10}} />}
-                   <Text style={styles.chairIcon}>🪑</Text>
-                 </TouchableOpacity>
-               );
-             })}
+        {/* 1. Executive Operations Snapshot */}
+        <View style={styles.execSectionContainer}>
+          <View style={styles.execSectionHeader}>
+            <View style={styles.execSectionTitleRow}>
+              <View style={[styles.execIconPill, { backgroundColor: 'rgba(59, 130, 246, 0.15)' }]}>
+                <Text style={styles.execPillEmoji}>🏢</Text>
+              </View>
+              <View>
+                <Text style={styles.execSectionTitle}>লাইভ ফ্লোর ও অপারেশনাল অবস্থা</Text>
+                <Text style={styles.execSectionSubtitle}>রিয়েলটাইম রেস্টুরেন্ট টেবিল ও ডেলিভারি ট্র্যাকার</Text>
+              </View>
+            </View>
+            <TouchableOpacity 
+              style={styles.execOutlineBtn} 
+              onPress={() => setFloorModalVisible(true)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.execOutlineBtnText}>ফ্লোর ম্যাপ 🗺️</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.occupancyCard}>
+            <View style={styles.occupancyStatsRow}>
+              <View style={styles.occupancyMetric}>
+                <Text style={styles.occupancyMetricLabel}>টেবিল অকুপেন্সি</Text>
+                <View style={styles.occupancyValueRow}>
+                  <Text style={styles.occupancyValueBig}>{activeTablesCount}</Text>
+                  <Text style={styles.occupancyValueSub}> / {tables.length} টেবিল ব্যস্ত</Text>
+                </View>
+              </View>
+              <View style={styles.occupancyBadge}>
+                <Text style={styles.occupancyBadgeText}>{occupancyPercentage}% পূর্ণ</Text>
+              </View>
+            </View>
+
+            {/* Visual Occupancy Bar */}
+            <View style={styles.occupancyTrack}>
+              <View style={[styles.occupancyFill, { width: `${Math.min(100, Math.max(0, occupancyPercentage))}%` }]} />
+            </View>
+
+            <View style={styles.liveDeliveriesRow}>
+              <View style={styles.deliveryIndicator}>
+                <View style={[styles.dotLive, activeDeliveriesCount > 0 ? styles.dotOrange : styles.dotGreen]} />
+                <Text style={styles.liveDeliveryText}>
+                  {activeDeliveriesCount > 0 
+                    ? `${activeDeliveriesCount} টি ডেলিভারি চলমান রয়েছে` 
+                    : 'কোনো চলমান ডেলিভারি নেই'}
+                </Text>
+              </View>
+              <TouchableOpacity 
+                style={styles.viewTablesActionBtn}
+                onPress={() => setFloorModalVisible(true)}
+              >
+                <Text style={styles.viewTablesActionBtnText}>টেবিল ম্যানেজ করুন →</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 
-        <View style={styles.sectionContainer}>
-          <Text style={styles.sectionTitle}>সক্রিয় ডেলিভারি ({deliveries.filter(d => d.status === 'BUSY').length})</Text>
-          <View style={{ marginTop: 10 }}>
-             {deliveries.filter(d => d.status === 'BUSY').map((delivery) => (
-                   <TouchableOpacity key={delivery.id} style={[styles.deliveryCard, { marginBottom: 10 }]} onPress={() => onTableSelect(delivery.id)}>
-                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                       <View><Text style={styles.deliveryTitle}>{delivery.name}</Text><Text style={styles.deliveryTime}>শুরু: {formatStartTime(delivery.startTime)}</Text></View>
-                       <Text style={styles.deliveryAmount}>৳ {delivery.items.reduce((sum, i) => sum + (i.price * i.qty), 0)}</Text>
-                     </View>
-                   </TouchableOpacity>
-             ))}
-             <TouchableOpacity style={styles.emptyDeliveryPlaceholder} onPress={onCreateDelivery}><Text style={styles.emptyDeliveryText}>➕ নতুন ডেলিভারি শুরু করুন</Text></TouchableOpacity>
+        {/* 2. Top Selling Items (Best Sellers) */}
+        <View style={styles.execSectionContainer}>
+          <View style={styles.execSectionHeader}>
+            <View style={styles.execSectionTitleRow}>
+              <View style={[styles.execIconPill, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
+                <Text style={styles.execPillEmoji}>🔥</Text>
+              </View>
+              <View>
+                <Text style={styles.execSectionTitle}>শীর্ষ বিক্রিত খাবার (আজকে)</Text>
+                <Text style={styles.execSectionSubtitle}>সর্বোচ্চ বিক্রিত সেরা ৫টি খাবার ও মোট রেভিনিউ</Text>
+              </View>
+            </View>
+            <TouchableOpacity 
+              style={styles.execOutlineBtn} 
+              onPress={onNavigateToItemSalesReport}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.execOutlineBtnText}>পূর্ণ রিপোর্ট 📊</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.bestSellerContainer}>
+            {topSellingItems.length === 0 ? (
+              <View style={styles.emptyItemsNotice}>
+                <Text style={styles.emptyItemsEmoji}>🍽️</Text>
+                <Text style={styles.emptyItemsText}>আজ এখনও কোনো খাবার বিক্রয় করা হয়নি</Text>
+                <Text style={styles.emptyItemsSub}>টেবিল অর্ডার বা ডেলিভারি পেমেন্ট সম্পন্ন হলে এখানে লাইভ র‍্যাংকিং দেখা যাবে।</Text>
+              </View>
+            ) : (
+              topSellingItems.map((item, index) => {
+                const rankColors = ['#FFB703', '#94A3B8', '#F59E0B', '#64748B', '#64748B'];
+                const rankColor = rankColors[index] || '#64748B';
+                return (
+                  <View key={item.id || item.name || index} style={styles.bestSellerRow}>
+                    <View style={[styles.rankBadge, { borderColor: rankColor }]}>
+                      <Text style={[styles.rankText, { color: rankColor }]}>#{index + 1}</Text>
+                    </View>
+                    <View style={styles.bestSellerInfo}>
+                      <Text style={styles.bestSellerName} numberOfLines={1}>{item.name}</Text>
+                      {item.category ? (
+                        <Text style={styles.bestSellerCategory}>{item.category}</Text>
+                      ) : null}
+                    </View>
+                    <View style={styles.bestSellerMetrics}>
+                      <View style={styles.qtyBadge}>
+                        <Text style={styles.qtyBadgeText}>{item.quantitySold} টি সেল</Text>
+                      </View>
+                      <Text style={styles.itemSalesAmount}>৳ {(item.totalSales || 0).toLocaleString()}</Text>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        </View>
+
+        {/* 3. POS Device Control & Security */}
+        <View style={styles.execSectionContainer}>
+          <View style={styles.execSectionHeader}>
+            <View style={styles.execSectionTitleRow}>
+              <View style={[styles.execIconPill, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
+                <Text style={styles.execPillEmoji}>🛡️</Text>
+              </View>
+              <View>
+                <Text style={styles.execSectionTitle}>ডিভাইস কন্ট্রোল ও টার্মিনাল এক্সেস</Text>
+                <Text style={styles.execSectionSubtitle}>রেজিস্টার্ড ও কানেক্টেড পিওএস টার্মিনাল সিকিউরিটি</Text>
+              </View>
+            </View>
+            <TouchableOpacity 
+              style={styles.execOutlineBtn} 
+              onPress={onNavigateToDeviceManagement}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.execOutlineBtnText}>কন্ট্রোল সেন্টার 🔒</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.deviceSummaryCard}>
+            <View style={styles.deviceChipsRow}>
+              <View style={[styles.deviceStatChip, { borderColor: 'rgba(16, 185, 129, 0.3)', backgroundColor: 'rgba(16, 185, 129, 0.08)' }]}>
+                <View style={[styles.deviceChipDot, { backgroundColor: '#10B981' }]} />
+                <Text style={styles.deviceChipLabel}>অনুমোদিত: </Text>
+                <Text style={[styles.deviceChipValue, { color: '#10B981' }]}>{approvedDevicesCount}</Text>
+              </View>
+
+              <View style={[styles.deviceStatChip, pendingDevicesCount > 0 ? { borderColor: '#F59E0B', backgroundColor: 'rgba(245, 158, 11, 0.15)' } : { borderColor: 'rgba(245, 158, 11, 0.3)', backgroundColor: 'rgba(245, 158, 11, 0.08)' }]}>
+                <View style={[styles.deviceChipDot, { backgroundColor: '#F59E0B' }]} />
+                <Text style={styles.deviceChipLabel}>অনুমোদনের অপেক্ষায়: </Text>
+                <Text style={[styles.deviceChipValue, { color: '#F59E0B' }]}>{pendingDevicesCount}</Text>
+              </View>
+
+              {blockedDevicesCount > 0 && (
+                <View style={[styles.deviceStatChip, { borderColor: 'rgba(239, 68, 68, 0.3)', backgroundColor: 'rgba(239, 68, 68, 0.08)' }]}>
+                  <View style={[styles.deviceChipDot, { backgroundColor: '#EF4444' }]} />
+                  <Text style={styles.deviceChipLabel}>ব্লকড: </Text>
+                  <Text style={[styles.deviceChipValue, { color: '#EF4444' }]}>{blockedDevicesCount}</Text>
+                </View>
+              )}
+            </View>
+
+            {pendingDevicesCount > 0 && (
+              <View style={styles.pendingDeviceAlert}>
+                <Text style={styles.pendingDeviceAlertEmoji}>⚠️</Text>
+                <Text style={styles.pendingDeviceAlertText}>
+                  {pendingDevicesCount}টি নতুন ডিভাইস অ্যাডমিন অনুমোদনের অপেক্ষায় আছে!
+                </Text>
+                <TouchableOpacity 
+                  style={styles.pendingReviewBtn}
+                  onPress={onNavigateToDeviceManagement}
+                >
+                  <Text style={styles.pendingReviewBtnText}>রিভিউ</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Device mini list (up to 3 recent devices) */}
+            {registeredDevices.length > 0 ? (
+              <View style={styles.deviceMiniList}>
+                {registeredDevices.slice(0, 3).map((dev) => {
+                  const isAppr = dev.status === 'APPROVED';
+                  const isPend = dev.status === 'PENDING';
+                  return (
+                    <View key={dev.id || dev.device_id} style={styles.deviceMiniRow}>
+                      <View style={styles.deviceMiniLeft}>
+                        <Text style={styles.deviceMiniEmoji}>{isAppr ? '📱' : isPend ? '⏳' : '🚫'}</Text>
+                        <View>
+                          <Text style={styles.deviceMiniName} numberOfLines={1}>
+                            {dev.device_name || dev.device_model || 'Unknown POS'}
+                          </Text>
+                          <Text style={styles.deviceMiniRole}>{dev.role || 'Cashier / Waiter'}</Text>
+                        </View>
+                      </View>
+                      <View style={[styles.statusBadgeSmall, isAppr ? styles.statusBadgeGreen : isPend ? styles.statusBadgeAmber : styles.statusBadgeRed]}>
+                        <Text style={[styles.statusBadgeTextSmall, isAppr ? styles.textGreen : isPend ? styles.textAmber : styles.textRed]}>
+                          {dev.status}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
+
+            <TouchableOpacity 
+              style={styles.deviceControlFullBtn}
+              onPress={onNavigateToDeviceManagement}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.deviceControlFullBtnText}>🔒 ডিভাইস ম্যানেজমেন্ট ও সিকিউরিটি কন্ট্রোল</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* 4. Critical Admin Controls Grid */}
+        <View style={styles.execSectionContainer}>
+          <View style={styles.execSectionHeader}>
+            <View style={styles.execSectionTitleRow}>
+              <View style={[styles.execIconPill, { backgroundColor: 'rgba(168, 85, 247, 0.15)' }]}>
+                <Text style={styles.execPillEmoji}>⚙️</Text>
+              </View>
+              <View>
+                <Text style={styles.execSectionTitle}>জরুরি অ্যাডমিন কন্ট্রোল ও ম্যানেজমেন্ট</Text>
+                <Text style={styles.execSectionSubtitle}>গুরুত্বপূর্ণ ফিচার ও সিস্টেম টুলস কুইক এক্সেস</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.adminGrid}>
+            <TouchableOpacity 
+              style={styles.adminGridCard} 
+              onPress={onNavigateToAnalytics}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.adminGridIconWrap, { backgroundColor: 'rgba(59, 130, 246, 0.15)' }]}>
+                <Text style={styles.adminGridIcon}>📊</Text>
+              </View>
+              <Text style={styles.adminGridTitle}>বিজনেস অ্যানালিটিক্স</Text>
+              <Text style={styles.adminGridDesc}>দৈনিক, সাপ্তাহিক ও মাসিক লাভ-ক্ষতি গ্রাফ</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.adminGridCard} 
+              onPress={onNavigateToDeviceManagement}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.adminGridIconWrap, { backgroundColor: 'rgba(16, 185, 129, 0.15)' }]}>
+                <Text style={styles.adminGridIcon}>🔒</Text>
+              </View>
+              <Text style={styles.adminGridTitle}>ডিভাইস কন্ট্রোল</Text>
+              <Text style={styles.adminGridDesc}>টার্মিনাল অনুমোদন, ব্লক ও লাইভ অ্যাক্সেস</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.adminGridCard} 
+              onPress={onNavigateToEditMenu}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.adminGridIconWrap, { backgroundColor: 'rgba(245, 158, 11, 0.15)' }]}>
+                <Text style={styles.adminGridIcon}>🍽️</Text>
+              </View>
+              <Text style={styles.adminGridTitle}>মেনু ও প্রাইসিং</Text>
+              <Text style={styles.adminGridDesc}>খাবারের তালিকা এডিট ও মূল্য নির্ধারণ</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.adminGridCard} 
+              onPress={onNavigateToSupplierDue}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.adminGridIconWrap, { backgroundColor: 'rgba(239, 68, 68, 0.15)' }]}>
+                <Text style={styles.adminGridIcon}>📉</Text>
+              </View>
+              <Text style={styles.adminGridTitle}>সাপ্লায়ার বাকি ও হিসাব</Text>
+              <Text style={styles.adminGridDesc}>কাঁচামাল সরবরাহকারী বকেয়া হিসাব</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.adminGridCard} 
+              onPress={onNavigateToSyncDiagnostics}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.adminGridIconWrap, { backgroundColor: 'rgba(6, 182, 212, 0.15)' }]}>
+                <Text style={styles.adminGridIcon}>🔄</Text>
+              </View>
+              <Text style={styles.adminGridTitle}>সিঙ্ক ডায়াগনস্টিকস</Text>
+              <Text style={styles.adminGridDesc}>ফায়ারবেস ক্লাউড ডেটা সিঙ্ক ও হেলথ</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.adminGridCard} 
+              onPress={onNavigateToAIDatasetAuditCenter}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.adminGridIconWrap, { backgroundColor: 'rgba(168, 85, 247, 0.15)' }]}>
+                <Text style={styles.adminGridIcon}>🤖</Text>
+              </View>
+              <Text style={styles.adminGridTitle}>এআই অডিট ও ডেটাসেট</Text>
+              <Text style={styles.adminGridDesc}>স্মার্ট ইনসাইটস ও ট্রেনিং ডেটাসেট</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -727,6 +1021,96 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
       </View>
 
       {/* MODALS */}
+      {/* FLOOR & TABLE MANAGEMENT MODAL */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={floorModalVisible}
+        onRequestClose={() => setFloorModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { width: '94%', maxHeight: '88%', padding: 16 }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', alignItems: 'center', marginBottom: 14 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={[styles.modalIconCircle, { marginBottom: 0, width: 38, height: 38, marginRight: 10 }]}>
+                  <Text style={styles.modalIconEmoji}>🗺️</Text>
+                </View>
+                <View>
+                  <Text style={[styles.modalTitle, { marginBottom: 2 }]}>ফ্লোর ও টেবিল মনিটরিং</Text>
+                  <Text style={styles.modalSubtitle}>রিনেম করতে লং প্রেস করুন, অর্ডারে যেতে ট্যাপ করুন</Text>
+                </View>
+              </View>
+              <TouchableOpacity onPress={() => setFloorModalVisible(false)} style={styles.closeCircle}>
+                <Text style={styles.closeCircleText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} style={{ width: '100%' }}>
+              {/* Table Grid inside modal */}
+              <View style={styles.tableGrid}>
+                {tables.map((table) => {
+                  const isBusy = table.status === 'BUSY';
+                  const amount = table.items?.reduce((sum, i) => sum + (i.price * i.qty), 0) || 0;
+                  return (
+                    <TouchableOpacity
+                      key={table.id}
+                      onPress={() => {
+                        setFloorModalVisible(false);
+                        onTableSelect(table.id);
+                      }}
+                      onLongPress={() => handleTableLongPress(table)}
+                      style={[styles.tableCard, isBusy ? styles.tableBusyBorder : styles.tableFreeBorder]}
+                    >
+                      <Text style={styles.tableId}>{table.name || table.id}</Text>
+                      <View style={styles.tableStatusRow}>
+                        <View style={[styles.statusDot, isBusy ? styles.dotOrange : styles.dotGreen]} />
+                        <Text style={[styles.tableStatusText, isBusy ? styles.textOrange : styles.textGreen]}>{table.status}</Text>
+                      </View>
+                      {isBusy ? <Text style={styles.tableAmount}>৳ {amount}</Text> : <View style={{ height: 10 }} />}
+                      <Text style={styles.chairIcon}>🪑</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Deliveries inside modal */}
+              <View style={{ marginTop: 20 }}>
+                <Text style={[styles.sectionTitle, { fontSize: 14 }]}>সক্রিয় ডেলিভারি ({deliveries.filter(d => d.status === 'BUSY').length})</Text>
+                <View style={{ marginTop: 8 }}>
+                  {deliveries.filter(d => d.status === 'BUSY').map((delivery) => (
+                    <TouchableOpacity
+                      key={delivery.id}
+                      style={[styles.deliveryCard, { marginBottom: 10 }]}
+                      onPress={() => {
+                        setFloorModalVisible(false);
+                        onTableSelect(delivery.id);
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <View>
+                          <Text style={styles.deliveryTitle}>{delivery.name}</Text>
+                          <Text style={styles.deliveryTime}>শুরু: {formatStartTime(delivery.startTime)}</Text>
+                        </View>
+                        <Text style={styles.deliveryAmount}>৳ {delivery.items.reduce((sum, i) => sum + (i.price * i.qty), 0)}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity
+                    style={styles.emptyDeliveryPlaceholder}
+                    onPress={() => {
+                      setFloorModalVisible(false);
+                      onCreateDelivery();
+                    }}
+                  >
+                    <Text style={styles.emptyDeliveryText}>➕ নতুন ডেলিভারি শুরু করুন</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       {/* ORDER DETAIL */}
       <Modal animationType="slide" transparent={true} visible={orderDetailVisible} onRequestClose={() => setOrderDetailVisible(false)}>
         <View style={styles.modalOverlay}><View style={[styles.modalContent, { width: '90%' }]}>
@@ -1492,4 +1876,79 @@ const styles = StyleSheet.create({
   inspectorSub: { color: '#555', fontSize: 8, marginTop: 2 },
   syncTimerWrapper: { paddingVertical: 4, paddingHorizontal: 12, backgroundColor: '#161616', borderRadius: 8, marginHorizontal: 16, marginTop: 4, marginBottom: 4, alignItems: 'center', borderWidth: 1, borderColor: '#222' },
   syncTimerText: { color: '#FFB703', fontSize: 8, fontWeight: '600', marginVertical: 1 },
+
+  // Executive Command Center Styles
+  execSectionContainer: { backgroundColor: '#0D0D0D', borderRadius: 14, borderWidth: 1, borderColor: '#1A1A1A', padding: 14, marginHorizontal: 16, marginBottom: 14 },
+  execSectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  execSectionTitleRow: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 },
+  execIconPill: { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+  execPillEmoji: { fontSize: 16 },
+  execSectionTitle: { color: '#FFFFFF', fontSize: 13, fontWeight: '700', letterSpacing: 0.2 },
+  execSectionSubtitle: { color: '#737373', fontSize: 10, marginTop: 1 },
+  execOutlineBtn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255, 183, 3, 0.4)', backgroundColor: 'rgba(255, 183, 3, 0.08)' },
+  execOutlineBtnText: { color: '#FFB703', fontSize: 11, fontWeight: '600' },
+  occupancyCard: { backgroundColor: '#141414', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#222' },
+  occupancyStatsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  occupancyMetric: { flex: 1 },
+  occupancyMetricLabel: { color: '#888', fontSize: 11, marginBottom: 2 },
+  occupancyValueRow: { flexDirection: 'row', alignItems: 'baseline' },
+  occupancyValueBig: { color: '#FFFFFF', fontSize: 18, fontWeight: '800' },
+  occupancyValueSub: { color: '#A3A3A3', fontSize: 12, fontWeight: '500' },
+  occupancyBadge: { backgroundColor: 'rgba(16, 185, 129, 0.15)', borderWidth: 1, borderColor: 'rgba(16, 185, 129, 0.3)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  occupancyBadgeText: { color: '#10B981', fontSize: 11, fontWeight: '700' },
+  occupancyTrack: { height: 6, backgroundColor: '#262626', borderRadius: 3, overflow: 'hidden', marginBottom: 10 },
+  occupancyFill: { height: '100%', backgroundColor: '#10B981', borderRadius: 3 },
+  liveDeliveriesRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, borderTopWidth: 1, borderColor: '#1F1F1F' },
+  deliveryIndicator: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  dotLive: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
+  liveDeliveryText: { color: '#CCC', fontSize: 11 },
+  viewTablesActionBtn: { paddingVertical: 3, paddingHorizontal: 6 },
+  viewTablesActionBtnText: { color: '#3B82F6', fontSize: 11, fontWeight: '600' },
+  bestSellerContainer: { backgroundColor: '#141414', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#222' },
+  emptyItemsNotice: { alignItems: 'center', paddingVertical: 18 },
+  emptyItemsEmoji: { fontSize: 26, marginBottom: 6 },
+  emptyItemsText: { color: '#CCC', fontSize: 12, fontWeight: '600', marginBottom: 2 },
+  emptyItemsSub: { color: '#666', fontSize: 10, textAlign: 'center', paddingHorizontal: 20 },
+  bestSellerRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderColor: '#1F1F1F' },
+  rankBadge: { width: 26, height: 26, borderRadius: 13, borderWidth: 1.2, justifyContent: 'center', alignItems: 'center', marginRight: 10, backgroundColor: 'rgba(255, 255, 255, 0.04)' },
+  rankText: { fontSize: 10, fontWeight: '800' },
+  bestSellerInfo: { flex: 1, marginRight: 8 },
+  bestSellerName: { color: '#FFFFFF', fontSize: 12, fontWeight: '600' },
+  bestSellerCategory: { color: '#737373', fontSize: 10, marginTop: 1 },
+  bestSellerMetrics: { alignItems: 'flex-end' },
+  qtyBadge: { backgroundColor: 'rgba(16, 185, 129, 0.12)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginBottom: 2 },
+  qtyBadgeText: { color: '#10B981', fontSize: 9, fontWeight: '700' },
+  itemSalesAmount: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
+  deviceSummaryCard: { backgroundColor: '#141414', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#222' },
+  deviceChipsRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 10 },
+  deviceStatChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, marginRight: 6, marginBottom: 6 },
+  deviceChipDot: { width: 6, height: 6, borderRadius: 3, marginRight: 5 },
+  deviceChipLabel: { color: '#A3A3A3', fontSize: 10 },
+  deviceChipValue: { fontSize: 10, fontWeight: '700' },
+  pendingDeviceAlert: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(245, 158, 11, 0.12)', borderWidth: 1, borderColor: 'rgba(245, 158, 11, 0.35)', borderRadius: 8, padding: 8, marginBottom: 10 },
+  pendingDeviceAlertEmoji: { fontSize: 14, marginRight: 6 },
+  pendingDeviceAlertText: { color: '#F59E0B', fontSize: 10, fontWeight: '600', flex: 1 },
+  pendingReviewBtn: { backgroundColor: '#F59E0B', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  pendingReviewBtnText: { color: '#000', fontSize: 10, fontWeight: '700' },
+  deviceMiniList: { marginBottom: 10 },
+  deviceMiniRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 0.8, borderColor: '#1F1F1F' },
+  deviceMiniLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 },
+  deviceMiniEmoji: { fontSize: 14, marginRight: 8 },
+  deviceMiniName: { color: '#FFF', fontSize: 11, fontWeight: '600' },
+  deviceMiniRole: { color: '#737373', fontSize: 9 },
+  statusBadgeSmall: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 0.8 },
+  statusBadgeGreen: { backgroundColor: 'rgba(16, 185, 129, 0.12)', borderColor: 'rgba(16, 185, 129, 0.3)' },
+  statusBadgeAmber: { backgroundColor: 'rgba(245, 158, 11, 0.12)', borderColor: 'rgba(245, 158, 11, 0.3)' },
+  statusBadgeRed: { backgroundColor: 'rgba(239, 68, 68, 0.12)', borderColor: 'rgba(239, 68, 68, 0.3)' },
+  statusBadgeTextSmall: { fontSize: 9, fontWeight: '700' },
+  textAmber: { color: '#F59E0B' },
+  textRed: { color: '#EF4444' },
+  deviceControlFullBtn: { backgroundColor: '#1E1E1E', borderRadius: 8, borderWidth: 1, borderColor: '#333', paddingVertical: 10, alignItems: 'center', marginTop: 4 },
+  deviceControlFullBtnText: { color: '#FFB703', fontSize: 11, fontWeight: '700' },
+  adminGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  adminGridCard: { width: '48.5%', backgroundColor: '#141414', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#222', marginBottom: 10 },
+  adminGridIconWrap: { width: 32, height: 32, borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+  adminGridIcon: { fontSize: 15 },
+  adminGridTitle: { color: '#FFFFFF', fontSize: 11.5, fontWeight: '700', marginBottom: 3 },
+  adminGridDesc: { color: '#737373', fontSize: 9.5, lineHeight: 13 },
 });
