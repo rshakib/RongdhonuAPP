@@ -13,21 +13,25 @@ import {
   Keyboard,
   Vibration,
   Alert,
-  StatusBar as RNStatusBar
+  StatusBar as RNStatusBar,
+  ActivityIndicator
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import NetInfo from '@react-native-community/netinfo';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { verifyUserLogin, checkUserExists, getAppConfig, setAppConfig, getPendingSyncCount } from '../database';
+import { checkAppVersion, verifyForceReauthLocally } from '../services/firebaseAppConfig';
 
 const BUTTON_SIZE = 72; // Circular buttons sized perfectly to fit all displays
 
-export default function LoginScreen({ onLoginSuccess }) {
+export default function LoginScreen({ onLoginSuccess, forceReauth = false }) {
   const [username, setUsername] = useState('');
   const [isFirstLogin, setIsFirstLogin] = useState(true);
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [syncMode, setSyncMode] = useState('online_only');
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [requiresOnlineCheck, setRequiresOnlineCheck] = useState(false);
 
   // Fetch remembered user and mode on mount
   useEffect(() => {
@@ -36,12 +40,15 @@ export default function LoginScreen({ onLoginSuccess }) {
       if (savedUser && savedUser.trim() !== '') {
         setUsername(savedUser);
         setIsFirstLogin(false);
+        setRequiresOnlineCheck(false);
       } else {
         setIsFirstLogin(true);
+        setRequiresOnlineCheck(true);
       }
     } catch (err) {
       console.error("Failed to load remembered user from SQLite:", err);
       setIsFirstLogin(true);
+      setRequiresOnlineCheck(true);
     }
 
     try {
@@ -145,7 +152,7 @@ export default function LoginScreen({ onLoginSuccess }) {
     const cleanPin = enteredPin.trim();
 
     if (!cleanUsername) {
-      setError('ইউজারনেম প্রয়োজন!');
+      setError('ইউজারনেম প্রয়োজন!');
       setPin('');
       return;
     }
@@ -162,6 +169,110 @@ export default function LoginScreen({ onLoginSuccess }) {
         return;
       }
     }
+
+    // ── ONLINE & VERSION CHECK PATH (New Install, First Login, or Force Reauth) ──
+    const isOnlineVersionCheckRequired = forceReauth || requiresOnlineCheck;
+    if (isOnlineVersionCheckRequired) {
+      setIsVerifying(true);
+      try {
+        // 1. Must be online
+        const state = await NetInfo.fetch();
+        const isOnline = state.isConnected && state.isInternetReachable !== false;
+        if (!isOnline) {
+          setError(
+            forceReauth
+              ? 'ইন্টারনেট সংযোগ প্রয়োজন। Admin আপনাকে লগ আউট করেছে — পুনরায় লগইন করতে ইন্টারনেট চালু করুন।'
+              : 'ইন্টারনেট সংযোগ প্রয়োজন। নতুন অ্যাপে প্রথমবার লগইন করতে ইন্টারনেট চালু করুন।'
+          );
+          setPin('');
+          setIsVerifying(false);
+          return;
+        }
+
+        // 2. First verify PIN locally — if wrong, reject immediately
+        const localUser = verifyUserLogin(cleanUsername, cleanPin);
+        if (!localUser) {
+          Vibration.vibrate(100);
+          setError('ভুল PIN নম্বর! আবার চেষ্টা করুন।');
+          setPin('');
+          setIsVerifying(false);
+          return;
+        }
+
+        // 3. Version check — skip for admin
+        const userRole = localUser.role;
+        if (userRole !== 'admin') {
+          const versionResult = await checkAppVersion(userRole);
+          if (!versionResult.allowed) {
+            Alert.alert(
+              "অ্যাপ আপডেট প্রয়োজন 📱",
+              `আপনার অ্যাপের ভার্সন (${versionResult.currentVersion}) পুরনো হয়ে গেছে।\n\nনিউনতম প্রয়োজনীয় ভার্সন: ${versionResult.minimumVersion}\n\nঅনুগ্রহ করে অ্যাপটি আপডেট করুন এবং আবার লগইন করুন।`,
+              [{ text: "ঠিক আছে", onPress: () => setPin('') }]
+            );
+            setIsVerifying(false);
+            return;
+          }
+        }
+
+        // 4. Firebase connectivity verify (confirms internet + Firebase up)
+        const firebaseResult = await verifyForceReauthLocally(cleanUsername, cleanPin);
+        if (!firebaseResult.verified) {
+          setError(`Firebase সংযোগ ব্যর্থ: ${firebaseResult.reason || 'পুনরায় চেষ্টা করুন'}`);
+          setPin('');
+          setIsVerifying(false);
+          return;
+        }
+
+        // 5. All checks passed — proceed with normal login flow
+        setIsVerifying(false);
+        // Continue to biometric + session save below using localUser
+        const user = localUser;
+
+        if (user.role === 'owner' || user.role === 'admin') {
+          try {
+            const hasHardware = await LocalAuthentication.hasHardwareAsync();
+            const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+            if (hasHardware && isEnrolled) {
+              const biometricResult = await LocalAuthentication.authenticateAsync({
+                promptMessage: 'বায়োমেট্রিক ভেরিফিকেশন প্রয়োজন',
+                cancelLabel: 'বাতিল',
+                disableDeviceFallback: false,
+              });
+              if (!biometricResult.success) {
+                Alert.alert(
+                  "বায়োমেট্রিক ব্যর্থ",
+                  "Owner/Admin হিসেবে লগইন করতে বায়োমেট্রিক ভেরিফিকেশন আবশ্যক।",
+                  [{ text: "ঠিক আছে", onPress: () => setPin('') }]
+                );
+                return;
+              }
+            }
+          } catch (e) {
+            console.error("[LoginScreen] Biometric auth error:", e);
+          }
+        }
+
+        try {
+          setAppConfig('remembered_username', cleanUsername);
+          setAppConfig('login_session_user', cleanUsername);
+          setAppConfig('force_reauth_required', '0');
+        } catch (e) {
+          console.error("Failed to save session:", e);
+        }
+        setRequiresOnlineCheck(false);
+        setError('');
+        onLoginSuccess(user.role, user.display_name, syncMode);
+        return;
+
+      } catch (err) {
+        console.error('[LoginScreen] Reauth / Version check error:', err);
+        setError('লগইন প্রক্রিয়ায় ত্রুটি হয়েছে। আবার চেষ্টা করুন।');
+        setPin('');
+        setIsVerifying(false);
+        return;
+      }
+    }
+    // ── END FORCE RE-AUTH PATH ──────────────────────────────────────
 
     const user = verifyUserLogin(cleanUsername, cleanPin);
     if (user) {
@@ -243,6 +354,7 @@ export default function LoginScreen({ onLoginSuccess }) {
     setPin('');
     setError('');
     setIsFirstLogin(true);
+    setRequiresOnlineCheck(true);
   };
 
   return (
@@ -308,6 +420,24 @@ export default function LoginScreen({ onLoginSuccess }) {
                 <Text style={styles.brandTitle}>রংধনু</Text>
                 <Text style={styles.brandSubtitle}>ক্যাফে এন্ড রেস্টুরেন্ট</Text>
               </View>
+
+              {/* Force Reauth Warning Banner */}
+              {forceReauth && (
+                <View style={styles.forceReauthBanner}>
+                  <Text style={styles.forceReauthBannerIcon}>🔒</Text>
+                  <Text style={styles.forceReauthBannerText}>
+                    Admin আপনাকে লগ আউট করেছে।{'\n'}পুনরায় লগইন করুন (ইন্টারনেট প্রয়োজন)
+                  </Text>
+                </View>
+              )}
+
+              {/* Verifying Overlay */}
+              {isVerifying && (
+                <View style={styles.verifyingOverlay}>
+                  <ActivityIndicator size="large" color="#FFB703" />
+                  <Text style={styles.verifyingText}>Firebase যাচাই করা হচ্ছে...</Text>
+                </View>
+              )}
 
               {/* 2. Crossed Fork & Spoon Divider */}
               <View style={styles.dividerRow}>
@@ -615,6 +745,47 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     fontWeight: '600',
     lineHeight: 18,
+  },
+  forceReauthBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderColor: 'rgba(239, 68, 68, 0.5)',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 12,
+    width: '90%',
+    gap: 10,
+  },
+  forceReauthBannerIcon: {
+    fontSize: 20,
+  },
+  forceReauthBannerText: {
+    color: '#FCA5A5',
+    fontSize: 13,
+    fontWeight: '600',
+    flex: 1,
+    lineHeight: 19,
+  },
+  verifyingOverlay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 183, 3, 0.12)',
+    borderColor: 'rgba(255, 183, 3, 0.3)',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    marginBottom: 10,
+    width: '90%',
+    gap: 12,
+  },
+  verifyingText: {
+    color: '#FFB703',
+    fontSize: 13,
+    fontWeight: '600',
   },
   usernameForm: {
     width: '100%',

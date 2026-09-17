@@ -8,7 +8,8 @@ import {
   TextInput,
   Platform,
   StatusBar as RNStatusBar,
-  Alert
+  Alert,
+  KeyboardAvoidingView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -115,9 +116,18 @@ export default function PaymentCheckoutScreen({
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollBody} contentContainerStyle={styles.scrollContent}>
-        
-        {/* Order Summary Box */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          style={styles.scrollBody}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.scrollContent}
+        >
+          
+          {/* Order Summary Box */}
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>অর্ডার সারাংশ</Text>
           <View style={styles.summaryGrid}>
@@ -273,7 +283,8 @@ export default function PaymentCheckoutScreen({
         </TouchableOpacity>
 
       </ScrollView>
-    </SafeAreaView>
+    </KeyboardAvoidingView>
+  </SafeAreaView>
   );
 }
 

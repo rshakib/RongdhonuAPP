@@ -10,7 +10,9 @@ import {
   TextInput,
   ActivityIndicator,
   StatusBar as RNStatusBar,
-  RefreshControl
+  RefreshControl,
+  Platform,
+  KeyboardAvoidingView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -811,52 +813,57 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
         animationType="fade"
         onRequestClose={() => setRenameModalVisible(false)}
       >
-        <TouchableOpacity
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setRenameModalVisible(false)}
         >
-          <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
-            <Text style={styles.modalTitle}>✏️ ডিভাইসের নাম পরিবর্তন</Text>
-            <Text style={styles.modalDesc}>
-              ডিভাইসটির জন্য একটি নতুন পরিচিতি নাম লিখুন:
-            </Text>
+          <TouchableOpacity
+            style={{ width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }}
+            activeOpacity={1}
+            onPress={() => setRenameModalVisible(false)}
+          >
+            <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+              <Text style={styles.modalTitle}>✏️ ডিভাইসের নাম পরিবর্তন</Text>
+              <Text style={styles.modalDesc}>
+                ডিভাইসটির জন্য একটি নতুন পরিচিতি নাম লিখুন:
+              </Text>
 
-            {renameError ? (
-              <View style={styles.errorBox}>
-                <Text style={styles.errorText}>⚠️ {renameError}</Text>
+              {renameError ? (
+                <View style={styles.errorBox}>
+                  <Text style={styles.errorText}>⚠️ {renameError}</Text>
+                </View>
+              ) : null}
+
+              <TextInput
+                style={styles.pinInput}
+                placeholder="Enter new device name"
+                placeholderTextColor="#71717a"
+                value={renameInput}
+                onChangeText={(val) => {
+                  setRenameInput(val);
+                  if (renameError) setRenameError('');
+                }}
+                autoFocus={true}
+              />
+
+              <View style={styles.modalBtnRow}>
+                <TouchableOpacity
+                  style={styles.modalCancelBtn}
+                  onPress={() => setRenameModalVisible(false)}
+                >
+                  <Text style={styles.modalCancelText}>বাতিল</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.modalConfirmBtn, { backgroundColor: '#16a34a' }]}
+                  onPress={handleConfirmRename}
+                >
+                  <Text style={styles.modalConfirmText}>সেভ করুন</Text>
+                </TouchableOpacity>
               </View>
-            ) : null}
-
-            <TextInput
-              style={styles.pinInput}
-              placeholder="Enter new device name"
-              placeholderTextColor="#71717a"
-              value={renameInput}
-              onChangeText={(val) => {
-                setRenameInput(val);
-                if (renameError) setRenameError('');
-              }}
-              autoFocus={true}
-            />
-
-            <View style={styles.modalBtnRow}>
-              <TouchableOpacity
-                style={styles.modalCancelBtn}
-                onPress={() => setRenameModalVisible(false)}
-              >
-                <Text style={styles.modalCancelText}>বাতিল</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.modalConfirmBtn, { backgroundColor: '#16a34a' }]}
-                onPress={handleConfirmRename}
-              >
-                <Text style={styles.modalConfirmText}>সেভ করুন</Text>
-              </TouchableOpacity>
             </View>
-          </View>
-        </TouchableOpacity>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Admin PIN Confirmation Modal */}
@@ -866,54 +873,59 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
         animationType="fade"
         onRequestClose={() => setPinModalVisible(false)}
       >
-        <TouchableOpacity
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setPinModalVisible(false)}
         >
-          <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
-            <Text style={styles.modalTitle}>🔒 সাকিব নিরাপত্তা যাচাই</Text>
-            <Text style={styles.modalDesc}>
-              সাকিব এক্সেস স্থায়ীভাবে লক করতে আপনার সাকিব PIN লিখুন:
-            </Text>
+          <TouchableOpacity
+            style={{ width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }}
+            activeOpacity={1}
+            onPress={() => setPinModalVisible(false)}
+          >
+            <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+              <Text style={styles.modalTitle}>🔒 সাকিব নিরাপত্তা যাচাই</Text>
+              <Text style={styles.modalDesc}>
+                সাকিব এক্সেস স্থায়ীভাবে লক করতে আপনার সাকিব PIN লিখুন:
+              </Text>
 
-            {pinError ? (
-              <View style={styles.errorBox}>
-                <Text style={styles.errorText}>⚠️ {pinError}</Text>
+              {pinError ? (
+                <View style={styles.errorBox}>
+                  <Text style={styles.errorText}>⚠️ {pinError}</Text>
+                </View>
+              ) : null}
+
+              <TextInput
+                style={styles.pinInput}
+                placeholder="সাকিব PIN লিখুন"
+                placeholderTextColor="#71717a"
+                keyboardType="number-pad"
+                secureTextEntry={true}
+                value={pinInput}
+                onChangeText={(val) => {
+                  setPinInput(val);
+                  if (pinError) setPinError('');
+                }}
+                autoFocus={true}
+              />
+
+              <View style={styles.modalBtnRow}>
+                <TouchableOpacity
+                  style={styles.modalCancelBtn}
+                  onPress={() => setPinModalVisible(false)}
+                >
+                  <Text style={styles.modalCancelText}>বাতিল</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.modalConfirmBtn}
+                  onPress={handleConfirmPinAndLock}
+                >
+                  <Text style={styles.modalConfirmText}>লক নিশ্চিত করুন</Text>
+                </TouchableOpacity>
               </View>
-            ) : null}
-
-            <TextInput
-              style={styles.pinInput}
-              placeholder="সাকিব PIN লিখুন"
-              placeholderTextColor="#71717a"
-              keyboardType="number-pad"
-              secureTextEntry={true}
-              value={pinInput}
-              onChangeText={(val) => {
-                setPinInput(val);
-                if (pinError) setPinError('');
-              }}
-              autoFocus={true}
-            />
-
-            <View style={styles.modalBtnRow}>
-              <TouchableOpacity
-                style={styles.modalCancelBtn}
-                onPress={() => setPinModalVisible(false)}
-              >
-                <Text style={styles.modalCancelText}>বাতিল</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.modalConfirmBtn}
-                onPress={handleConfirmPinAndLock}
-              >
-                <Text style={styles.modalConfirmText}>লক নিশ্চিত করুন</Text>
-              </TouchableOpacity>
             </View>
-          </View>
-        </TouchableOpacity>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );

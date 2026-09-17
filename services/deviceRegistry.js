@@ -647,6 +647,8 @@ export function checkAndExecuteForceLogout() {
       db.runSync("DELETE FROM app_config WHERE key LIKE 'remember_%' OR key LIKE 'session_%' OR key LIKE '%user%' OR key LIKE '%pin%' OR key = 'login_session_user' OR key = 'login_session_role'");
     } catch (e) {}
 
+    setAppConfig('force_reauth_required', '1');
+
     const now = new Date().toISOString();
     db.runSync(`
       UPDATE device_registry

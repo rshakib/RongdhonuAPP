@@ -8,6 +8,7 @@
       "distribution": "internal"
     },
     "admin": {
+      "environment": "production",
       "env": {
         "EXPO_PUBLIC_APP_PROFILE": "ADMIN"
       },
@@ -17,6 +18,7 @@
       }
     },
     "owner": {
+      "environment": "production",
       "env": {
         "EXPO_PUBLIC_APP_PROFILE": "OWNER"
       },
@@ -26,6 +28,7 @@
       }
     },
     "manager": {
+      "environment": "production",
       "env": {
         "EXPO_PUBLIC_APP_PROFILE": "MANAGER"
       },

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -8,13 +8,33 @@ import {
   TextInput,
   Alert,
   Platform,
-  StatusBar as RNStatusBar
+  StatusBar as RNStatusBar,
+  Keyboard,
+  KeyboardAvoidingView
 } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatDisplayDate, getBusinessDate } from '../database';
 
 export default function ExpensesScreen({ dailyExpenses, onUpdateExpenses, isDailySubmitted, userRole, onBack }) {
+  const scrollRef = useRef(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => setKeyboardHeight(e.endCoordinates.height)
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setKeyboardHeight(0)
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
   // Local state initialized with dailyExpenses from App.js
   const [duduMiah, setDuduMiah] = useState(dailyExpenses?.duduMiah?.toString() || '0');
   const [akashChicken, setAkashChicken] = useState(dailyExpenses?.akashChicken?.toString() || '0');
@@ -101,8 +121,18 @@ export default function ExpensesScreen({ dailyExpenses, onUpdateExpenses, isDail
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollBody} contentContainerStyle={styles.scrollContent}>
-        {/* Total Cost Summary Card */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
+        <ScrollView
+          ref={scrollRef}
+          showsVerticalScrollIndicator={false}
+          style={styles.scrollBody}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: keyboardHeight > 0 ? keyboardHeight + 80 : 80 }]}
+        >
+          {/* Total Cost Summary Card */}
         <View style={styles.totalCard}>
           <Text style={styles.totalLabel}>আজকের মোট খরচ (Auto)</Text>
           <Text style={styles.totalValue}>৳ {totalExpenses}</Text>
@@ -214,7 +244,8 @@ export default function ExpensesScreen({ dailyExpenses, onUpdateExpenses, isDail
           </TouchableOpacity>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </KeyboardAvoidingView>
+  </SafeAreaView>
   );
 }
 

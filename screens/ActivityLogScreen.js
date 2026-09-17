@@ -22,16 +22,13 @@ import {
 
 const { width } = Dimensions.get('window');
 
-// Category Visual Metadata
+// Category Visual Metadata (Focused exclusively on Delete, Daily Submit, Daily Expense Edit, and Ijara Edit)
 const CATEGORIES = [
   { key: 'ALL', label: 'সব', emoji: '📋' },
-  { key: 'ORDER', label: 'অর্ডার', emoji: '🛒' },
-  { key: 'PAYMENT', label: 'পেমেন্ট', emoji: '💵' },
-  { key: 'EXPENSE', label: 'খরচ', emoji: '📉' },
-  { key: 'MENU', label: 'মেনু', emoji: '🍽️' },
-  { key: 'SETTLEMENT', label: 'ক্লোজিং', emoji: '🏦' },
-  { key: 'DEVICE', label: 'ডিভাইস', emoji: '🔒' },
-  { key: 'SECURITY', label: 'সিকিউরিটি', emoji: '🛡️' },
+  { key: 'DELETE', label: 'ডিলিট', emoji: '🗑️' },
+  { key: 'SUBMISSION', label: 'ডেইলি সাবমিট', emoji: '🏦' },
+  { key: 'EXPENSE', label: 'খরচ এডিট', emoji: '📉' },
+  { key: 'IJARA', label: 'ইজারা এডিট', emoji: '📜' },
 ];
 
 const ROLES = [
@@ -43,13 +40,17 @@ const ROLES = [
 ];
 
 const CATEGORY_COLORS = {
+  DELETE: { bg: 'rgba(239, 68, 68, 0.15)', border: 'rgba(239, 68, 68, 0.4)', text: '#EF4444', emoji: '🗑️' },
+  SUBMISSION: { bg: 'rgba(16, 185, 129, 0.15)', border: 'rgba(16, 185, 129, 0.4)', text: '#34D399', emoji: '🏦' },
+  EXPENSE: { bg: 'rgba(251, 113, 133, 0.15)', border: 'rgba(251, 113, 133, 0.4)', text: '#FB7185', emoji: '📉' },
+  IJARA: { bg: 'rgba(168, 85, 247, 0.15)', border: 'rgba(168, 85, 247, 0.4)', text: '#C084FC', emoji: '📜' },
+  // Backward compatibility
+  SECURITY: { bg: 'rgba(239, 68, 68, 0.15)', border: 'rgba(239, 68, 68, 0.4)', text: '#EF4444', emoji: '🗑️' },
+  SETTLEMENT: { bg: 'rgba(16, 185, 129, 0.15)', border: 'rgba(16, 185, 129, 0.4)', text: '#34D399', emoji: '🏦' },
   ORDER: { bg: 'rgba(59, 130, 246, 0.12)', border: 'rgba(59, 130, 246, 0.35)', text: '#60A5FA', emoji: '🛒' },
   PAYMENT: { bg: 'rgba(16, 185, 129, 0.12)', border: 'rgba(16, 185, 129, 0.35)', text: '#34D399', emoji: '💵' },
-  EXPENSE: { bg: 'rgba(239, 68, 68, 0.12)', border: 'rgba(239, 68, 68, 0.35)', text: '#F87171', emoji: '📉' },
   MENU: { bg: 'rgba(245, 158, 11, 0.12)', border: 'rgba(245, 158, 11, 0.35)', text: '#FBBF24', emoji: '🍽️' },
-  SETTLEMENT: { bg: 'rgba(52, 211, 153, 0.12)', border: 'rgba(52, 211, 153, 0.35)', text: '#10B981', emoji: '🏦' },
   DEVICE: { bg: 'rgba(168, 85, 247, 0.12)', border: 'rgba(168, 85, 247, 0.35)', text: '#C084FC', emoji: '🔒' },
-  SECURITY: { bg: 'rgba(239, 68, 68, 0.15)', border: 'rgba(239, 68, 68, 0.4)', text: '#EF4444', emoji: '🛡️' },
   SYSTEM: { bg: 'rgba(148, 163, 184, 0.12)', border: 'rgba(148, 163, 184, 0.35)', text: '#94A3B8', emoji: '⚙️' },
 };
 
@@ -168,11 +169,25 @@ export default function ActivityLogScreen({ onBack, userRole }) {
     }
   }, [selectedDate, loadLocalData]);
 
+  // The 4 core action types we care about (hides old ORDER, PAYMENT, MENU etc.)
+  const CORE_ACTION_TYPES = new Set(['DELETE', 'SECURITY', 'SUBMISSION', 'SETTLEMENT', 'EXPENSE', 'IJARA']);
+
   // Filtered Logs
   const filteredLogs = useMemo(() => {
     return logs.filter((log) => {
       // Category filter
-      if (selectedCategory !== 'ALL' && log.action_type !== selectedCategory) {
+      if (selectedCategory === 'ALL') {
+        // Only show our 4 core categories — hide old ORDER, PAYMENT, MENU, DEVICE, SYSTEM logs
+        if (!CORE_ACTION_TYPES.has(log.action_type)) return false;
+      } else if (selectedCategory === 'DELETE') {
+        if (log.action_type !== 'DELETE' && log.action_type !== 'SECURITY') return false;
+      } else if (selectedCategory === 'SUBMISSION') {
+        if (log.action_type !== 'SUBMISSION' && log.action_type !== 'SETTLEMENT') return false;
+      } else if (selectedCategory === 'EXPENSE') {
+        if (log.action_type !== 'EXPENSE') return false;
+      } else if (selectedCategory === 'IJARA') {
+        if (log.action_type !== 'IJARA') return false;
+      } else if (log.action_type !== selectedCategory) {
         return false;
       }
       // Role filter
@@ -193,12 +208,125 @@ export default function ActivityLogScreen({ onBack, userRole }) {
   // Metrics for current day
   const metrics = useMemo(() => {
     const total = logs.length;
-    const orderCount = logs.filter(l => l.action_type === 'ORDER').length;
-    const paymentCount = logs.filter(l => l.action_type === 'PAYMENT').length;
+    const deleteCount = logs.filter(l => l.action_type === 'DELETE' || l.action_type === 'SECURITY').length;
+    const submissionCount = logs.filter(l => l.action_type === 'SUBMISSION' || l.action_type === 'SETTLEMENT').length;
     const expenseCount = logs.filter(l => l.action_type === 'EXPENSE').length;
-    const uniqueDevices = new Set(logs.map(l => l.device_id).filter(Boolean)).size;
-    return { total, orderCount, paymentCount, expenseCount, uniqueDevices };
+    const ijaraCount = logs.filter(l => l.action_type === 'IJARA').length;
+    return { total, deleteCount, submissionCount, expenseCount, ijaraCount };
   }, [logs]);
+
+  // Clean human-friendly description generator for activity logs
+  const formatHumanDescription = (desc, actionType, actionTitle) => {
+    if (!desc) return '';
+    let clean = String(desc).trim();
+
+    // 1. Active order delete patterns
+    clean = clean.replace(/অর্ডার মুছে ফেলা হয়েছে:\s*(?:active-)?(?:table_)?([a-zA-Z0-9_-]+)/gi, (m, p1) => {
+      if (p1.toUpperCase().startsWith('D-') || p1.toUpperCase().startsWith('DELIVERY')) {
+        return 'ডেলিভারি অর্ডার মুছে ফেলা হয়েছে';
+      }
+      return `টেবিল ${p1.replace(/^table_/i, '')} এর রানিং অর্ডার মুছে ফেলা হয়েছে`;
+    });
+
+    // 2. Completed order delete with full composite ID (table_4_2026-09-16T11-56-00-106Z or D-178956...)
+    clean = clean.replace(/অর্ডার\s*আইডি:\s*table_([a-zA-Z0-9]+)(?:_[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:\.-]+Z?)?/gi, 'টেবিল $1 এর সম্পন্ন অর্ডার মুছে ফেলা হয়েছে');
+    clean = clean.replace(/অর্ডার\s*আইডি:\s*D-[0-9a-zA-Z_.-]+/gi, 'ডেলিভারি সম্পন্ন অর্ডার মুছে ফেলা হয়েছে');
+    clean = clean.replace(/অর্ডার\s*আইডি:\s*([a-zA-Z0-9_-]+)/gi, 'অর্ডার $1');
+
+    // 3. Convert table identifiers
+    clean = clean.replace(/টেবিল\s+table_([a-zA-Z0-9]+)/gi, 'টেবিল $1');
+    clean = clean.replace(/\btable_([a-zA-Z0-9]+)\b/gi, 'টেবিল $1');
+    clean = clean.replace(/\bT-([a-zA-Z0-9]+):/g, 'টেবিল $1:');
+    clean = clean.replace(/\bactive-/gi, '');
+
+    return clean;
+  };
+
+  // Extract human-readable tags/chips from metadata, omitting raw IDs & technical keys
+  const extractHumanMetaBadges = (metadata) => {
+    if (!metadata) return [];
+    let metaObj = null;
+    if (typeof metadata === 'object') {
+      metaObj = metadata;
+    } else if (typeof metadata === 'string') {
+      try {
+        metaObj = JSON.parse(metadata);
+      } catch (e) {
+        return [];
+      }
+    }
+    if (!metaObj || typeof metaObj !== 'object') return [];
+
+    const badges = [];
+
+    // Financial / Daily submission details
+    if (metaObj.totalSell !== undefined && metaObj.totalSell !== null) {
+      badges.push({ label: `বিক্রয়: ৳${metaObj.totalSell}`, color: '#34D399', bg: 'rgba(16, 185, 129, 0.12)', border: 'rgba(16, 185, 129, 0.3)' });
+    }
+    if (metaObj.totalExpenses !== undefined && metaObj.totalExpenses !== null) {
+      badges.push({ label: `খরচ: ৳${metaObj.totalExpenses}`, color: '#FB7185', bg: 'rgba(251, 113, 133, 0.12)', border: 'rgba(251, 113, 133, 0.3)' });
+    }
+    if (metaObj.netCash !== undefined && metaObj.netCash !== null) {
+      badges.push({ label: `জমা: ৳${metaObj.netCash}`, color: '#60A5FA', bg: 'rgba(59, 130, 246, 0.12)', border: 'rgba(59, 130, 246, 0.3)' });
+    }
+
+    // Itemized Expenses
+    if (metaObj.duduMiah && parseFloat(metaObj.duduMiah) > 0) {
+      badges.push({ label: `দুধ: ৳${metaObj.duduMiah}`, color: '#FBBF24', bg: 'rgba(245, 158, 11, 0.12)', border: 'rgba(245, 158, 11, 0.3)' });
+    }
+    if (metaObj.akashChicken && parseFloat(metaObj.akashChicken) > 0) {
+      badges.push({ label: `মুরগি: ৳${metaObj.akashChicken}`, color: '#FBBF24', bg: 'rgba(245, 158, 11, 0.12)', border: 'rgba(245, 158, 11, 0.3)' });
+    }
+    if (metaObj.burgerBun && parseFloat(metaObj.burgerBun) > 0) {
+      badges.push({ label: `বান: ৳${metaObj.burgerBun}`, color: '#FBBF24', bg: 'rgba(245, 158, 11, 0.12)', border: 'rgba(245, 158, 11, 0.3)' });
+    }
+    if (metaObj.bazar && parseFloat(metaObj.bazar) > 0) {
+      badges.push({ label: `বাজার: ৳${metaObj.bazar}`, color: '#FBBF24', bg: 'rgba(245, 158, 11, 0.12)', border: 'rgba(245, 158, 11, 0.3)' });
+    }
+    if (metaObj.others && parseFloat(metaObj.others) > 0) {
+      badges.push({ label: `অন্যান্য: ৳${metaObj.others}`, color: '#94A3B8', bg: 'rgba(148, 163, 184, 0.12)', border: 'rgba(148, 163, 184, 0.3)' });
+    }
+    if (metaObj.ijara && parseFloat(metaObj.ijara) > 0) {
+      badges.push({ label: `ইজারা: ৳${metaObj.ijara}`, color: '#C084FC', bg: 'rgba(168, 85, 247, 0.12)', border: 'rgba(168, 85, 247, 0.3)' });
+    }
+
+    // Amount
+    if (badges.length === 0 && metaObj.amount !== undefined && metaObj.amount !== null && !isNaN(metaObj.amount)) {
+      badges.push({ label: `পরিমাণ: ৳${metaObj.amount}`, color: '#FFB703', bg: 'rgba(255, 183, 3, 0.12)', border: 'rgba(255, 183, 3, 0.3)' });
+    }
+
+    // Notes
+    if (metaObj.notes && typeof metaObj.notes === 'string' && metaObj.notes.trim()) {
+      badges.push({ label: `নোট: ${metaObj.notes.trim()}`, color: '#38BDF8', bg: 'rgba(56, 189, 248, 0.12)', border: 'rgba(56, 189, 248, 0.3)' });
+    }
+
+    // ---- Deleted Order Details (for completed order deletes) ----
+    // Show total
+    if (metaObj.total !== undefined && metaObj.total !== null && Number(metaObj.total) > 0) {
+      badges.push({ label: `মোট: ৳${metaObj.total}`, color: '#34D399', bg: 'rgba(16, 185, 129, 0.12)', border: 'rgba(16, 185, 129, 0.3)' });
+    }
+    // Show payment method
+    if (metaObj.method && typeof metaObj.method === 'string' && metaObj.method.trim()) {
+      badges.push({ label: `💳 ${metaObj.method.trim()}`, color: '#60A5FA', bg: 'rgba(59, 130, 246, 0.12)', border: 'rgba(59, 130, 246, 0.3)' });
+    }
+    // Show item count badge
+    if (metaObj.itemCount && Number(metaObj.itemCount) > 0) {
+      badges.push({ label: `${metaObj.itemCount} টি আইটেম`, color: '#FBBF24', bg: 'rgba(245, 158, 11, 0.12)', border: 'rgba(245, 158, 11, 0.3)' });
+    }
+    // Show each item
+    if (Array.isArray(metaObj.items) && metaObj.items.length > 0) {
+      metaObj.items.forEach(it => {
+        const name = it.name || it.item_name || it.itemName || 'আইটেম';
+        const qty = it.qty || it.quantity || 1;
+        const price = it.price || it.unit_price || 0;
+        const priceStr = price > 0 ? ` (৳${price}×${qty})` : ` ×${qty}`;
+        badges.push({ label: `🍽 ${name}${priceStr}`, color: '#E5E5E5', bg: 'rgba(255,255,255,0.06)', border: 'rgba(255,255,255,0.12)' });
+      });
+    }
+
+    // Raw IDs (orderId, tableId, etc.) are omitted to prevent raw JSON dumps
+    return badges;
+  };
 
   const formatLogTime = (isoString) => {
     if (!isoString) return '';
@@ -207,10 +335,12 @@ export default function ActivityLogScreen({ onBack, userRole }) {
       if (isNaN(d.getTime())) return isoString;
       let hours = d.getHours();
       let minutes = d.getMinutes();
+      let seconds = d.getSeconds();
       const ampm = hours >= 12 ? 'PM' : 'AM';
       hours = hours % 12 || 12;
       minutes = minutes < 10 ? '0' + minutes : minutes;
-      return `${hours}:${minutes} ${ampm}`;
+      seconds = seconds < 10 ? '0' + seconds : seconds;
+      return `${hours}:${minutes}:${seconds} ${ampm}`;
     } catch (e) {
       return isoString;
     }
@@ -275,19 +405,23 @@ export default function ActivityLogScreen({ onBack, userRole }) {
         <View style={styles.metricsRow}>
           <View style={styles.metricCard}>
             <Text style={styles.metricNumber}>{metrics.total}</Text>
-            <Text style={styles.metricLabel}>মোট অ্যাক্টিভিটি</Text>
+            <Text style={styles.metricLabel}>মোট রেকর্ড</Text>
           </View>
           <View style={styles.metricCard}>
-            <Text style={[styles.metricNumber, { color: '#10B981' }]}>{metrics.uniqueDevices}</Text>
-            <Text style={styles.metricLabel}>সক্রিয় ডিভাইস</Text>
+            <Text style={[styles.metricNumber, { color: '#EF4444' }]}>{metrics.deleteCount}</Text>
+            <Text style={styles.metricLabel}>🗑️ ডিলিট</Text>
           </View>
           <View style={styles.metricCard}>
-            <Text style={[styles.metricNumber, { color: '#60A5FA' }]}>{metrics.orderCount}</Text>
-            <Text style={styles.metricLabel}>অর্ডার অ্যাকশন</Text>
+            <Text style={[styles.metricNumber, { color: '#10B981' }]}>{metrics.submissionCount}</Text>
+            <Text style={styles.metricLabel}>🏦 সাবমিট</Text>
           </View>
           <View style={styles.metricCard}>
-            <Text style={[styles.metricNumber, { color: '#F59E0B' }]}>{metrics.paymentCount}</Text>
-            <Text style={styles.metricLabel}>পেমেন্ট ট্রানজেকশন</Text>
+            <Text style={[styles.metricNumber, { color: '#FB7185' }]}>{metrics.expenseCount}</Text>
+            <Text style={styles.metricLabel}>📉 খরচ এডিট</Text>
+          </View>
+          <View style={styles.metricCard}>
+            <Text style={[styles.metricNumber, { color: '#C084FC' }]}>{metrics.ijaraCount}</Text>
+            <Text style={styles.metricLabel}>📜 ইজারা</Text>
           </View>
         </View>
 
@@ -399,22 +533,33 @@ export default function ActivityLogScreen({ onBack, userRole }) {
                       <Text style={styles.catBadgeEmoji}>{catTheme.emoji}</Text>
                       <Text style={[styles.catBadgeText, { color: catTheme.text }]}>{item.action_title}</Text>
                     </View>
-                    <Text style={styles.timestampText}>{formatLogTime(item.timestamp)}</Text>
+                    <View style={styles.timeBadge}>
+                      <Text style={styles.timeBadgeEmoji}>🕒</Text>
+                      <Text style={styles.timestampText}>{formatLogTime(item.timestamp)}</Text>
+                    </View>
                   </View>
 
                   {/* Card Body: Description */}
                   {item.description ? (
-                    <Text style={styles.cardDesc}>{item.description}</Text>
+                    <Text style={styles.cardDesc}>
+                      {formatHumanDescription(item.description, item.action_type, item.action_title)}
+                    </Text>
                   ) : null}
 
-                  {/* Metadata pill if available */}
-                  {item.metadata ? (
-                    <View style={styles.metaContainer}>
-                      <Text style={styles.metaText} numberOfLines={2}>
-                        {typeof item.metadata === 'string' ? item.metadata : JSON.stringify(item.metadata)}
-                      </Text>
-                    </View>
-                  ) : null}
+                  {/* Human-friendly Metadata Badges (No raw JSON) */}
+                  {(() => {
+                    const badges = extractHumanMetaBadges(item.metadata);
+                    if (!badges || badges.length === 0) return null;
+                    return (
+                      <View style={styles.metaBadgesContainer}>
+                        {badges.map((b, bIdx) => (
+                          <View key={bIdx} style={[styles.metaBadgeChip, { backgroundColor: b.bg, borderColor: b.border }]}>
+                            <Text style={[styles.metaBadgeChipText, { color: b.color }]}>{b.label}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    );
+                  })()}
 
                   {/* Card Footer: Device Info + Role Badge */}
                   <View style={styles.cardFooter}>
@@ -698,10 +843,25 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
   },
+  timeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#161616',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 0.8,
+    borderColor: '#2A2A2A',
+  },
+  timeBadgeEmoji: {
+    fontSize: 10,
+    marginRight: 4,
+  },
   timestampText: {
-    color: '#888',
+    color: '#FFB703',
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '700',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   cardDesc: {
     color: '#E5E5E5',
@@ -709,19 +869,22 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     marginBottom: 6,
   },
-  metaContainer: {
-    backgroundColor: '#141414',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+  metaBadgesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
     marginBottom: 8,
-    borderWidth: 0.8,
-    borderColor: '#222',
+    marginTop: 2,
   },
-  metaText: {
-    color: '#999',
-    fontSize: 10,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  metaBadgeChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 0.8,
+  },
+  metaBadgeChipText: {
+    fontSize: 11,
+    fontWeight: '600',
   },
   cardFooter: {
     flexDirection: 'row',

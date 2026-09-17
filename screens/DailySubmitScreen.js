@@ -1,5 +1,5 @@
 import { verifyPinCode, formatDisplayDate, getBusinessDate } from '../database';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -11,12 +11,32 @@ import {
   Modal,
   Platform,
   StatusBar as RNStatusBar,
-  BackHandler
+  BackHandler,
+  Keyboard,
+  KeyboardAvoidingView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { exportDepositReportPDF } from '../pdfHelper';
 
 export default function DailySubmitScreen({ dailyExpenses, completedOrders = [], submissionHistory = [], onUpdateExpenses, isDailySubmitted, userRole, onBack, onSubmit }) {
+  const mainScrollRef = useRef(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => setKeyboardHeight(e.endCoordinates.height)
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setKeyboardHeight(0)
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
+
   const [depositAmount, setDepositAmount] = useState('0');
   const businessDateObj = new Date(Date.now() - 3600000);
   const [selectedMonth, setSelectedMonth] = useState(businessDateObj.getMonth());
@@ -225,8 +245,18 @@ export default function DailySubmitScreen({ dailyExpenses, completedOrders = [],
         </View>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollBody} contentContainerStyle={styles.scrollContent}>
-        {/* Section 1: Large Summary Card */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
+        <ScrollView
+          ref={mainScrollRef}
+          showsVerticalScrollIndicator={false}
+          style={styles.scrollBody}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: keyboardHeight > 0 ? keyboardHeight + 80 : 80 }]}
+        >
+          {/* Section 1: Large Summary Card */}
         <View style={styles.summaryCard}>
           <View style={styles.summaryCardHeader}>
             <Text style={styles.summaryDateLabel}>📅 ব্যবসায়িক তারিখ (Business Date)</Text>
@@ -359,6 +389,7 @@ export default function DailySubmitScreen({ dailyExpenses, completedOrders = [],
           </View>
         )}
       </ScrollView>
+    </KeyboardAvoidingView>
 
       {/* PIN Verification Popup Modal */}
       <Modal
@@ -367,7 +398,10 @@ export default function DailySubmitScreen({ dailyExpenses, completedOrders = [],
         visible={submitModalVisible}
         onRequestClose={() => setSubmitModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalContent}>
             <View style={styles.modalIconCircle}>
               <Text style={styles.modalIconEmoji}>⚠️</Text>
@@ -416,7 +450,7 @@ export default function DailySubmitScreen({ dailyExpenses, completedOrders = [],
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Monthly History Modal (Google Sheet Style) */}

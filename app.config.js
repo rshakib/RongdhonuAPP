@@ -59,7 +59,7 @@ module.exports = ({ config }) => {
     ...config,
     name: pConfig.name,
     slug: pConfig.slug,
-    version: '1.0.0',
+    version: config.version || '1.0.1',
     runtimeVersion: {
       policy: 'appVersion'
     },
@@ -92,7 +92,7 @@ module.exports = ({ config }) => {
         foregroundImage: iconPath
       },
       package: pConfig.package,
-      versionCode: 2
+      versionCode: config.android?.versionCode || 2
     },
     web: {
       favicon: iconPath

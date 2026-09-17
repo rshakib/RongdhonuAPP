@@ -242,6 +242,14 @@ export default function App() {
   const [userDisplayName, setUserDisplayName] = useState('');
   const [isOnline, setIsOnline] = useState(true);
   const [isOnlineOnlyMode, setIsOnlineOnlyMode] = useState(true);
+  const [forceReauthRequired, setForceReauthRequired] = useState(() => {
+    try {
+      const { getAppConfig } = require('./database');
+      return getAppConfig('force_reauth_required') === '1';
+    } catch (e) {
+      return false;
+    }
+  }); // true when admin force-logged out this device
   
   // Visual Sync Timer Countdowns (Shared for all roles)
   const [delCountdown, setDelCountdown] = useState(90);
@@ -264,6 +272,7 @@ export default function App() {
           setUserDisplayName('');
           setPendingLoginInfo(null);
           setCurrentScreen('LOGIN');
+          setForceReauthRequired(true);
           Alert.alert(
             'সাকিব সাইন-আউট',
             forceRes.message || 'সাকিব আপনাকে সাইন-আউট করিয়েছেন।\nঅনুগ্রহ করে আপনার ইউজারনেম এবং PIN ব্যবহার করে আবার লগইন করুন।',
@@ -359,6 +368,7 @@ export default function App() {
             setUserDisplayName('');
             setPendingLoginInfo(null);
             setCurrentScreen('LOGIN');
+            setForceReauthRequired(true);
             Alert.alert(
               'সাকিব সাইন-আউট',
               forceRes.message || 'সাকিব আপনাকে সাইন-আউট করিয়েছেন।\nঅনুগ্রহ করে আপনার ইউজারনেম এবং PIN ব্যবহার করে আবার লগইন করুন।',
@@ -582,6 +592,44 @@ export default function App() {
     return () => {
       subscription.remove();
       markSyncTimerInactive('foreground-recovery-pull');
+    };
+  }, [isLoggedIn]);
+
+  // --- FORCE LOGOUT POLLING (every 60s + on app resume) ---
+  // Checks if admin has remotely logged out this device
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    const executeForceLogoutCheck = () => {
+      try {
+        const { checkAndExecuteForceLogout } = require('./services/deviceRegistry');
+        const result = checkAndExecuteForceLogout();
+        if (result && result.triggered) {
+          setIsLoggedIn(false);
+          setUserRole('');
+          setUserDisplayName('');
+          setPendingLoginInfo(null);
+          setCurrentScreen('LOGIN');
+          setForceReauthRequired(true);
+        }
+      } catch (e) {
+        console.error('[ForceLogout Polling] Error:', e);
+      }
+    };
+
+    // Poll every 60 seconds
+    const pollInterval = setInterval(executeForceLogoutCheck, 60000);
+
+    // Also check on every app foreground resume
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        executeForceLogoutCheck();
+      }
+    });
+
+    return () => {
+      clearInterval(pollInterval);
+      appStateSubscription.remove();
     };
   }, [isLoggedIn]);
 
@@ -868,6 +916,13 @@ export default function App() {
   };
 
   const handleLoginSuccess = async (role, displayName, mode = 'online_only') => {
+    // Clear force reauth flag on any successful login
+    setForceReauthRequired(false);
+    try {
+      const { setAppConfig } = require('./database');
+      setAppConfig('force_reauth_required', '0');
+    } catch (e) {}
+
     // --- DEVICE ACCESS CONTROL (PHASE 3 & 5) ---
     try {
       const { checkDeviceLoginPermission, checkAndExecuteForceLogout } = require('./services/deviceRegistry');
@@ -878,9 +933,10 @@ export default function App() {
         setUserDisplayName('');
         setPendingLoginInfo(null);
         setCurrentScreen('LOGIN');
+        setForceReauthRequired(true);
         Alert.alert(
           'সাকিব সাইন-আউট',
-          forceRes.message || 'সাকিব আপনাকে সাইন-আউট করিয়েছেন।\nঅনুগ্রহ করে আপনার ইউজারনেম এবং PIN ব্যবহার করে আবার লগইন করুন।',
+          forceRes.message || 'সাকিব আপনাকে সাইন-আউট করিয়েছেন।\nঅনুগ্রহ করে আপনার ইউজারনেম এবং PIN ব্যবহার করে আবার লগইন করুন।',
           [{ text: 'ঠিক আছে' }]
         );
         return;
@@ -1043,14 +1099,6 @@ export default function App() {
       
       const success = await syncRecordImmediately('orders', tableId);
       showToast(success ? "✅ ডাটা সেভ হয়েছে" : "📱 অফলাইনে সেভ হয়েছে", success ? 'online' : 'offline');
-      logActivity({
-        actionType: ACTION_TYPES.ORDER,
-        actionTitle: 'সম্পন্ন অর্ডার এডিট',
-        description: `অর্ডার ${tableId}: নতুন মোট ৳${newTotal}`,
-        metadata: { orderId: tableId, newTotal, itemsCount: updatedItems.length },
-        userRole: userRole,
-        userName: userDisplayName
-      }).catch(() => {});
       return;
     }
 
@@ -1089,20 +1137,6 @@ export default function App() {
     const collection = tableId.toString().startsWith('D-') ? 'deliveries' : 'restaurant_tables';
     const success = await syncRecordImmediately(collection, tableIdClean);
     showToast(success ? "✅ ডাটা সেভ হয়েছে" : "📱 অফলাইনে সেভ হয়েছে", success ? 'online' : 'offline');
-
-    if (updatedItems && updatedItems.length > 0) {
-      const isDel = tableId.toString().startsWith('D-');
-      const orderLabel = isDel ? `ডেলিভারি (${tableId})` : `টেবিল ${tableId}`;
-      const totalAmount = updatedItems.reduce((sum, i) => sum + (i.price * i.qty), 0);
-      logActivity({
-        actionType: ACTION_TYPES.ORDER,
-        actionTitle: 'অর্ডার আপডেট',
-        description: `${orderLabel}: ${updatedItems.length} টি আইটেম (৳${totalAmount})`,
-        metadata: { tableId, itemsCount: updatedItems.length, total: totalAmount },
-        userRole: userRole,
-        userName: userDisplayName
-      }).catch(() => {});
-    }
   };
 
   // Creates a new delivery order with a unique ID in SQLite
@@ -1114,15 +1148,6 @@ export default function App() {
     refreshData();
     
     await syncRecordImmediately('deliveries', uniqueId);
-
-    logActivity({
-      actionType: ACTION_TYPES.ORDER,
-      actionTitle: 'নতুন ডেলিভারি তৈরি',
-      description: `ডেলিভারি আইডি: ${uniqueId}`,
-      metadata: { deliveryId: uniqueId },
-      userRole: userRole,
-      userName: userDisplayName
-    }).catch(() => {});
 
     setSelectedTableId(uniqueId);
     setCurrentScreen('TABLE_DETAIL');
@@ -1146,10 +1171,9 @@ export default function App() {
     showToast(success ? "🗑️ ডাটা ডিলিট হয়েছে" : "📱 অফলাইনে ডিলিট হয়েছে", success ? 'online' : 'offline');
 
     logActivity({
-      actionType: ACTION_TYPES.SECURITY,
+      actionType: ACTION_TYPES.DELETE,
       actionTitle: 'অতীতের হিসাব ডিলিট',
-      description: `তারিখ: ${dateStr}`,
-      metadata: { date: dateStr },
+      description: `${dateStr} তারিখের দৈনিক হিসাব মুছে ফেলা হয়েছে`,
       userRole: userRole,
       userName: userDisplayName
     }).catch(() => {});
@@ -1167,15 +1191,6 @@ export default function App() {
        // Refresh menu from Firestore for other devices
        syncMenuOnly();
     }
-
-    logActivity({
-      actionType: ACTION_TYPES.MENU,
-      actionTitle: 'মেনুর মূল্য পরিবর্তন',
-      description: `${itemName}: নতুন মূল্য ৳${newPrice}`,
-      metadata: { itemName, newPrice, category },
-      userRole: userRole,
-      userName: userDisplayName
-    }).catch(() => {});
   };
 
   // Adds a new item to the menu in SQLite
@@ -1190,15 +1205,6 @@ export default function App() {
        // Refresh menu from Firestore for other devices
        syncMenuOnly();
     }
-
-    logActivity({
-      actionType: ACTION_TYPES.MENU,
-      actionTitle: 'নতুন মেনু আইটেম যুক্ত',
-      description: `${newItem.name} (৳${newItem.price}) - ${newItem.category || 'সাধারণ'}`,
-      metadata: newItem,
-      userRole: userRole,
-      userName: userDisplayName
-    }).catch(() => {});
   };
 
   // Deletes an item from the menu in SQLite
@@ -1222,10 +1228,9 @@ export default function App() {
             }
 
             logActivity({
-              actionType: ACTION_TYPES.MENU,
-              actionTitle: 'মেনু আইটেম মুছে ফেলা',
-              description: `আইটেম: ${itemName}${category ? ' (' + category + ')' : ''}`,
-              metadata: { itemName, category },
+              actionType: ACTION_TYPES.DELETE,
+              actionTitle: 'মেনু আইটেম ডিলিট',
+              description: `মেনু আইটেম "${itemName}" মুছে ফেলা হয়েছে${category ? ' (' + category + ')' : ''}`,
               userRole: userRole,
               userName: userDisplayName
             }).catch(() => {});
@@ -1284,15 +1289,6 @@ export default function App() {
       
       const success = await syncRecordImmediately('orders', orderRecord.id);
       showToast(success ? "✅ ডাটা সেভ হয়েছে" : "📱 অফলাইনে সেভ হয়েছে", success ? 'online' : 'offline');
-
-      logActivity({
-        actionType: ACTION_TYPES.PAYMENT,
-        actionTitle: 'পেমেন্ট সম্পন্ন',
-        description: `${orderRecord.tableId}: ৳${paid} (${method})`,
-        metadata: { orderId: orderRecord.id, tableId: orderRecord.tableId, paid, method, totalAmount: paymentAmount, breakdown },
-        userRole: userRole,
-        userName: userDisplayName
-      }).catch(() => {});
     }
   };
 
@@ -1338,15 +1334,49 @@ export default function App() {
   // Deletes an active order (clears table or removes delivery)
   const handleDeleteActiveOrder = (id) => {
     const tableId = id.replace('active-', '');
+    const isDelivery = tableId.toString().startsWith('D-');
+    const delItem = isDelivery && Array.isArray(deliveries) ? deliveries.find(d => d.id === tableId) : null;
+    const cleanNum = tableId.toString().replace(/^table_/i, '');
+    const tableObj = !isDelivery && Array.isArray(tables) ? tables.find(t => String(t.id).replace(/^table_/i, '') === cleanNum) : null;
+    const friendlyName = isDelivery
+      ? (delItem?.name ? `ডেলিভারি (${delItem.name})` : 'ডেলিভারি অর্ডার')
+      : (tableObj?.name || `টেবিল ${cleanNum}`);
+
+    // Collect items before deletion
+    let activeItems = [];
+    let totalAmount = 0;
+    if (isDelivery && delItem) {
+      if (Array.isArray(delItem.items)) activeItems = delItem.items;
+      totalAmount = activeItems.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.quantity) || 1), 0);
+    } else if (tableObj) {
+      if (Array.isArray(tableObj.items)) activeItems = tableObj.items;
+      totalAmount = activeItems.reduce((s, it) => s + (Number(it.price) || 0) * (Number(it.quantity) || 1), 0);
+    }
+
+    // Map items to clean shape
+    const parsedItems = activeItems.map(it => ({
+      name: it.name || it.item_name || it.itemName || 'আইটেম',
+      qty: it.quantity || it.qty || 1,
+      price: it.price || it.unit_price || 0,
+    }));
+
+    const amountStr = totalAmount > 0 ? ` • মোট: ৳${totalAmount}` : '';
+    const itemsStr = parsedItems.length > 0
+      ? parsedItems.map(it => `${it.name} ×${it.qty}`).join(', ')
+      : '';
+    const fullDesc = itemsStr
+      ? `${friendlyName} এর রানিং অর্ডার মুছে ফেলা হয়েছে${amountStr} | আইটেম: ${itemsStr}`
+      : `${friendlyName} এর রানিং অর্ডার মুছে ফেলা হয়েছে${amountStr}`;
+
     Alert.alert(
-      "অर्डर ডিলিট",
-      "আপনি কি নিশ্চিতভাবে এই সক্রিয় অর্ডারটি মুছে ফেলতে চান?",
+      "অর্ডার ডিলিট",
+      "আপনি কি নিশ্চিতভাবে এই সক্রিয় অর্ডারটি মুছে ফেলতে চান?",
       [
         { text: "না", style: "cancel" },
-        { 
-          text: "হ্যাঁ", 
+        {
+          text: "হ্যাঁ",
           onPress: async () => {
-            if (tableId.toString().startsWith('D-')) {
+            if (isDelivery) {
               removeDelivery(tableId);
               await syncRecordImmediately('deliveries', tableId);
             } else {
@@ -1355,13 +1385,18 @@ export default function App() {
               await syncRecordImmediately('restaurant_tables', cleanId);
             }
             refreshData();
-            showToast("✅ ডাটা ডিলিট হয়েছে", 'online');
+            showToast("✅ ডাটা ডিলিট হয়েছে", 'online');
 
             logActivity({
-              actionType: ACTION_TYPES.SECURITY,
-              actionTitle: 'সক্রিয় অর্ডার ডিলিট',
-              description: `অর্ডার মুছে ফেলা হয়েছে: ${tableId}`,
-              metadata: { tableId },
+              actionType: ACTION_TYPES.DELETE,
+              actionTitle: 'রানিং অর্ডার ডিলিট',
+              description: fullDesc,
+              metadata: parsedItems.length > 0 ? {
+                table: friendlyName,
+                total: totalAmount,
+                items: parsedItems,
+                itemCount: parsedItems.length,
+              } : undefined,
               userRole: userRole,
               userName: userDisplayName
             }).catch(() => {});
@@ -1373,10 +1408,78 @@ export default function App() {
 
   // Deletes a completed order from history
   const handleDeleteDoneOrder = (orderId) => {
-    if (['admin', 'owner', 'manager'].includes(userRole)) {
+    if (['admin', 'owner'].includes(userRole)) {
+      const targetOrder = Array.isArray(completedOrders) ? completedOrders.find(o => o.id === orderId) : null;
+      let friendlyName = 'অর্ডার';
+      let totalAmount = 0;
+      let paymentMethod = '';
+      let parsedItems = [];
+
+      if (targetOrder) {
+        const tId = targetOrder.table_id || targetOrder.tableId || '';
+        if (tId.toString().startsWith('D-')) {
+          friendlyName = 'ডেলিভারি অর্ডার';
+        } else if (tId) {
+          const cleanNum = tId.toString().replace(/^table_/i, '');
+          friendlyName = `টেবিল ${cleanNum}`;
+        } else if (orderId.startsWith('table_')) {
+          const match = orderId.match(/^table_([a-zA-Z0-9]+)/);
+          friendlyName = match ? `টেবিল ${match[1]}` : 'টেবিল অর্ডার';
+        } else if (orderId.startsWith('D-')) {
+          friendlyName = 'ডেলিভারি অর্ডার';
+        }
+        totalAmount = targetOrder.grand_total ?? targetOrder.grandTotal ?? targetOrder.totalAmount ?? 0;
+        paymentMethod = targetOrder.method || targetOrder.payment_method || '';
+
+        // Parse item list — stored as text: "বার্গার x1 @90, কোক x1 @40"
+        if (targetOrder.items) {
+          try {
+            // Try JSON array first
+            const raw = typeof targetOrder.items === 'string' ? JSON.parse(targetOrder.items) : targetOrder.items;
+            if (Array.isArray(raw)) {
+              parsedItems = raw.map(it => ({
+                name: it.name || it.item_name || it.itemName || 'আইটেম',
+                qty: it.quantity || it.qty || 1,
+                price: it.price || it.unit_price || 0,
+              }));
+            }
+          } catch (e) {
+            // Fallback: parse text format "বার্গার x1 @90, কোক x2 @40"
+            if (typeof targetOrder.items === 'string' && targetOrder.items.trim()) {
+              parsedItems = targetOrder.items.split(',').map(part => {
+                part = part.trim();
+                const priceMatch = part.match(/@(\d+(\.\d+)?)$/);
+                const qtyMatch = part.match(/x(\d+)/i);
+                const price = priceMatch ? parseFloat(priceMatch[1]) : 0;
+                const qty = qtyMatch ? parseInt(qtyMatch[1]) : 1;
+                const name = part.replace(/@\d+(\.\d+)?$/, '').replace(/x\d+/i, '').trim() || 'আইটেম';
+                return { name, qty, price };
+              }).filter(it => it.name && it.name !== 'আইটেম' || it.price > 0);
+            }
+          }
+        }
+      } else {
+        if (orderId.startsWith('table_')) {
+          const match = orderId.match(/^table_([a-zA-Z0-9]+)/);
+          friendlyName = match ? `টেবিল ${match[1]}` : 'টেবিল অর্ডার';
+        } else if (orderId.startsWith('D-')) {
+          friendlyName = 'ডেলিভারি অর্ডার';
+        }
+      }
+
+      // Build human-readable description
+      const amountStr = totalAmount > 0 ? ` • মোট: ৳${totalAmount}` : '';
+      const methodStr = paymentMethod ? ` • ${paymentMethod}` : '';
+      const itemsStr = parsedItems.length > 0
+        ? parsedItems.map(it => `${it.name} ×${it.qty}`).join(', ')
+        : '';
+      const fullDesc = itemsStr
+        ? `${friendlyName} এর সম্পন্ন অর্ডার মুছে ফেলা হয়েছে${amountStr}${methodStr} | আইটেম: ${itemsStr}`
+        : `${friendlyName} এর সম্পন্ন অর্ডার মুছে ফেলা হয়েছে${amountStr}${methodStr}`;
+
       Alert.alert(
         "অর্ডার ডিলিট করুন?",
-        "এই অর্ডারটির পেমেন্ট সম্পন্ন হয়েছে। ডিলিট করলে এর সাথে সম্পর্কিত সকল রেকর্ড এবং রিপোর্ট আপডেট হয়ে যাবে।\n\nআপনি কি নিশ্চিতভাবে এই অর্ডারটি স্থায়ীভাবে মুছে ফেলতে চান?",
+        "এই অর্ডারটির পেমেন্ট সম্পন্ন হয়েছে। ডিলিট করলে এর সাথে সম্পর্কিত সকল রেকর্ড এবং রিপোর্ট আপডেট হয়ে যাবে।\n\nআপনি কি নিশ্চিতভাবে এই অর্ডারটি স্থায়ীভাবে মুছে ফেলতে চান?",
         [
           { text: "বাতিল", style: "cancel" },
           {
@@ -1387,13 +1490,19 @@ export default function App() {
               if (success) {
                 refreshData();
                 await syncRecordImmediately('orders', orderId);
-                showToast("✅ ডাটা ডিলিট হয়েছে", 'online');
+                showToast("✅ ডাটা ডিলিট হয়েছে", 'online');
 
                 logActivity({
-                  actionType: ACTION_TYPES.SECURITY,
+                  actionType: ACTION_TYPES.DELETE,
                   actionTitle: 'সম্পন্ন অর্ডার ডিলিট',
-                  description: `অর্ডার আইডি: ${orderId}`,
-                  metadata: { orderId },
+                  description: fullDesc,
+                  metadata: parsedItems.length > 0 ? {
+                    table: friendlyName,
+                    total: totalAmount,
+                    method: paymentMethod,
+                    items: parsedItems,
+                    itemCount: parsedItems.length,
+                  } : undefined,
                   userRole: userRole,
                   userName: userDisplayName
                 }).catch(() => {});
@@ -1425,6 +1534,31 @@ export default function App() {
        if (s) anySuccess = true;
     }
     showToast(anySuccess ? "✅ ডাটা সেভ হয়েছে" : "📱 অফলাইনে সেভ হয়েছে", anySuccess ? 'online' : 'offline');
+
+    const totalExp = (parseFloat(expenses?.duduMiah) || 0) + 
+                     (parseFloat(expenses?.akashChicken) || 0) + 
+                     (parseFloat(expenses?.burgerBun) || 0) + 
+                     (parseFloat(expenses?.bazar) || 0) + 
+                     (parseFloat(expenses?.others) || 0);
+    const items = [];
+    if (parseFloat(expenses?.duduMiah) > 0) items.push(`দুধ ৳${expenses.duduMiah}`);
+    if (parseFloat(expenses?.akashChicken) > 0) items.push(`মুরগি ৳${expenses.akashChicken}`);
+    if (parseFloat(expenses?.burgerBun) > 0) items.push(`বান ৳${expenses.burgerBun}`);
+    if (parseFloat(expenses?.bazar) > 0) items.push(`বাজার ৳${expenses.bazar}`);
+    if (parseFloat(expenses?.others) > 0) items.push(`অন্যান্য ৳${expenses.others}`);
+    if (parseFloat(expenses?.ijara) > 0) items.push(`ইজারা ৳${expenses.ijara}`);
+    let desc = `মোট খরচ: ৳${totalExp}`;
+    if (items.length > 0) {
+      desc += ` (${items.join(', ')})`;
+    }
+    logActivity({
+      actionType: ACTION_TYPES.EXPENSE,
+      actionTitle: 'দৈনিক খরচ এডিট',
+      description: desc,
+      metadata: { totalExp, ...expenses },
+      userRole: userRole,
+      userName: userDisplayName
+    }).catch(() => {});
   };
 
   // Resets daily submission lock for today (Admin special privilege)
@@ -1443,9 +1577,9 @@ export default function App() {
             if (success) {
               refreshData();
               logActivity({
-                actionType: ACTION_TYPES.SECURITY,
+                actionType: ACTION_TYPES.SUBMISSION,
                 actionTitle: 'ডেইলি লক রিসেট',
-                description: 'আজকের দৈনিক সাবমিট লক মুছে ফেলা হয়েছে',
+                description: 'আজকের দৈনিক সাবমিট লক মুছে ফেলা হয়েছে (পুনরায় সাবমিট করা যাবে)',
                 userRole: userRole,
                 userName: userDisplayName
               }).catch(() => {});
@@ -1475,9 +1609,9 @@ export default function App() {
             if (success) {
               refreshData();
               logActivity({
-                actionType: ACTION_TYPES.SECURITY,
-                actionTitle: 'ইজা রিসেট',
-                description: 'আজকের ইজারার হিসাব ডিলিট করা হয়েছে',
+                actionType: ACTION_TYPES.IJARA,
+                actionTitle: 'ইজারা রিসেট',
+                description: 'আজকের ইজারার হিসাব মুছে ফেলা হয়েছে',
                 userRole: userRole,
                 userName: userDisplayName
               }).catch(() => {});
@@ -1516,9 +1650,9 @@ export default function App() {
             if (result.success) {
               refreshData();
               logActivity({
-                actionType: ACTION_TYPES.SECURITY,
+                actionType: ACTION_TYPES.IJARA,
                 actionTitle: 'অটো ইজা রোলব্যাক',
-                description: `ইজা রোলব্যাক: ${lastDetails.date}`,
+                description: `${lastDetails.date} তারিখের অটো ইজা রোলব্যাক করা হয়েছে`,
                 userRole: userRole,
                 userName: userDisplayName
               }).catch(() => {});
@@ -1546,13 +1680,6 @@ export default function App() {
               const success = await restoreDatabaseFromCloud();
               if (success) {
                 refreshData();
-                logActivity({
-                  actionType: ACTION_TYPES.SYSTEM,
-                  actionTitle: 'ক্লাউড রিস্টোর সম্পাদন',
-                  description: 'ক্লাউড থেকে সফলভাবে লোকাল ডাটাবেজ রিস্টোর করা হয়েছে',
-                  userRole: userRole,
-                  userName: userDisplayName
-                }).catch(() => {});
                 Alert.alert("সফল", "Cloud থেকে ডাটা সফলভাবে রিস্টোর করা হয়েছে।");
               } else {
                 Alert.alert("ব্যর্থ", "ডাটা রিস্টোর করতে সমস্যা হয়েছে। দয়া করে নেটওয়ার্ক কানেকশন চেক করুন।");
@@ -1581,13 +1708,6 @@ export default function App() {
             const success = await recoverMenuFromCloud();
             if (success) {
               refreshData();
-              logActivity({
-                actionType: ACTION_TYPES.SYSTEM,
-                actionTitle: 'মেনু রিকভারি',
-                description: 'ক্লাউড থেকে মেনু সফলভাবে ডাউনলোড করা হয়েছে',
-                userRole: userRole,
-                userName: userDisplayName
-              }).catch(() => {});
               Alert.alert("সফল", "Cloud থেকে মেনু সফলভাবে ডাউনলোড করা হয়েছে।");
             } else {
               Alert.alert("ব্যর্থ", "মেনু ডাউনলোড করতে সমস্যা হয়েছে।");
@@ -1682,7 +1802,7 @@ export default function App() {
         );
       }
 
-      return <LoginScreen onLoginSuccess={(role, name, mode) => handleLoginSuccess(role, name, mode)} />;
+      return <LoginScreen onLoginSuccess={(role, name, mode) => handleLoginSuccess(role, name, mode)} forceReauth={forceReauthRequired} />;
     }
 
     switch (currentScreen) {
@@ -2007,9 +2127,9 @@ export default function App() {
                 refreshData();
 
                 logActivity({
-                  actionType: ACTION_TYPES.SETTLEMENT,
+                  actionType: ACTION_TYPES.SUBMISSION,
                   actionTitle: 'দৈনিক শিট সাবমিট',
-                  description: `মোট বিক্রয়: ৳${summary?.totalSell || 0}, নিট জমা: ৳${summary?.netCashAfterExpenses || 0}`,
+                  description: `আজকের দৈনিক হিসাব সাবমিট সম্পন্ন (মোট বিক্রয়: ৳${summary?.totalSell || 0}, নিট জমা: ৳${summary?.netCashAfterExpenses || 0})`,
                   metadata: { totalSell: summary?.totalSell, totalExpenses: summary?.totalExpenses, netCash: summary?.netCashAfterExpenses },
                   userRole: userRole,
                   userName: userDisplayName

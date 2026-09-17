@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -11,12 +11,18 @@ import {
   Modal,
   TextInput,
   Alert,
-  BackHandler
+  BackHandler,
+  ActivityIndicator,
+  Keyboard,
+  KeyboardAvoidingView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { exportSalesReportPDF, exportDepositReportPDF } from '../pdfHelper';
 import { formatDisplayDate, getBusinessDate, inspectDatabaseStats, executeInspectorQuery, getFirebaseUsageStats, verifyPinCode, deleteDataByDate, getItemSalesReport, getDb, getOwnerEmployees } from '../database';
 import { getAllRegisteredDevices } from '../services/deviceRegistry';
+import { fetchMinimumVersion, setMinimumVersion, APP_VERSION } from '../services/firebaseAppConfig';
+import * as Application from 'expo-application';
+import * as LocalAuthentication from 'expo-local-authentication';
 import { TodaySalesCard, TotalCashCard, ActiveTablesCard, MonthlyTotalCard } from '../components/StatCard';
 
 const { width } = Dimensions.get('window');
@@ -165,7 +171,40 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
   const [pastNote, setPastNote] = useState('');
 
   // Filter States
-  const [salesFilter, setSalesFilter] = useState('Today'); 
+  const [salesFilter, setSalesFilter] = useState('Today');
+
+  // Version Control States (Admin only)
+  const [firebaseMinVersion, setFirebaseMinVersion] = useState(null);
+  const [versionInput, setVersionInput] = useState('');
+  const [isSavingVersion, setIsSavingVersion] = useState(false);
+  const [isLoadingVersion, setIsLoadingVersion] = useState(false);
+  const [versionFetchError, setVersionFetchError] = useState(false);
+  const [versionPinModalVisible, setVersionPinModalVisible] = useState(false);
+  const [versionPinInput, setVersionPinInput] = useState('');
+  const [versionPinError, setVersionPinError] = useState('');
+
+  // Keyboard and Scroll Handling to prevent UI from being covered
+  const mainScrollRef = useRef(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        setKeyboardHeight(e.endCoordinates.height);
+      }
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setKeyboardHeight(0);
+      }
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
   
   // Helper to get Month Year from date string
   const getMonthName = (dateStr) => {
@@ -214,6 +253,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
   useEffect(() => {
     const backAction = () => {
       // Priority: Close modals from top to bottom
+      if (versionPinModalVisible) { setVersionPinModalVisible(false); return true; }
       if (orderDetailVisible) { setOrderDetailVisible(false); return true; }
       if (calendarVisible) { setCalendarVisible(false); return true; }
       if (yearPickerVisible) { setYearPickerVisible(false); return true; }
@@ -236,7 +276,92 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     );
 
     return () => backHandler.remove();
-  }, [orderDetailVisible, calendarVisible, yearPickerVisible, monthPickerVisible, pastAccountModalVisible, cleanupModalVisible, firebaseUsageVisible, ijaraModalVisible, salesReportVisible, depositReportVisible, menuModalVisible, renameModalVisible]);
+  }, [versionPinModalVisible, orderDetailVisible, calendarVisible, yearPickerVisible, monthPickerVisible, pastAccountModalVisible, cleanupModalVisible, firebaseUsageVisible, ijaraModalVisible, salesReportVisible, depositReportVisible, menuModalVisible, renameModalVisible]);
+
+  // Load/Refresh Firebase minimum version
+  const loadFirebaseVersion = async () => {
+    setIsLoadingVersion(true);
+    setVersionFetchError(false);
+    try {
+      const v = await fetchMinimumVersion();
+      if (v !== null) {
+        setFirebaseMinVersion(v);
+        setVersionFetchError(false);
+        setVersionInput(prev => prev ? prev : v);
+      } else {
+        setVersionFetchError(true);
+      }
+    } catch (e) {
+      console.error("[AdminDB] Error loading version:", e);
+      setVersionFetchError(true);
+    } finally {
+      setIsLoadingVersion(false);
+    }
+  };
+
+  useEffect(() => {
+    loadFirebaseVersion();
+  }, []);
+
+  // Handler for Version Update with Biometric + PIN
+  const handleInitiateVersionUpdate = async () => {
+    const cleanVer = (versionInput || '').trim();
+    if (!cleanVer || !/^\d+(\.\d+)+$/.test(cleanVer)) {
+      Alert.alert('ভুল ভার্সন নম্বর', 'সঠিক ভার্সন নম্বর লিখুন (যেমন: 1.0.2)');
+      return;
+    }
+
+    // Step 1: Biometric Verification
+    try {
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+      if (hasHardware && isEnrolled) {
+        const bioResult = await LocalAuthentication.authenticateAsync({
+          promptMessage: 'অ্যাপ ভার্সন পরিবর্তন করতে বায়োমেট্রিক দিন',
+          cancelLabel: 'বাতিল',
+          disableDeviceFallback: false,
+        });
+        if (!bioResult.success) {
+          Alert.alert('বায়োমেট্রিক ব্যর্থ', 'বায়োমেট্রিক ভেরিফিকেশন সফল হয়নি।');
+          return;
+        }
+      }
+    } catch (bioErr) {
+      console.error('[AdminDB] Biometric auth error:', bioErr);
+    }
+
+    // Step 2: Open Admin PIN Security Modal
+    setVersionPinInput('');
+    setVersionPinError('');
+    setVersionPinModalVisible(true);
+  };
+
+  const handleConfirmVersionWithPin = async () => {
+    if (!versionPinInput.trim()) {
+      setVersionPinError('এডমিন PIN দিন');
+      return;
+    }
+
+    const user = verifyPinCode(versionPinInput.trim());
+    if (!user || (user.role !== 'admin' && user.role !== 'owner')) {
+      setVersionPinError('ভুল PIN! শুধুমাত্র Admin/Owner PIN গ্রহণযোগ্য');
+      return;
+    }
+
+    setVersionPinModalVisible(false);
+    setVersionPinInput('');
+    setIsSavingVersion(true);
+
+    const cleanVer = versionInput.trim();
+    const result = await setMinimumVersion(cleanVer);
+    setIsSavingVersion(false);
+    if (result.success) {
+      setFirebaseMinVersion(cleanVer);
+      Alert.alert('✅ সফল', `Firebase এ নিউনতম ভার্সন ${cleanVer} সেট করা হয়েছে।`);
+    } else {
+      Alert.alert('❌ ব্যর্থ', result.error || 'Firebase আপডেট করা সম্ভব হয়নি।');
+    }
+  };
 
   const handleTableLongPress = (table) => {
     setSelectedTableForRename(table);
@@ -534,7 +659,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
   try {
     const rawReport = getItemSalesReport(todayStr, todayStr) || [];
     topSellingItems = rawReport
-      .filter(item => (item.quantitySold || 0) > 0)
+      .filter(item => (item.quantitySold || 0) > 0 && (item.name || '').trim().toLowerCase() !== 'পানি')
       .sort((a, b) => (b.quantitySold || 0) - (a.quantitySold || 0))
       .slice(0, 5);
   } catch (err) {
@@ -712,7 +837,13 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
         <View style={{ width: 40 }} /> 
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollBody} contentContainerStyle={{ paddingBottom: 30 }}>
+      <ScrollView
+        ref={mainScrollRef}
+        showsVerticalScrollIndicator={false}
+        style={styles.scrollBody}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingBottom: keyboardHeight > 0 ? keyboardHeight + 80 : 50 }}
+      >
         {/* Horizontal Stats Row: Today's Sales and Monthly Total Only */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsContainer}>
           <TodaySalesCard
@@ -1227,10 +1358,193 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
           </View>
         </View>
 
+        {/* App Version Control (Admin Only) */}
+        <View style={styles.execSectionContainer}>
+          <View style={styles.execSectionHeader}>
+            <View style={styles.execSectionTitleRow}>
+              <View style={[styles.execIconPill, { backgroundColor: 'rgba(99, 102, 241, 0.15)' }]}>
+                <Text style={styles.execPillEmoji}>📱</Text>
+              </View>
+              <View style={styles.execTitleTextCol}>
+                <Text style={styles.execSectionTitle} numberOfLines={1}>অ্যাপ ভার্সন কন্ট্রোল</Text>
+                <Text style={styles.execSectionSubtitle} numberOfLines={1}>Owner ও Manager অ্যাপের নিউনতম ভার্সন</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.versionControlCard}>
+            {/* Current versions row */}
+            <View style={styles.versionInfoRow}>
+              <View style={styles.versionInfoItem}>
+                <Text style={styles.versionInfoLabel}>রানিং APK ভার্সন</Text>
+                <Text style={styles.versionInfoValue}>
+                  {(Application.applicationId === 'host.exp.exponent' || Application.nativeApplicationVersion?.startsWith('56.')) ? APP_VERSION : (Application.nativeApplicationVersion || APP_VERSION)}
+                </Text>
+                <Text style={styles.versionInfoSub}>
+                  Build {Application.nativeBuildVersion || '—'}
+                </Text>
+              </View>
+              <View style={styles.versionInfoDivider} />
+              <View style={styles.versionInfoItem}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={styles.versionInfoLabel}>Firebase নিউনতম ভার্সন</Text>
+                  <TouchableOpacity
+                    onPress={loadFirebaseVersion}
+                    disabled={isLoadingVersion}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    style={{ marginLeft: 6 }}
+                  >
+                    <Text style={{ fontSize: 12 }}>{isLoadingVersion ? '⏳' : '🔄'}</Text>
+                  </TouchableOpacity>
+                </View>
+                {isLoadingVersion ? (
+                  <ActivityIndicator size="small" color="#6366F1" style={{ marginVertical: 4 }} />
+                ) : versionFetchError ? (
+                  <TouchableOpacity onPress={loadFirebaseVersion} activeOpacity={0.7}>
+                    <Text style={[styles.versionInfoValue, { color: '#F59E0B', fontSize: 12 }]}>⚠️ লোড হয়নি (ট্যাপ করুন)</Text>
+                  </TouchableOpacity>
+                ) : firebaseMinVersion !== null ? (
+                  <Text style={styles.versionInfoValue}>{firebaseMinVersion}</Text>
+                ) : (
+                  <ActivityIndicator size="small" color="#6366F1" />
+                )}
+                {firebaseMinVersion !== null && !isLoadingVersion && (
+                  <Text style={[
+                    styles.versionInfoSub,
+                    ((Application.applicationId === 'host.exp.exponent' || Application.nativeApplicationVersion?.startsWith('56.')) ? APP_VERSION : (Application.nativeApplicationVersion || APP_VERSION)) >= firebaseMinVersion
+                      ? { color: '#10B981' }
+                      : { color: '#EF4444' }
+                  ]}>
+                    {((Application.applicationId === 'host.exp.exponent' || Application.nativeApplicationVersion?.startsWith('56.')) ? APP_VERSION : (Application.nativeApplicationVersion || APP_VERSION)) >= firebaseMinVersion ? '✅ আপ-টু-ডেট' : '❌ পুরনো'}
+                  </Text>
+                )}
+              </View>
+            </View>
+
+            <Text style={styles.versionHelpText}>
+              নতুন APK বের করার পর এখানে সেই ভার্সন দিন। পুরনো ভার্সনের ডিভাইস Force Logout-এর পর login করতে পারবে না।
+            </Text>
+
+            {/* Input + Auto Pick + Save */}
+            <View style={styles.versionInputRow}>
+              <TextInput
+                style={styles.versionInput}
+                value={versionInput}
+                onChangeText={setVersionInput}
+                onFocus={() => {
+                  setTimeout(() => {
+                    mainScrollRef.current?.scrollToEnd({ animated: true });
+                  }, 200);
+                }}
+                placeholder="যেমন: 1.0.2"
+                placeholderTextColor="#555"
+                keyboardType="decimal-pad"
+                autoCapitalize="none"
+              />
+              <TouchableOpacity
+                style={styles.versionAutoPickBtn}
+                onPress={() => {
+                  const isExpoGo = Application.applicationId === 'host.exp.exponent' || Application.nativeApplicationVersion?.startsWith('56.');
+                  const liveVer = isExpoGo ? APP_VERSION : (Application.nativeApplicationVersion || APP_VERSION);
+                  setVersionInput(liveVer);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.versionAutoPickBtnText}>অটো পিক 🎯</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.versionSaveBtn, (isSavingVersion || isLoadingVersion) && { opacity: 0.6 }]}
+                disabled={isSavingVersion || isLoadingVersion}
+                onPress={handleInitiateVersionUpdate}
+                activeOpacity={0.8}
+              >
+                {isSavingVersion ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.versionSaveBtnText}>আপডেট করুন</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
       </ScrollView>
 
 
       {/* MODALS */}
+      {/* Admin PIN Verification Modal for App Version Update */}
+      <Modal
+        visible={versionPinModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setVersionPinModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalOverlay}
+        >
+          <TouchableOpacity
+            style={{ width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }}
+            activeOpacity={1}
+            onPress={() => setVersionPinModalVisible(false)}
+          >
+            <View style={[styles.modalContent, { width: '88%', maxWidth: 360, padding: 20 }]} onStartShouldSetResponder={() => true}>
+              <Text style={[styles.modalTitle, { fontSize: 16, marginBottom: 4 }]}>🔐 অ্যাডমিন নিরাপত্তা যাচাই</Text>
+              <Text style={[styles.modalSubtitle, { marginBottom: 14, textAlign: 'center', lineHeight: 18 }]}>
+                নিউনতম অ্যাপ ভার্সন {versionInput.trim()} সেট করতে আপনার অ্যাডমিন PIN লিখুন:
+              </Text>
+
+              {versionPinError ? (
+                <View style={{ backgroundColor: 'rgba(239, 68, 68, 0.15)', borderWidth: 1, borderColor: '#ef4444', borderRadius: 8, padding: 8, marginBottom: 10, width: '100%' }}>
+                  <Text style={{ color: '#ef4444', fontSize: 12, textAlign: 'center' }}>⚠️ {versionPinError}</Text>
+                </View>
+              ) : null}
+
+              <TextInput
+                style={{
+                  width: '100%',
+                  backgroundColor: '#1C1C1C',
+                  borderWidth: 1,
+                  borderColor: '#3F3F46',
+                  borderRadius: 10,
+                  color: '#FFF',
+                  padding: 12,
+                  fontSize: 20,
+                  textAlign: 'center',
+                  letterSpacing: 6,
+                  marginBottom: 16
+                }}
+                placeholder="••••"
+                placeholderTextColor="#71717A"
+                keyboardType="number-pad"
+                secureTextEntry={true}
+                value={versionPinInput}
+                onChangeText={(val) => {
+                  setVersionPinInput(val);
+                  if (versionPinError) setVersionPinError('');
+                }}
+                autoFocus={true}
+              />
+
+              <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
+                <TouchableOpacity
+                  style={{ flex: 1, backgroundColor: '#27272A', borderRadius: 8, paddingVertical: 10, alignItems: 'center' }}
+                  onPress={() => setVersionPinModalVisible(false)}
+                >
+                  <Text style={{ color: '#E4E4E7', fontWeight: '600' }}>বাতিল</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{ flex: 1, backgroundColor: '#6366F1', borderRadius: 8, paddingVertical: 10, alignItems: 'center' }}
+                  onPress={handleConfirmVersionWithPin}
+                >
+                  <Text style={{ color: '#FFF', fontWeight: 'bold' }}>নিশ্চিত করুন</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
+      </Modal>
       {/* FLOOR & TABLE MANAGEMENT MODAL */}
       <Modal
         animationType="slide"
@@ -1356,10 +1670,12 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
 
       {/* RENAME */}
       <Modal animationType="fade" transparent={true} visible={renameModalVisible} onRequestClose={() => setRenameModalVisible(false)}>
-        <View style={styles.modalOverlay}><View style={styles.modalContent}><Text style={styles.modalTitle}>টেবিলের নাম পরিবর্তন</Text>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
+          <View style={styles.modalContent}><Text style={styles.modalTitle}>টেবিলের নাম পরিবর্তন</Text>
             <View style={styles.renameInputWrapper}><TextInput style={[styles.renameInput, { color: '#FFF' }]} value={newTableName} onChangeText={setNewTableName} placeholder="নাম লিখুন" placeholderTextColor="#AAA" autoFocus={true}/></View>
             <View style={styles.modalBtnRow}><TouchableOpacity style={styles.modalCancelBtn} onPress={() => setRenameModalVisible(false)}><Text style={styles.modalCancelBtnText}>বাতিল</Text></TouchableOpacity><TouchableOpacity style={styles.modalSaveBtn} onPress={handleSaveTableName}><Text style={styles.modalSaveBtnText}>সংরক্ষণ</Text></TouchableOpacity></View>
-        </View></View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
 
 
@@ -1679,11 +1995,11 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
 
       {/* PAST ACCOUNT MODAL */}
       <Modal animationType="slide" transparent={true} visible={pastAccountModalVisible} onRequestClose={() => setPastAccountModalVisible(false)}>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
           <View style={[styles.modalContent, { width: '90%', maxHeight: '85%' }]}>
             <View style={styles.modalIconCircle}><Text style={styles.modalIconEmoji}>📅</Text></View>
             <Text style={styles.modalTitle}>অতীতের হিসাব যোগ করুন</Text>
-            <ScrollView style={{ width: '100%' }} contentContainerStyle={{ paddingBottom: 20 }} showsVerticalScrollIndicator={false}>
+            <ScrollView style={{ width: '100%' }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 220 }} showsVerticalScrollIndicator={false}>
               <TouchableOpacity style={styles.expenseInputGroup} onPress={() => { setCalendarTarget('past'); setCalendarVisible(true); }}>
                 <Text style={styles.inputLabel}>তারিখ</Text>
                 <View style={[styles.modalInput, { justifyContent: 'center' }]}>
@@ -1771,12 +2087,12 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               )}
             </ScrollView>
             <View style={styles.modalBtnRow}><TouchableOpacity style={styles.modalCancelBtn} onPress={() => setPastAccountModalVisible(false)}><Text style={styles.modalCancelBtnText}>বাতিল</Text></TouchableOpacity><TouchableOpacity style={styles.modalSaveBtn} onPress={handleSavePastEntry}><Text style={styles.modalSaveBtnText}>সেভ করুন</Text></TouchableOpacity></View>
-        </View></View>
+        </View></KeyboardAvoidingView>
       </Modal>
 
       {/* FIREBASE USAGE */}
       <Modal animationType="slide" transparent={true} visible={firebaseUsageVisible} onRequestClose={() => setFirebaseUsageVisible(false)}>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
           <View style={[styles.modalContent, { width: '96%', maxHeight: '90%', paddingHorizontal: 12, borderColor: '#34D399' }]}>
             <View style={styles.modalHeaderRow}><View style={styles.modalHeaderLeft}><View style={[styles.modalIconCircle, { marginBottom: 0, width: 40, height: 40, marginRight: 10, backgroundColor: 'rgba(52, 211, 153, 0.1)' }]}><Text style={{ fontSize: 18 }}>🔥</Text></View>
                 <View><Text style={[styles.modalTitle, { textAlign: 'left', marginBottom: 2, fontSize: 15 }]}>ফায়ারবেস ক্লাউড ব্যবহার</Text><Text style={styles.modalSubtitle}>Usage Metrics & System Health</Text></View></View>
@@ -1849,11 +2165,11 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
             )}
             <View style={[styles.modalBtnRow, { marginTop: 12 }]}><TouchableOpacity style={[styles.modalCancelBtn, { width: '100%' }]} onPress={() => setFirebaseUsageVisible(false)}><Text style={styles.modalCancelBtnText}>বন্ধ করুন</Text></TouchableOpacity></View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
       {/* DATA CLEANUP TOOL */}
       <Modal animationType="slide" transparent={true} visible={cleanupModalVisible} onRequestClose={() => setCleanupModalVisible(false)}>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
           <View style={[styles.modalContent, { width: '90%' }]}>
             <Text style={[styles.modalTitle, { color: '#EF4444' }]}>🗑️ Data Cleanup Tool</Text>
             
@@ -1892,7 +2208,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
     </SafeAreaView>
@@ -2167,4 +2483,20 @@ const styles = StyleSheet.create({
   reportTileTitle: { color: '#FFF', fontSize: 12, fontWeight: '700' },
   reportTileSub: { color: '#737373', fontSize: 10, marginTop: 1 },
   reportTileArrow: { color: '#FFB703', fontSize: 14, fontWeight: 'bold', marginLeft: 8 },
+
+  // Version Control Card
+  versionControlCard: { backgroundColor: '#141414', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#222' },
+  versionInfoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  versionInfoItem: { flex: 1, alignItems: 'center' },
+  versionInfoLabel: { color: '#888', fontSize: 10, marginBottom: 4 },
+  versionInfoValue: { color: '#E5E5E5', fontSize: 14, fontWeight: '700' },
+  versionInfoSub: { color: '#737373', fontSize: 10, marginTop: 2 },
+  versionInfoDivider: { width: 1, height: 36, backgroundColor: '#2A2A2A', marginHorizontal: 10 },
+  versionHelpText: { color: '#737373', fontSize: 11, lineHeight: 16, marginBottom: 10, textAlign: 'center' },
+  versionInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  versionInput: { flex: 1, backgroundColor: '#1C1C1C', borderRadius: 8, borderWidth: 1, borderColor: '#333', color: '#FFF', paddingHorizontal: 12, paddingVertical: 8, fontSize: 14, fontWeight: '600' },
+  versionAutoPickBtn: { backgroundColor: 'rgba(99, 102, 241, 0.15)', borderWidth: 1, borderColor: 'rgba(99, 102, 241, 0.4)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, justifyContent: 'center', alignItems: 'center' },
+  versionAutoPickBtnText: { color: '#818CF8', fontSize: 12, fontWeight: '700' },
+  versionSaveBtn: { backgroundColor: '#6366F1', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 9, justifyContent: 'center', alignItems: 'center', minWidth: 70 },
+  versionSaveBtnText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
 });

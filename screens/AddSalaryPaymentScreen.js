@@ -148,7 +148,10 @@ export default function AddSalaryPaymentScreen({
           </TouchableOpacity>
         </View>
 
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: 150 }]}
+        >
           {employee ? (
             <View style={styles.employeeCard}>
               <Text style={styles.employeeName}>👤 {employee.name}</Text>

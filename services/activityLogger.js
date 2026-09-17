@@ -7,14 +7,18 @@ import { Platform } from 'react-native';
  * Standard Action Categories for Activity & Audit Logging
  */
 export const ACTION_TYPES = {
-  ORDER: 'ORDER',           // Order created, items updated, order deleted
-  PAYMENT: 'PAYMENT',       // Checkout completed: Cash, bKash, Nagad, Rocket
-  EXPENSE: 'EXPENSE',       // Daily expense, owner expense, salary payment, supplier payment
-  MENU: 'MENU',             // Menu item added, price updated, item deleted
-  SETTLEMENT: 'SETTLEMENT', // Daily submit, lock reset, ijara reset
-  DEVICE: 'DEVICE',         // Device approved, blocked, role changed, force logout
-  SECURITY: 'SECURITY',     // Delete order, audit trigger, pin reset
-  SYSTEM: 'SYSTEM',         // Cloud restore, menu recovery, db operations
+  DELETE: 'DELETE',         // Deleted log (order delete, menu delete, past account delete)
+  SUBMISSION: 'SUBMISSION', // Daily submission log (daily sheet submit, lock reset)
+  EXPENSE: 'EXPENSE',       // Daily koroch edit log
+  IJARA: 'IJARA',           // Eja edit log (ijara entry, reset, rollback)
+  // Backward compatibility keys
+  ORDER: 'ORDER',
+  PAYMENT: 'PAYMENT',
+  MENU: 'MENU',
+  SETTLEMENT: 'SETTLEMENT',
+  DEVICE: 'DEVICE',
+  SECURITY: 'SECURITY',
+  SYSTEM: 'SYSTEM',
 };
 
 /**

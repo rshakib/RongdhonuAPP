@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatDisplayDate, getBusinessDate } from '../database';
-import { TodaySalesCard, TotalCashCard, ActiveOrdersCard } from '../components/StatCard';
+import { TodaySalesCard, TotalCashCard } from '../components/StatCard';
 
 const { width } = Dimensions.get('window');
 
@@ -324,10 +324,6 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
     onSavePastAccount(record);
     setPastAccountModalVisible(false);
   };
-  // Real calculations
-  const activeTablesCount = tables.filter(t => t.status === 'BUSY').length;
-  const activeDeliveriesCount = deliveries.filter(d => d.status === 'BUSY').length;
-  const totalActiveCount = activeTablesCount + activeDeliveriesCount;
 
   // Date filtering helper for today
   const todayStr = getBusinessDate();
@@ -416,13 +412,6 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
             bkashSale={bkashSale}
             nagadSale={nagadSale}
             rocketSale={rocketSale}
-          />
-
-          {/* Card 3: Active Orders */}
-          <ActiveOrdersCard
-            totalActiveCount={totalActiveCount}
-            activeTablesCount={activeTablesCount}
-            activeDeliveriesCount={activeDeliveriesCount}
           />
         </ScrollView>
 
@@ -621,21 +610,23 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
             
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 20 }}>
               <TouchableOpacity 
-                style={[styles.modalCancelBtn, { width: '48%' }]} 
+                style={[styles.modalCancelBtn, { width: (userRole === 'owner' || userRole === 'admin') ? '48%' : '100%' }]} 
                 onPress={() => setOrderDetailVisible(false)}
               >
                 <Text style={styles.modalCancelBtnText}>পিছনে যান</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.modalSaveBtn, { width: '48%', backgroundColor: '#EF4444' }]} 
-                onPress={() => {
-                  const targetId = selectedOrder?.id;
-                  setOrderDetailVisible(false);
-                  if (targetId) onDeleteDoneOrder(targetId);
-                }}
-              >
-                <Text style={[styles.modalSaveBtnText, { color: '#FFF' }]}>🗑️ ডিলিট করুন</Text>
-              </TouchableOpacity>
+              {(userRole === 'owner' || userRole === 'admin') && (
+                <TouchableOpacity 
+                  style={[styles.modalSaveBtn, { width: '48%', backgroundColor: '#EF4444' }]} 
+                  onPress={() => {
+                    const targetId = selectedOrder?.id;
+                    setOrderDetailVisible(false);
+                    if (targetId) onDeleteDoneOrder(targetId);
+                  }}
+                >
+                  <Text style={[styles.modalSaveBtnText, { color: '#FFF' }]}>🗑️ ডিলিট করুন</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         </View>

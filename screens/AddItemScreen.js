@@ -8,9 +8,10 @@ import {
   TextInput,
   Platform,
   StatusBar as RNStatusBar,
-  Alert,
   Modal,
-  BackHandler
+  BackHandler,
+  KeyboardAvoidingView,
+  Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -502,7 +503,7 @@ export default function AddItemScreen({
         transparent={true}
         onRequestClose={() => setPriceEditModalVisible(false)}
       >
-        <View style={styles.modalBgCenter}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalBgCenter}>
           <View style={styles.editModalContent}>
             <Text style={styles.editModalTitle}>মূল্য পরিবর্তন করুন</Text>
             <Text style={styles.editModalSubtitle}>{editingMenuItem?.name}</Text>
@@ -533,7 +534,7 @@ export default function AddItemScreen({
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ==================== ADD NEW ITEM MODAL ==================== */}
@@ -543,7 +544,7 @@ export default function AddItemScreen({
         transparent={true}
         onRequestClose={() => setAddItemModalVisible(false)}
       >
-        <View style={styles.modalBgCenter}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalBgCenter}>
           <View style={[styles.editModalContent, { width: '90%' }]}>
             <Text style={styles.editModalTitle}>নতুন আইটেম যোগ করুন</Text>
             
@@ -597,7 +598,7 @@ export default function AddItemScreen({
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );

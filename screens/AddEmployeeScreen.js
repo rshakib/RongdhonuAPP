@@ -146,7 +146,10 @@ export default function AddEmployeeScreen({
           </TouchableOpacity>
         </View>
 
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: 150 }]}
+        >
           {/* Form */}
           <View style={styles.formGroup}>
             <Text style={styles.inputLabel}>নাম *</Text>

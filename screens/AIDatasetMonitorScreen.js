@@ -11,6 +11,7 @@ import {
   Alert,
   Dimensions,
   StatusBar as RNStatusBar,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getDb, processAIDatasetQueue, enqueueAIDatasetExport } from '../database';
