@@ -2629,7 +2629,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                 </View>
                 <View style={{ marginTop: 20, borderTopWidth: 1, borderColor: '#1F1F1F', paddingTop: 16 }}><Text style={{ color: '#FFB703', fontSize: 13, fontWeight: 'bold', marginBottom: 4 }}>💻 SQL টার্মিনাল</Text>
                   <TextInput style={{ backgroundColor: '#0D0D0D', color: '#34D399', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 12, padding: 10, borderRadius: 6, borderWidth: 1, borderColor: '#333', minHeight: 60 }} multiline={true} value={customSqlQuery} onChangeText={setCustomSqlQuery} autoCapitalize="none"/>
-                  <TouchableOpacity onPress={handleExecuteSqlQuery} style={{ backgroundColor: '#FFB703', padding: 10, borderRadius: 6, marginTop: 8, alignItems: 'center' }}><Text style={{ color: '#000', fontWeight: 'bold' }}>Execute Query</Text></TouchableOpacity>
+                  <TouchableOpacity onPress={handleExecuteSqlQuery} style={{ backgroundColor: '#2563EB', padding: 10, borderRadius: 6, marginTop: 8, alignItems: 'center' }}><Text style={{ color: '#FFF', fontWeight: 'bold' }}>Execute Query</Text></TouchableOpacity>
                 </View>
               </ScrollView>
             )}
@@ -2867,9 +2867,9 @@ const styles = StyleSheet.create({
   // Footer Actions
   deviceViewAllLink: { alignItems: 'center', marginVertical: 12 },
   deviceViewAllText: { color: '#FFB703', fontSize: 12.5, fontWeight: '700' },
-  devicePrimaryBtn: { backgroundColor: '#FFB703', borderRadius: 24, paddingVertical: 13, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', width: '100%' },
+  devicePrimaryBtn: { backgroundColor: '#222226', borderWidth: 1, borderColor: '#333338', borderRadius: 24, paddingVertical: 13, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', width: '100%' },
   devicePrimaryBtnIcon: { fontSize: 14, marginRight: 8 },
-  devicePrimaryBtnText: { color: '#000000', fontSize: 13.5, fontWeight: '800' },
+  devicePrimaryBtnText: { color: '#FFFFFF', fontSize: 13.5, fontWeight: '800' },
 
   // ── CLOUD SYNC & HEALTH (Redesigned with Real App Sync) ──
   syncCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
@@ -3256,7 +3256,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   versionFullUpdateBtn: {
-    backgroundColor: '#FFB703',
+    backgroundColor: '#2563EB',
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
@@ -3273,7 +3273,7 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   versionUpdateBtnText: {
-    color: '#000000',
+    color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '800',
   },
@@ -3316,8 +3316,8 @@ const styles = StyleSheet.create({
   modalBtnRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 20 },
   modalCancelBtn: { flex: 1, height: 46, justifyContent: 'center', alignItems: 'center', backgroundColor: '#222226', borderRadius: 10, marginRight: 10 },
   modalCancelBtnText: { color: '#FFFFFF', fontSize: 14 },
-  modalSaveBtn: { flex: 1, height: 46, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFB703', borderRadius: 10, marginLeft: 10 },
-  modalSaveBtnText: { color: '#000000', fontSize: 14, fontWeight: 'bold' },
+  modalSaveBtn: { flex: 1, height: 46, justifyContent: 'center', alignItems: 'center', backgroundColor: '#10B981', borderRadius: 10, marginLeft: 10 },
+  modalSaveBtnText: { color: '#FFFFFF', fontSize: 14, fontWeight: 'bold' },
   menuModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-start', alignItems: 'flex-start' },
   menuModalContent: { backgroundColor: '#18181B', borderRadius: 12, marginTop: 45, marginLeft: 16, width: 200, borderWidth: 1, borderColor: '#27272A', overflow: 'hidden' },
   menuOption: { paddingVertical: 9, paddingHorizontal: 14 },
@@ -3336,9 +3336,9 @@ const styles = StyleSheet.create({
   sheetCellTextSub: { color: '#8E8E93', fontSize: 8, marginTop: 1 },
   filterBar: { flexDirection: 'row', marginBottom: 12, height: 36 },
   filterChip: { paddingHorizontal: 12, borderRadius: 18, backgroundColor: '#1E1E22', borderWidth: 1, borderColor: '#27272A', marginRight: 8, height: 32, justifyContent: 'center' },
-  filterChipActive: { backgroundColor: '#FFB703', borderColor: '#FFB703' },
+  filterChipActive: { backgroundColor: 'rgba(255, 183, 3, 0.15)', borderColor: '#FFB703' },
   filterChipText: { color: '#8E8E93', fontSize: 10, fontWeight: '500' },
-  filterChipTextActive: { color: '#000000', fontWeight: 'bold' },
+  filterChipTextActive: { color: '#FFB703', fontWeight: 'bold' },
   sheetFooter: { flexDirection: 'row', backgroundColor: '#1E1E22', paddingVertical: 12, paddingHorizontal: 10, borderTopWidth: 2, borderColor: '#FFB703' },
   sheetFooterText: { color: '#FFB703', fontSize: 10, fontWeight: 'bold', textAlign: 'center' },
   closeCircle: { backgroundColor: '#222226', width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
