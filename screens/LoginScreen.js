@@ -19,7 +19,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import NetInfo from '@react-native-community/netinfo';
 import * as LocalAuthentication from 'expo-local-authentication';
-import { verifyUserLogin, checkUserExists, getAppConfig, setAppConfig, getPendingSyncCount } from '../database';
+import { verifyUserLogin, checkUserExists, getUserByUsername, getAppConfig, setAppConfig, getPendingSyncCount, ACTIVE_APP_PROFILE } from '../database';
 import { checkAppVersion, verifyForceReauthLocally } from '../services/firebaseAppConfig';
 
 const BUTTON_SIZE = 72; // Circular buttons sized perfectly to fit all displays
@@ -80,7 +80,7 @@ export default function LoginScreen({ onLoginSuccess, forceReauth = false }) {
         if (!isAllowed) {
           Alert.alert(
             "অফলাইন মোড বন্ধ",
-            "অফলাইন মোড সাকিব কর্তৃক বন্ধ করা হয়েছে।\n\nঅনুগ্রহ করে অনলাইন মোড ব্যবহার করুন।",
+            "অফলাইন মোড অ্যাডমিন কর্তৃক বন্ধ করা হয়েছে।\n\nঅনুগ্রহ করে অনলাইন মোড ব্যবহার করুন।",
             [{ text: "ঠিক আছে" }]
           );
           setSyncMode('online_only');
@@ -121,7 +121,21 @@ export default function LoginScreen({ onLoginSuccess, forceReauth = false }) {
       return;
     }
 
-    if (!checkUserExists(cleanUsername)) {
+    const user = getUserByUsername(cleanUsername);
+    if (!user) {
+      Vibration.vibrate(100);
+      setError('ভুল ইউজারনেম! সঠিক নাম লিখুন।');
+      return;
+    }
+
+    // Profile-specific role validation at the username step
+    const role = String(user.role || '').toUpperCase().trim();
+    if (ACTIVE_APP_PROFILE === 'MANAGER' && role !== 'MANAGER') {
+      Vibration.vibrate(100);
+      setError('ভুল ইউজারনেম! সঠিক নাম লিখুন।');
+      return;
+    }
+    if (ACTIVE_APP_PROFILE === 'OWNER' && role !== 'OWNER') {
       Vibration.vibrate(100);
       setError('ভুল ইউজারনেম! সঠিক নাম লিখুন।');
       return;
@@ -317,7 +331,7 @@ export default function LoginScreen({ onLoginSuccess, forceReauth = false }) {
           if (!isAllowed) {
             Alert.alert(
               "অফলাইন মোড নিষ্ক্রিয়",
-              "অফলাইন মোড সাকিব কর্তৃক নিষ্ক্রিয় করা হয়েছে।\n\nঅনুগ্রহ করে অনলাইন মোড ব্যবহার করুন।",
+              "অফলাইন মোড অ্যাডমিন কর্তৃক নিষ্ক্রিয় করা হয়েছে।\n\nঅনুগ্রহ করে অনলাইন মোড ব্যবহার করুন।",
               [{ text: "ঠিক আছে", onPress: () => setPin('') }]
             );
             setSyncMode('online_only');

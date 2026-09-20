@@ -8,7 +8,9 @@ import {
   StatusBar as RNStatusBar
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getCurrentDeviceRecord } from '../services/deviceRegistry';
+import { getCurrentDeviceRecord, syncRemoteDeviceToLocal } from '../services/deviceRegistry';
+import { fetchSupabaseDevices, fetchSingleSupabaseDevice } from '../services/supabaseDeviceControl';
+import { ACTIVE_APP_PROFILE } from '../database';
 
 export default function DevicePendingScreen({ deviceId, onApproved, onExit }) {
   const [checking, setChecking] = useState(false);
@@ -18,15 +20,60 @@ export default function DevicePendingScreen({ deviceId, onApproved, onExit }) {
     setChecking(true);
     setMsg('');
     try {
-      const record = getCurrentDeviceRecord();
-      const status = String(record?.status || 'PENDING').toUpperCase().trim();
-      
+      // ─── BUG-3 FIX ────────────────────────────────────────────────────────
+      // Old code: read stale local SQLite only — missed any Supabase approvals.
+      // New code: fetch the authoritative device record from Supabase by device
+      // ID, sync it into local SQLite, then re-check local state.
+      // Falls back gracefully when device is offline.
+      // ──────────────────────────────────────────────────────────────────────
+      const localRecord = getCurrentDeviceRecord();
+      const resolvedDeviceId = deviceId || localRecord?.device_id;
+
+      if (!resolvedDeviceId) {
+        setMsg('ডিভাইস আইডি পাওয়া যায়নি।');
+        return;
+      }
+
+      let remoteStatus = null;
+      try {
+        let remoteRecord = null;
+        // TODO: If OWNER is granted Device Control screen access in the future, enable full device fleet fetching and reconciliation for OWNER here.
+        if (ACTIVE_APP_PROFILE === 'ADMIN') {
+          const remoteList = await fetchSupabaseDevices('ADMIN');
+          remoteRecord = remoteList.find(r => r.device_id === resolvedDeviceId);
+        } else {
+          // Manager & Owner: strictly query own single device — NEVER download fleet
+          const singleRes = await fetchSingleSupabaseDevice(resolvedDeviceId);
+          if (singleRes.success && singleRes.record) {
+            remoteRecord = singleRes.record;
+          } else if (!singleRes.success) {
+            throw new Error(singleRes.error || 'Network error');
+          }
+        }
+
+        if (remoteRecord) {
+          syncRemoteDeviceToLocal(remoteRecord);
+          remoteStatus = String(remoteRecord.status || 'PENDING').toUpperCase().trim();
+        }
+      } catch (netErr) {
+        // Offline — fall back to local SQLite and stop here so the message is not overwritten
+        console.warn('[DevicePendingScreen] Offline during refresh, using local record:', netErr.message);
+        setMsg('নেটওয়ার্ক সংযোগ নেই। স্থানীয় তথ্য দেখানো হচ্ছে।');
+        return; // R-1 fix: preserve offline message — do not fall through to status check
+      }
+
+      // Re-read local state (now up-to-date if remote fetch succeeded)
+      const updatedRecord = getCurrentDeviceRecord();
+      const status = remoteStatus || String(updatedRecord?.status || 'PENDING').toUpperCase().trim();
+
       if (status === 'ACTIVE') {
         if (onApproved) {
           onApproved();
         }
+      } else if (status === 'BLOCKED') {
+        setMsg('এই ডিভাইসটি ব্লক করা হয়েছে। অ্যাডমিনের সাথে যোগাযোগ করুন।');
       } else {
-        setMsg('ডিভাইসটি এখনো Administrator-এর অনুমোদনের অপেক্ষায় আছে।');
+        setMsg('ডিভাইসটি এখনো Administrator-এর অনুমোদনের অপেক্ষায় আছে।');
       }
     } catch (err) {
       console.error('[DevicePendingScreen] Error checking status:', err);
@@ -59,10 +106,10 @@ export default function DevicePendingScreen({ deviceId, onApproved, onExit }) {
         {/* Body Message */}
         <View style={styles.bodyCard}>
           <Text style={styles.bodyText}>
-            এই ডিভাইসটি এখনো সাকিব কর্তৃক অনুমোদিত হয়নি।
+            এই ডিভাইসটি এখনো অ্যাডমিন কর্তৃক অনুমোদিত হয়নি।
           </Text>
           <Text style={[styles.bodyText, { marginTop: 10 }]}>
-            অনুগ্রহ করে সাকিব-এর সাথে যোগাযোগ করুন।
+            অনুগ্রহ করে অ্যাডমিনের সাথে যোগাযোগ করুন।
           </Text>
         </View>
 

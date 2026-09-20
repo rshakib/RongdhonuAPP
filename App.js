@@ -2085,7 +2085,7 @@ export default function App() {
 
     // Check limit
     if (getDailyDownloadCount('DEPOSIT_REPORT') >= 2) {
-      Alert.alert("সীমা অতিক্রম হয়েছে", "আজকের ক্লাউড ডাউনলোড সীমা অতিক্রম হয়েছে। সাকিব-এর সাথে যোগাযোগ করুন।");
+      Alert.alert("সীমা অতিক্রম হয়েছে", "আজকের ক্লাউড ডাউনলোড সীমা অতিক্রম হয়েছে। অ্যাডমিনের সাথে যোগাযোগ করুন।");
       return;
     }
 

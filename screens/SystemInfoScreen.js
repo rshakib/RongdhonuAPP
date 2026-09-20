@@ -59,7 +59,7 @@ export default function SystemInfoScreen({ onBack }) {
         </View>
 
         <View style={styles.infoCard}>
-          <Text style={styles.infoTitle}>💡 System সাকিব Notice</Text>
+          <Text style={styles.infoTitle}>💡 System Admin Notice</Text>
           <Text style={styles.infoBody}>
             This environment module executes on the client device. It communicates directly with Google Cloud services using HTTP REST protocols and records offline states locally on the device disk. All operations are read-only.
           </Text>

@@ -606,13 +606,14 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
 
   // Phase 5: Handle Remote Force Logout Action
   const handleForceLogoutPrompt = (device) => {
+    const devName = device.device_name || device.device_id;
     Alert.alert(
-      '🔄 রিমোট লগআউট',
-      `'${device.device_name || device.device_id}' ডিভাইস থেকে রিমোটভাবে সাইন আউট করতে চান?\n\nবর্তমান ব্যবহারকারী সাথে সাথে অ্যাক্সেস হারাবেন।\n\nপরবর্তী লগইনের জন্য আবার ইউজারনেম ও PIN লাগবে।\n\nচালিয়ে যেতে চান?`,
+      '⚠️ দূরবর্তী সাইন-আউট সতর্কতা',
+      `আপনি কি নিশ্চিত যে '${devName}' ডিভাইসটিকে এই অ্যাপ থেকে এখনই সাইন-আউট করাতে চান?\n\n⚠️ সতর্কতা: সাইন-আউট কার্যকর করা মাত্র উক্ত ফোনে চলমান অ্যাপটি তাৎক্ষণিকভাবে বন্ধ হয়ে যাবে এবং ব্যবহারকারী লগআউট হয়ে যাবেন। পরবর্তীতে কাজ করতে পুনরায় ইউজারনেম ও PIN দিয়ে লগইন করতে হবে।`,
       [
-        { text: 'বাতিল', style: 'cancel' },
+        { text: 'না, ফিরে যান', style: 'cancel' },
         {
-          text: 'লগআউট করুন',
+          text: 'হ্যাঁ, সাইন-আউট করুন',
           style: 'destructive',
           onPress: async () => {
             const cmdT0 = Date.now();
@@ -630,15 +631,13 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
                   userName: 'Admin'
                 });
               } catch (e) {}
-              // Honest message: command was written to server — target device will log out
-              // when it receives the Realtime signal or on its next periodic check (≤1 second).
               Alert.alert(
-                '📡 লগআউট নির্দেশ প্রেরিত',
-                `'${device.device_name || device.device_id}' ডিভাইসে লগআউট নির্দেশ সার্ভারে পাঠানো হয়েছে।\n\nডিভাইসটি অনলাইনে থাকলে কয়েক সেকেন্ডের মধ্যে লগআউট হবে।\n\nডিভাইসটি অফলাইনে থাকলে পরবর্তী সংযোগে লগআউট কার্যকর হবে।`
+                '✅ সাইন-আউট সফল হয়েছে',
+                `'${devName}' ডিভাইসে সাইন-আউট নির্দেশ সফলভাবে কার্যকর করা হয়েছে। উক্ত ডিভাইসটিতে অ্যাপ এখনই স্বয়ংক্রিয়ভাবে বন্ধ হয়ে যাবে।`
               );
               loadDevices();
             } else {
-              Alert.alert('❌ ত্রুটি', (res && res.error) || 'রিমোট লগআউট সার্ভারে পাঠাতে ব্যর্থ হয়েছে।');
+              Alert.alert('❌ সাইন-আউট ব্যর্থ হয়েছে', (res && res.error) || `'${devName}' ডিভাইসে সাইন-আউট সংকেত পাঠানো সম্ভব হয়নি। দয়া করে ইন্টারনেট সংযোগ চেক করে আবার চেষ্টা করুন।`);
             }
           }
         }
@@ -1304,9 +1303,9 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
             onPress={() => setPinModalVisible(false)}
           >
             <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
-              <Text style={styles.modalTitle}>🔒 সাকিব নিরাপত্তা যাচাই</Text>
+              <Text style={styles.modalTitle}>🔒 অ্যাডমিন নিরাপত্তা যাচাই</Text>
               <Text style={styles.modalDesc}>
-                সাকিব এক্সেস স্থায়ীভাবে লক করতে আপনার সাকিব PIN লিখুন:
+                ডিভাইস এক্সেস স্থায়ীভাবে লক করতে আপনার অ্যাডমিন PIN লিখুন:
               </Text>
 
               {pinError ? (
@@ -1317,7 +1316,7 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
 
               <TextInput
                 style={styles.pinInput}
-                placeholder="সাকিব PIN লিখুন"
+                placeholder="অ্যাডমিন PIN লিখুন"
                 placeholderTextColor="#71717a"
                 keyboardType="number-pad"
                 secureTextEntry={true}
@@ -1357,62 +1356,104 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
         onRequestClose={() => setDarkAlert(null)}
       >
         <View style={styles.darkAlertBackdrop}>
-          <View style={styles.darkAlertBox}>
-            {/* Top Icon Badge */}
-            {(() => {
-              const title = darkAlert?.title || '';
-              const isSuccess = title.includes('সফল') || title.includes('✅');
-              const isDanger = title.includes('লগআউট') || title.includes('🔄') || title.includes('ব্লক') || title.includes('🚫') || title.includes('ত্রুটি') || title.includes('❌') || title.includes('মুছুন') || title.includes('🗑️');
-              const isLock = title.includes('লক') || title.includes('🔒') || title.includes('নিরাপত্তা');
+          {(() => {
+            const title = darkAlert?.title || '';
+            const isSuccess = title.includes('সফল') || title.includes('✅');
+            const isError = title.includes('ত্রুটি') || title.includes('❌') || title.includes('ব্যর্থ');
+            const isWarning = title.includes('সতর্ক') || title.includes('⚠️') || title.includes('লগআউট') || title.includes('ব্লক') || title.includes('মুছুন');
+            const isLock = title.includes('লক') || title.includes('🔒') || title.includes('নিরাপত্তা');
 
-              const iconBg = isSuccess 
-                ? 'rgba(16, 185, 129, 0.15)' 
-                : isDanger 
-                ? 'rgba(239, 68, 68, 0.15)' 
-                : isLock 
-                ? 'rgba(245, 158, 11, 0.15)' 
-                : 'rgba(99, 102, 241, 0.15)';
-              
-              const iconBorder = isSuccess 
-                ? 'rgba(16, 185, 129, 0.35)' 
-                : isDanger 
-                ? 'rgba(239, 68, 68, 0.35)' 
-                : isLock 
-                ? 'rgba(245, 158, 11, 0.35)' 
-                : 'rgba(99, 102, 241, 0.35)';
+            const boxBorder = isSuccess 
+              ? 'rgba(16, 185, 129, 0.45)' 
+              : isError
+              ? 'rgba(239, 68, 68, 0.45)'
+              : isWarning 
+              ? 'rgba(245, 158, 11, 0.45)' 
+              : isLock 
+              ? 'rgba(245, 158, 11, 0.35)' 
+              : '#242C37';
 
-              const iconSymbol = isSuccess
-                ? '✅'
-                : title.includes('লগআউট')
-                ? '🔄'
-                : title.includes('ব্লক')
-                ? '🚫'
-                : title.includes('মুছুন')
-                ? '🗑️'
-                : title.includes('ত্রুটি') || title.includes('❌')
-                ? '❌'
-                : isLock
-                ? '🔒'
-                : '📡';
+            const iconBg = isSuccess 
+              ? 'rgba(16, 185, 129, 0.18)' 
+              : isError
+              ? 'rgba(239, 68, 68, 0.18)'
+              : isWarning 
+              ? 'rgba(245, 158, 11, 0.18)' 
+              : isLock 
+              ? 'rgba(245, 158, 11, 0.18)' 
+              : 'rgba(99, 102, 241, 0.18)';
+            
+            const iconBorder = isSuccess 
+              ? 'rgba(16, 185, 129, 0.4)' 
+              : isError
+              ? 'rgba(239, 68, 68, 0.4)'
+              : isWarning 
+              ? 'rgba(245, 158, 11, 0.4)' 
+              : isLock 
+              ? 'rgba(245, 158, 11, 0.4)' 
+              : 'rgba(99, 102, 241, 0.4)';
 
-              return (
+            const iconSymbol = isSuccess
+              ? '✅'
+              : isError
+              ? '❌'
+              : isWarning
+              ? '⚠️'
+              : isLock
+              ? '🔒'
+              : 'ℹ️';
+
+            const titleColor = isSuccess ? '#34D399' : isError ? '#F87171' : isWarning ? '#FBBF24' : '#FFFFFF';
+            const cleanTitle = title.replace(/^[✅❌🔄🚫⚠️🔒📡\s]+/, '').trim() || title;
+
+            return (
+              <View style={[styles.darkAlertBox, { borderColor: boxBorder }]}>
+                {/* Top Icon Badge */}
                 <View style={[styles.darkAlertIconCircle, { backgroundColor: iconBg, borderColor: iconBorder }]}>
                   <Text style={{ fontSize: 24 }}>{iconSymbol}</Text>
                 </View>
-              );
-            })()}
 
-            {/* Title */}
-            <Text style={styles.darkAlertTitle}>
-              {(darkAlert?.title || '').replace(/^[✅❌🔄🚫⚠️🔒📡\s]+/, '').trim() || darkAlert?.title}
-            </Text>
+                {/* Title with context-aware color */}
+                <Text style={[styles.darkAlertTitle, { color: titleColor }]}>
+                  {cleanTitle}
+                </Text>
 
-            {/* Message Body */}
-            <ScrollView style={{ maxHeight: 220 }} showsVerticalScrollIndicator={false}>
-              <Text style={styles.darkAlertMessage}>
-                {darkAlert?.message}
-              </Text>
-            </ScrollView>
+                {/* Message Body with Colored Warning Highlight */}
+                <ScrollView style={{ maxHeight: 260, width: '100%' }} showsVerticalScrollIndicator={false}>
+                  {(() => {
+                    const rawMsg = darkAlert?.message || '';
+                    const parts = rawMsg.split('\n\n');
+
+                    return parts.map((part, pIdx) => {
+                      const isWarningPart = part.includes('⚠️') || part.includes('সতর্ক');
+                      if (isWarningPart) {
+                        return (
+                          <View
+                            key={pIdx}
+                            style={{
+                              backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                              borderWidth: 1,
+                              borderColor: 'rgba(245, 158, 11, 0.35)',
+                              borderRadius: 12,
+                              padding: 12,
+                              marginVertical: 8,
+                              width: '100%',
+                            }}
+                          >
+                            <Text style={{ color: '#FDE68A', fontSize: 13, lineHeight: 20, textAlign: 'left', fontWeight: '500' }}>
+                              {part}
+                            </Text>
+                          </View>
+                        );
+                      }
+                      return (
+                        <Text key={pIdx} style={[styles.darkAlertMessage, { marginBottom: pIdx === parts.length - 1 ? 16 : 8, color: '#E2E8F0', fontSize: 14, lineHeight: 22 }]}>
+                          {part}
+                        </Text>
+                      );
+                    });
+                  })()}
+                </ScrollView>
 
             {/* Button Actions */}
             <View style={styles.darkAlertBtnRow}>
@@ -1474,8 +1515,10 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
               })}
             </View>
           </View>
-        </View>
-      </Modal>
+        );
+      })()}
+    </View>
+  </Modal>
     </SafeAreaView>
   );
 }

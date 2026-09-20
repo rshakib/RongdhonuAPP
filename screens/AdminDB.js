@@ -2935,56 +2935,96 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
         onRequestClose={() => setDarkAlert(null)}
       >
         <View style={styles.darkAlertBackdrop}>
-          <View style={styles.darkAlertBox}>
-            {/* Top Icon Badge */}
-            {(() => {
-              const title = darkAlert?.title || '';
-              const isSuccess = title.includes('সফল') || title.includes('✅');
-              const isDanger = title.includes('লগআউট') || title.includes('🔄') || title.includes('ব্লক') || title.includes('🚫') || title.includes('ত্রুটি') || title.includes('❌') || title.includes('মুছুন') || title.includes('🗑️') || title.includes('ব্যর্থ') || title.includes('ভুল') || title.includes('ডিনাইড');
-              const isLock = title.includes('লক') || title.includes('🔒') || title.includes('নিরাপত্তা') || title.includes('বায়োমেট্রিক');
+          {(() => {
+            const title = darkAlert?.title || '';
+            const isSuccess = title.includes('সফল') || title.includes('✅');
+            const isDanger = title.includes('লগআউট') || title.includes('🔄') || title.includes('ব্লক') || title.includes('🚫') || title.includes('ত্রুটি') || title.includes('❌') || title.includes('মুছুন') || title.includes('🗑️') || title.includes('ব্যর্থ') || title.includes('ভুল') || title.includes('ডিনাইড');
+            const isLock = title.includes('লক') || title.includes('🔒') || title.includes('নিরাপত্তা') || title.includes('বায়োমেট্রিক');
+            const isWarning = title.includes('সতর্ক') || title.includes('⚠️') || isDanger;
 
-              const iconBg = isSuccess 
-                ? 'rgba(16, 185, 129, 0.15)' 
-                : isDanger 
-                ? 'rgba(239, 68, 68, 0.15)' 
-                : isLock 
-                ? 'rgba(245, 158, 11, 0.15)' 
-                : 'rgba(99, 102, 241, 0.15)';
-              
-              const iconBorder = isSuccess 
-                ? 'rgba(16, 185, 129, 0.35)' 
-                : isDanger 
-                ? 'rgba(239, 68, 68, 0.35)' 
-                : isLock 
-                ? 'rgba(245, 158, 11, 0.35)' 
-                : 'rgba(99, 102, 241, 0.35)';
+            const boxBorder = isSuccess 
+              ? 'rgba(16, 185, 129, 0.45)' 
+              : isDanger 
+              ? 'rgba(239, 68, 68, 0.45)' 
+              : isWarning
+              ? 'rgba(245, 158, 11, 0.45)'
+              : '#242C37';
 
-              const iconSymbol = isSuccess
-                ? '✅'
-                : isDanger
-                ? '⚠️'
-                : isLock
-                ? '🔒'
-                : 'ℹ️';
+            const iconBg = isSuccess 
+              ? 'rgba(16, 185, 129, 0.18)' 
+              : isDanger 
+              ? 'rgba(239, 68, 68, 0.18)' 
+              : isLock 
+              ? 'rgba(245, 158, 11, 0.18)' 
+              : 'rgba(99, 102, 241, 0.18)';
+            
+            const iconBorder = isSuccess 
+              ? 'rgba(16, 185, 129, 0.4)' 
+              : isDanger 
+              ? 'rgba(239, 68, 68, 0.4)' 
+              : isLock 
+              ? 'rgba(245, 158, 11, 0.4)' 
+              : 'rgba(99, 102, 241, 0.4)';
 
-              return (
+            const iconSymbol = isSuccess
+              ? '✅'
+              : isDanger
+              ? '⚠️'
+              : isLock
+              ? '🔒'
+              : 'ℹ️';
+
+            const titleColor = isSuccess ? '#34D399' : (isDanger && !title.includes('সতর্ক')) ? '#F87171' : '#FBBF24';
+            const cleanTitle = (title.replace(/^[✅❌🔄🚫⚠️🔒📡\s]+/, '').trim()) || title;
+
+            return (
+              <View style={[styles.darkAlertBox, { borderColor: boxBorder }]}>
+                {/* Top Icon Badge */}
                 <View style={[styles.darkAlertIconCircle, { backgroundColor: iconBg, borderColor: iconBorder }]}>
                   <Text style={{ fontSize: 24 }}>{iconSymbol}</Text>
                 </View>
-              );
-            })()}
 
-            {/* Title */}
-            <Text style={styles.darkAlertTitle}>
-              {(darkAlert?.title || '').replace(/^[✅❌🔄🚫⚠️🔒📡\s]+/, '').trim() || darkAlert?.title}
-            </Text>
+                {/* Title */}
+                <Text style={[styles.darkAlertTitle, { color: titleColor }]}>
+                  {cleanTitle}
+                </Text>
 
-            {/* Message Body */}
-            <ScrollView style={{ maxHeight: 220 }} showsVerticalScrollIndicator={false}>
-              <Text style={styles.darkAlertMessage}>
-                {darkAlert?.message}
-              </Text>
-            </ScrollView>
+                {/* Message Body */}
+                <ScrollView style={{ maxHeight: 250, width: '100%' }} showsVerticalScrollIndicator={false}>
+                  {(() => {
+                    const rawMsg = darkAlert?.message || '';
+                    const parts = rawMsg.split('\n\n');
+
+                    return parts.map((part, pIdx) => {
+                      const isWarningPart = part.includes('⚠️') || part.includes('সতর্ক') || part.includes('অ্যাক্সেস হারাবেন');
+                      if (isWarningPart) {
+                        return (
+                          <View
+                            key={pIdx}
+                            style={{
+                              backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                              borderWidth: 1,
+                              borderColor: 'rgba(245, 158, 11, 0.35)',
+                              borderRadius: 12,
+                              padding: 12,
+                              marginVertical: 8,
+                              width: '100%',
+                            }}
+                          >
+                            <Text style={{ color: '#FDE68A', fontSize: 13, lineHeight: 20, textAlign: 'left', fontWeight: '500' }}>
+                              {part}
+                            </Text>
+                          </View>
+                        );
+                      }
+                      return (
+                        <Text key={pIdx} style={[styles.darkAlertMessage, { marginBottom: pIdx === parts.length - 1 ? 16 : 8, color: '#E2E8F0', fontSize: 14, lineHeight: 22 }]}>
+                          {part}
+                        </Text>
+                      );
+                    });
+                  })()}
+                </ScrollView>
 
             {/* Button Actions */}
             <View style={styles.darkAlertBtnRow}>
@@ -3046,8 +3086,10 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               })}
             </View>
           </View>
-        </View>
-      </Modal>
+        );
+      })()}
+    </View>
+  </Modal>
 
     </SafeAreaView>
   );
