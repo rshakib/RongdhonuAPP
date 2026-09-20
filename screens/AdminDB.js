@@ -1834,55 +1834,114 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
             </View>
           </View>
 
-          <View style={styles.versionControlCard}>
-            {/* Current versions row */}
-            <View style={styles.versionInfoRow}>
-              <View style={styles.versionInfoItem}>
-                <Text style={styles.versionInfoLabel}>রানিং APK ভার্সন</Text>
-                <Text style={styles.versionInfoValue}>
-                  {(Application.applicationId === 'host.exp.exponent' || Application.nativeApplicationVersion?.startsWith('56.')) ? APP_VERSION : (Application.nativeApplicationVersion || APP_VERSION)}
-                </Text>
-                <Text style={styles.versionInfoSub}>Build {Application.nativeBuildVersion || '—'}</Text>
-              </View>
-              <View style={styles.versionInfoDivider} />
-              <View style={styles.versionInfoItem}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-                  <Text style={styles.versionInfoLabel}>Firebase নিউনতম</Text>
-                  <TouchableOpacity onPress={loadFirebaseVersion} disabled={isLoadingVersion} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={{ marginLeft: 6 }}>
-                    <Text style={{ fontSize: 12 }}>{isLoadingVersion ? '⏳' : '🔄'}</Text>
-                  </TouchableOpacity>
-                </View>
-                {isLoadingVersion ? (
-                  <ActivityIndicator size="small" color="#6366F1" style={{ marginVertical: 4 }} />
-                ) : versionFetchError ? (
-                  <TouchableOpacity onPress={loadFirebaseVersion} activeOpacity={0.7}>
-                    <Text style={[styles.versionInfoValue, { color: '#F59E0B', fontSize: 12 }]}>⚠️ লোড হয়নি (ট্যাপ করুন)</Text>
-                  </TouchableOpacity>
-                ) : firebaseMinVersion !== null ? (
-                  <Text style={styles.versionInfoValue}>{firebaseMinVersion}</Text>
-                ) : (
-                  <ActivityIndicator size="small" color="#6366F1" />
-                )}
-                {firebaseMinVersion !== null && !isLoadingVersion && (() => {
-                  const liveVer = (Application.applicationId === 'host.exp.exponent' || Application.nativeApplicationVersion?.startsWith('56.')) ? APP_VERSION : (Application.nativeApplicationVersion || APP_VERSION);
-                  const isUpToDate = compareSemver(liveVer, firebaseMinVersion) >= 0;
-                  return (
-                    <Text style={[styles.versionInfoSub, isUpToDate ? { color: '#10B981' } : { color: '#EF4444' }]}>
-                      {isUpToDate ? '✅ আপ-টু-ডেট' : '❌ পুরনো'}
+          {/* Hero Gradient Card */}
+          {(() => {
+            const liveVer = (Application.applicationId === 'host.exp.exponent' || Application.nativeApplicationVersion?.startsWith('56.')) ? APP_VERSION : (Application.nativeApplicationVersion || APP_VERSION);
+            const buildNum = Application.nativeBuildVersion || '441';
+            const isUpToDate = firebaseMinVersion !== null ? compareSemver(liveVer, firebaseMinVersion) >= 0 : true;
+
+            return (
+              <View style={styles.versionHeroCard}>
+                {/* Top Row: Running APK Label + Status Pill */}
+                <View style={styles.versionHeroTopRow}>
+                  <View style={styles.versionHeroLabelWrap}>
+                    <Text style={styles.versionHeroPhoneIcon}>📱</Text>
+                    <Text style={styles.versionHeroLabel}>রানিং APK ভার্সন</Text>
+                  </View>
+                  <View style={[styles.versionStatusPill, isUpToDate ? styles.versionPillGreen : styles.versionPillRed]}>
+                    <Text style={[styles.versionStatusPillText, isUpToDate ? styles.versionPillTextGreen : styles.versionPillTextRed]}>
+                      {isUpToDate ? '✓ আপ-টু-ডেট' : '✕ পুরনো'}
                     </Text>
-                  );
-                })()}
+                  </View>
+                </View>
+
+                {/* Big Version Display with Build Badge */}
+                <View style={styles.versionBigRow}>
+                  <Text style={styles.versionPrefixV}>v</Text>
+                  <Text style={styles.versionBigNumber}>{liveVer}</Text>
+                  <View style={styles.versionBuildBadge}>
+                    <Text style={styles.versionBuildText}>Build {buildNum}</Text>
+                  </View>
+                </View>
+
+                {/* Dashed Divider */}
+                <View style={styles.versionDashedDivider} />
+
+                {/* Comparison Graphic: Running APK <---[✓]---> Firebase Min */}
+                <View style={styles.versionCompareRow}>
+                  {/* Left: Running APK */}
+                  <View style={styles.versionCompareCol}>
+                    <View style={styles.versionIconBox}>
+                      <Text style={styles.versionBoxIcon}>📱</Text>
+                    </View>
+                    <Text style={styles.versionCompareLabel}>রানিং APK</Text>
+                    <Text style={styles.versionCompareVal}>{liveVer}</Text>
+                  </View>
+
+                  {/* Middle Connector with Checkmark Circle */}
+                  <View style={styles.versionConnectorWrap}>
+                    <View style={styles.versionConnectorLine}>
+                      <View style={styles.versionConnectorGlow} />
+                    </View>
+                    <View style={[styles.versionCenterCircle, { backgroundColor: isUpToDate ? '#10B981' : '#EF4444' }]}>
+                      <Text style={styles.versionCenterCheck}>✓</Text>
+                    </View>
+                  </View>
+
+                  {/* Right: Firebase Min */}
+                  <View style={styles.versionCompareCol}>
+                    <View style={styles.versionIconBox}>
+                      <Text style={styles.versionBoxIcon}>☁️</Text>
+                      <TouchableOpacity
+                        style={styles.versionRefreshBadge}
+                        onPress={loadFirebaseVersion}
+                        disabled={isLoadingVersion}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Text style={styles.versionRefreshIcon}>{isLoadingVersion ? '⏳' : '🔄'}</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.versionCompareLabel}>Firebase নিউনতম</Text>
+                    {isLoadingVersion ? (
+                      <ActivityIndicator size="small" color="#A78BFA" style={{ marginTop: 2 }} />
+                    ) : versionFetchError ? (
+                      <TouchableOpacity onPress={loadFirebaseVersion} activeOpacity={0.7}>
+                        <Text style={[styles.versionCompareVal, { color: '#F59E0B', fontSize: 11 }]}>⚠️ এরর</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <Text style={styles.versionCompareVal}>{firebaseMinVersion || '—'}</Text>
+                    )}
+                  </View>
+                </View>
               </View>
+            );
+          })()}
+
+          {/* Input & Action Section */}
+          <View style={styles.versionInputSection}>
+            {/* Header: Label + Auto Pick Button */}
+            <View style={styles.versionInputHeaderRow}>
+              <Text style={styles.versionInputSectionTitle}>নতুন ভার্সন দিন</Text>
+              {(() => {
+                const liveVer = (Application.applicationId === 'host.exp.exponent' || Application.nativeApplicationVersion?.startsWith('56.')) ? APP_VERSION : (Application.nativeApplicationVersion || APP_VERSION);
+                return (
+                  <TouchableOpacity
+                    style={styles.versionAutoPickPill}
+                    onPress={() => setVersionInput(liveVer)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.versionAutoPickIcon}>🔄</Text>
+                    <Text style={styles.versionAutoPickPillText}>অটো পিক {liveVer}</Text>
+                  </TouchableOpacity>
+                );
+              })()}
             </View>
 
-            <Text style={styles.versionHelpText}>
-              নতুন APK বের করার পর এখানে সেই ভার্সন দিন। পুরনো ভার্সনের ডিভাইস Force Logout-এর পর login করতে পারবে না।
-            </Text>
-
-            {/* Input + Auto Pick + Save */}
-            <View style={styles.versionInputRow}>
+            {/* Big Version Input Field */}
+            <View style={styles.versionBigInputBox}>
+              <Text style={styles.versionInputPrefixV}>v</Text>
               <TextInput
-                style={styles.versionInput}
+                style={styles.versionBigTextInput}
                 value={versionInput}
                 onChangeText={setVersionInput}
                 onFocus={() => {
@@ -1891,34 +1950,36 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                   }, 200);
                 }}
                 placeholder="যেমন: 1.0.3"
-                placeholderTextColor="#555"
+                placeholderTextColor="#4B5563"
                 keyboardType="decimal-pad"
                 autoCapitalize="none"
               />
-              <TouchableOpacity
-                style={styles.versionAutoPickBtn}
-                onPress={() => {
-                  const isExpoGo = Application.applicationId === 'host.exp.exponent' || Application.nativeApplicationVersion?.startsWith('56.');
-                  const liveVer = isExpoGo ? APP_VERSION : (Application.nativeApplicationVersion || APP_VERSION);
-                  setVersionInput(liveVer);
-                }}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.versionAutoPickBtnText}>অটো পিক 🎯</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.versionSaveBtn, (isSavingVersion || isLoadingVersion) && { opacity: 0.6 }]}
-                disabled={isSavingVersion || isLoadingVersion}
-                onPress={handleInitiateVersionUpdate}
-                activeOpacity={0.8}
-              >
-                {isSavingVersion ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.versionSaveBtnText}>আপডেট করুন</Text>
-                )}
-              </TouchableOpacity>
             </View>
+
+            {/* Warning Note */}
+            <View style={styles.versionWarningRow}>
+              <Text style={styles.versionWarningIcon}>⚠️</Text>
+              <Text style={styles.versionWarningText}>
+                নতুন APK বের করার পর এখানে সেই ভার্সন দিন। পুরনো ভার্সনের ডিভাইস <Text style={styles.versionForceLogoutHighlight}>Force Logout</Text>-এর পর login করতে পারবে না।
+              </Text>
+            </View>
+
+            {/* Full-Width Primary Update Button */}
+            <TouchableOpacity
+              style={[styles.versionFullUpdateBtn, (isSavingVersion || isLoadingVersion) && { opacity: 0.6 }]}
+              disabled={isSavingVersion || isLoadingVersion}
+              onPress={handleInitiateVersionUpdate}
+              activeOpacity={0.85}
+            >
+              {isSavingVersion ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <View style={styles.versionUpdateBtnContent}>
+                  <Text style={styles.versionUpdateBtnIcon}>📥</Text>
+                  <Text style={styles.versionUpdateBtnText}>আপডেট করুন</Text>
+                </View>
+              )}
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -2988,21 +3049,287 @@ const styles = StyleSheet.create({
   chartFooterLabel: { color: '#6B6F85', fontSize: 10, marginRight: 4 },
   chartFooterVal: { color: '#E8E9EF', fontSize: 10.5, fontWeight: '700' },
 
-  // ── VERSION CONTROL ──
-  versionControlCard: { backgroundColor: '#141520', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#1E2030' },
-  versionInfoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  versionInfoItem: { flex: 1, alignItems: 'center' },
-  versionInfoLabel: { color: '#6B6F85', fontSize: 10, marginBottom: 4 },
-  versionInfoValue: { color: '#E8E9EF', fontSize: 14, fontWeight: '700' },
-  versionInfoSub: { color: '#6B6F85', fontSize: 10, marginTop: 2 },
-  versionInfoDivider: { width: 1, height: 36, backgroundColor: '#1E2030', marginHorizontal: 10 },
-  versionHelpText: { color: '#6B6F85', fontSize: 10.5, lineHeight: 16, marginBottom: 10, textAlign: 'center' },
-  versionInputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  versionInput: { flex: 1, backgroundColor: '#0E0F14', borderRadius: 8, borderWidth: 1, borderColor: '#2A2B38', color: '#E8E9EF', paddingHorizontal: 12, paddingVertical: 9, fontSize: 14, fontWeight: '600' },
-  versionAutoPickBtn: { backgroundColor: 'rgba(99,102,241,0.15)', borderWidth: 1, borderColor: 'rgba(99,102,241,0.4)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, justifyContent: 'center', alignItems: 'center' },
-  versionAutoPickBtnText: { color: '#818CF8', fontSize: 11, fontWeight: '700' },
-  versionSaveBtn: { backgroundColor: '#6366F1', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 9, justifyContent: 'center', alignItems: 'center', minWidth: 70 },
-  versionSaveBtnText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
+  // ── VERSION CONTROL (Redesign per media_1789917355855.png) ──
+  versionHeroCard: {
+    backgroundColor: '#352163',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#4A3387',
+    padding: 16,
+    overflow: 'hidden',
+  },
+  versionHeroTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  versionHeroLabelWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  versionHeroPhoneIcon: {
+    fontSize: 13,
+    marginRight: 6,
+  },
+  versionHeroLabel: {
+    color: '#DDD6FE',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  versionStatusPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  versionPillGreen: {
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    borderColor: 'rgba(16, 185, 129, 0.4)',
+  },
+  versionPillRed: {
+    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+    borderColor: 'rgba(239, 68, 68, 0.4)',
+  },
+  versionStatusPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  versionPillTextGreen: {
+    color: '#34D399',
+  },
+  versionPillTextRed: {
+    color: '#F87171',
+  },
+  versionBigRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 4,
+  },
+  versionPrefixV: {
+    color: '#A78BFA',
+    fontSize: 22,
+    fontWeight: '700',
+    marginRight: 4,
+    marginBottom: 4,
+  },
+  versionBigNumber: {
+    color: '#FFFFFF',
+    fontSize: 40,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+  },
+  versionBuildBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+    marginLeft: 12,
+  },
+  versionBuildText: {
+    color: '#EDE9FE',
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  versionDashedDivider: {
+    borderBottomWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.16)',
+    borderStyle: 'dashed',
+    marginVertical: 14,
+  },
+  versionCompareRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  versionCompareCol: {
+    alignItems: 'center',
+    width: 90,
+  },
+  versionIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  versionBoxIcon: {
+    fontSize: 20,
+  },
+  versionRefreshBadge: {
+    position: 'absolute',
+    bottom: -4,
+    right: -4,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+  },
+  versionRefreshIcon: {
+    fontSize: 10,
+  },
+  versionCompareLabel: {
+    color: '#C4B5FD',
+    fontSize: 10,
+    fontWeight: '600',
+    marginTop: 6,
+  },
+  versionCompareVal: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: 2,
+  },
+  versionConnectorWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    paddingHorizontal: 8,
+  },
+  versionConnectorLine: {
+    width: '100%',
+    height: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  versionConnectorGlow: {
+    width: '50%',
+    height: 3,
+    backgroundColor: '#2DD4BF',
+    borderRadius: 1.5,
+    opacity: 0.8,
+  },
+  versionCenterCircle: {
+    position: 'absolute',
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#352163',
+  },
+  versionCenterCheck: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '900',
+  },
+
+  // Input Section
+  versionInputSection: {
+    marginTop: 16,
+  },
+  versionInputHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  versionInputSectionTitle: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  versionAutoPickPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(99, 102, 241, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(99, 102, 241, 0.4)',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  versionAutoPickIcon: {
+    fontSize: 11,
+    marginRight: 4,
+  },
+  versionAutoPickPillText: {
+    color: '#818CF8',
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  versionBigInputBox: {
+    backgroundColor: '#12141D',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#202434',
+    height: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+  },
+  versionInputPrefixV: {
+    color: '#6B7280',
+    fontSize: 18,
+    fontWeight: '800',
+    marginRight: 10,
+  },
+  versionBigTextInput: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: '900',
+    textAlign: 'center',
+    letterSpacing: 1,
+  },
+  versionWarningRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginVertical: 12,
+    paddingHorizontal: 2,
+  },
+  versionWarningIcon: {
+    fontSize: 13,
+    marginRight: 6,
+    marginTop: 1,
+  },
+  versionWarningText: {
+    color: '#9CA3AF',
+    fontSize: 10.5,
+    lineHeight: 16,
+    flex: 1,
+  },
+  versionForceLogoutHighlight: {
+    color: '#F59E0B',
+    fontWeight: '800',
+  },
+  versionFullUpdateBtn: {
+    backgroundColor: '#5046E5',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#5046E5',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  versionUpdateBtnContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  versionUpdateBtnIcon: {
+    fontSize: 16,
+    marginRight: 6,
+  },
+  versionUpdateBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+  },
 
   // ── EMPTY STATE ──
   emptyState: { alignItems: 'center', paddingVertical: 20 },
