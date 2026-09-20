@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, View, Alert, TouchableOpacity, Modal, ScrollView, Text, Platform, Dimensions, ActivityIndicator, AppState, BackHandler, TextInput } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -112,6 +112,8 @@ import DailyItemSalesReport from './screens/DailyItemSalesReport';
 import DeviceManagementScreen from './screens/DeviceManagementScreen';
 import DevicePendingScreen from './screens/DevicePendingScreen';
 import DeviceBlockedScreen from './screens/DeviceBlockedScreen';
+import AppUpdateRequiredScreen from './screens/AppUpdateRequiredScreen';
+import OfflineVerificationScreen from './screens/OfflineVerificationScreen';
 import SyncDiagnosticsScreen from './screens/SyncDiagnosticsScreen';
 import DeleteHistoryScreen from './screens/DeleteHistoryScreen';
 import SystemToolsScreen from './screens/SystemToolsScreen';
@@ -200,9 +202,13 @@ const NotificationToast = ({ visible, message, type }) => {
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  // Ref kept in sync so the setInterval closure always reads the CURRENT login state.
+  // React state captured in a setInterval(..., []) closure is permanently stale (always false).
+  const isLoggedInRef = useRef(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [pendingDeviceId, setPendingDeviceId] = useState('');
   const [pendingLoginInfo, setPendingLoginInfo] = useState(null);
+  const [updatePolicy, setUpdatePolicy] = useState(null);
 
   // Toast State
   const [toastVisible, setToastVisible] = useState(false);
@@ -256,6 +262,16 @@ export default function App() {
   const [tabCountdown, setTabCountdown] = useState(15);
   const [fullCountdown, setFullCountdown] = useState(30);
 
+  // Keep isLoggedInRef in sync with isLoggedIn state so the setInterval closure (which captures
+  // a stale value from mount) always reads the CURRENT login state.
+  useEffect(() => {
+    isLoggedInRef.current = isLoggedIn;
+  }, [isLoggedIn]);
+
+  // Module-level flag: prevents overlapping async force-logout checks from stacking up.
+  // Declared outside React so it persists across re-renders without causing re-renders.
+  const _forceLogoutCheckRef = useRef(false);
+
   useEffect(() => {
     const t = setInterval(() => {
       setDelCountdown(prev => (prev <= 1 ? 90 : prev - 1));
@@ -263,29 +279,51 @@ export default function App() {
       setFullCountdown(prev => (prev <= 1 ? 30 : prev - 1));
 
       // Periodic Device Force Logout Check (DEVICE BASED — ALL ROLES: ADMIN, OWNER, MANAGER)
-      try {
-        const { checkAndExecuteForceLogout } = require('./services/deviceRegistry');
-        const forceRes = checkAndExecuteForceLogout();
-        if (forceRes && forceRes.triggered) {
-          setIsLoggedIn(false);
-          setUserRole('');
-          setUserDisplayName('');
-          setPendingLoginInfo(null);
-          setCurrentScreen('LOGIN');
-          setForceReauthRequired(true);
-          Alert.alert(
-            'সাকিব সাইন-আউট',
-            forceRes.message || 'সাকিব আপনাকে সাইন-আউট করিয়েছেন।\nঅনুগ্রহ করে আপনার ইউজারনেম এবং PIN ব্যবহার করে আবার লগইন করুন।',
-            [{ text: 'ঠিক আছে' }]
-          );
+      // GUARD 1: Only run when the user is currently logged in.
+      //          The setInterval closure captures `isLoggedIn` at mount (always false).
+      //          We use isLoggedInRef.current which is kept in sync via a useEffect above.
+      // GUARD 2: Skip if a previous async check hasn't finished yet (prevents queue buildup).
+      if (!isLoggedInRef.current) return;
+      if (_forceLogoutCheckRef.current) return;
+
+      _forceLogoutCheckRef.current = true;
+      ;(async () => {
+        try {
+          const { checkAndExecuteForceLogout } = require('./services/deviceRegistry');
+          const t0 = Date.now();
+          console.log(`[ForceLogout] stage=periodic_check_start isLoggedIn=${isLoggedInRef.current} elapsed=0ms`);
+          const forceRes = await checkAndExecuteForceLogout();
+          if (forceRes && forceRes.triggered) {
+            console.log(`[ForceLogout] stage=periodic_check result=triggered elapsed=${Date.now()-t0}ms`);
+            isLoggedInRef.current = false;
+            setIsLoggedIn(false);
+            setUserRole('');
+            setUserDisplayName('');
+            setPendingLoginInfo(null);
+            setCurrentScreen('LOGIN');
+            setForceReauthRequired(true);
+            Alert.alert(
+              'সেশন বাতিল',
+              forceRes.message || 'প্রশাসক আপনার সেশন বন্ধ করেছেন।\nঅনুগ্রহ করে আবার লগইন করুন।',
+              [{ text: 'ঠিক আছে' }]
+            );
+          }
+        } catch (e) {
+          console.warn('[ForceLogout] stage=periodic_check error:', e.message);
+        } finally {
+          _forceLogoutCheckRef.current = false;
         }
-      } catch (e) {}
+      })();
     }, 1000);
     return () => clearInterval(t);
   }, []);
 
   // Navigation State
   const [currentScreen, setCurrentScreen] = useState('DASHBOARD'); // 'DASHBOARD', 'TABLE_DETAIL', 'PAYMENT_SUCCESS', 'DAILY_SUBMIT', 'ADD_ITEM', 'PAYMENT_CHECKOUT'
+  const currentScreenRef = useRef(currentScreen);
+  currentScreenRef.current = currentScreen;
+  const pendingLoginInfoRef = useRef(pendingLoginInfo);
+  pendingLoginInfoRef.current = pendingLoginInfo;
   const [selectedTableId, setSelectedTableId] = useState(null);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
   const [paymentAmount, setPaymentAmount] = useState(0); // Total due amount
@@ -357,12 +395,45 @@ export default function App() {
         initDatabase(true);
 
 
-        // Device Registration Check (Phase 1 Access Control)
+        // 0. Mandatory Version Policy Check (ADMIN profile exempt from startup gating)
+        if (ACTIVE_APP_PROFILE !== 'ADMIN') {
+          try {
+            const { checkAppVersionPolicy } = require('./services/firebaseAppConfig');
+            const verRes = await checkAppVersionPolicy(ACTIVE_APP_PROFILE);
+            if (verRes && verRes.updateRequired) {
+              setUpdatePolicy(verRes.policy);
+              setCurrentScreen('APP_UPDATE_REQUIRED');
+              return;
+            }
+          } catch (verErr) {
+            console.warn("[App] Version policy startup check error:", verErr);
+          }
+        }
+
+        // Device Registration Check (Phase 1 Access Control) & App Usage Table
         try {
-          const { registerDeviceIfNeeded, checkAndExecuteForceLogout } = require('./services/deviceRegistry');
-          await registerDeviceIfNeeded();
-          const forceRes = checkAndExecuteForceLogout();
-          if (forceRes && forceRes.triggered) {
+          const { registerDeviceIfNeeded, reconcileAdminFleet, verifyDeviceAccessOnStartupOrResume } = require('./services/deviceRegistry');
+          const { initAppUsageTable } = require('./services/appUsageTracker.js');
+          initAppUsageTable();
+          const coldStartEventId = 'cold_start_' + Date.now();
+          await registerDeviceIfNeeded({ eventId: coldStartEventId, isColdStart: true });
+          // TODO: If OWNER is granted Device Control screen access in the future, enable full device fleet fetching and reconciliation for OWNER here.
+          if (ACTIVE_APP_PROFILE === 'ADMIN') {
+            await reconcileAdminFleet();
+          }
+
+          // Authoritative Device Access Gate on Startup
+          const devAccess = await verifyDeviceAccessOnStartupOrResume();
+          if (devAccess && devAccess.blocked) {
+            setIsLoggedIn(false);
+            setUserRole('');
+            setUserDisplayName('');
+            setPendingDeviceId(devAccess.deviceId || '');
+            setPendingLoginInfo({ isAdminLock: Boolean(devAccess.isAdminLock) });
+            setCurrentScreen('DEVICE_BLOCKED');
+            return;
+          }
+          if (devAccess && devAccess.forceLogout) {
             setIsLoggedIn(false);
             setUserRole('');
             setUserDisplayName('');
@@ -370,10 +441,21 @@ export default function App() {
             setCurrentScreen('LOGIN');
             setForceReauthRequired(true);
             Alert.alert(
-              'সাকিব সাইন-আউট',
-              forceRes.message || 'সাকিব আপনাকে সাইন-আউট করিয়েছেন।\nঅনুগ্রহ করে আপনার ইউজারনেম এবং PIN ব্যবহার করে আবার লগইন করুন।',
-              [{ text: 'ঠিক আছে' }]
+              'সেশন বাতিল',
+              devAccess.message || 'Your session has been terminated by the administrator. Please log in again.'
             );
+            return;
+          }
+          if (devAccess && devAccess.verificationRequired) {
+            setIsLoggedIn(false);
+            setCurrentScreen('OFFLINE_VERIFICATION');
+            return;
+          }
+          if (devAccess && devAccess.status === 'PENDING' && ACTIVE_APP_PROFILE !== 'ADMIN') {
+            setIsLoggedIn(false);
+            setPendingDeviceId(devAccess.deviceId || '');
+            setCurrentScreen('DEVICE_PENDING');
+            return;
           }
         } catch (devErr) {
           console.error("[App] Device registration check failed:", devErr);
@@ -522,48 +604,232 @@ export default function App() {
     };
   }, [isLoggedIn]);
 
-  // --- DEDICATED DEVICE REGISTRY SYNC TIMERS (Phase 6 Optimization) ---
-  // Steps 5, 6, 7 & 9: Dedicated device_registry sync schedule (30s for Manager/Owner, 60s for Admin)
-  // + 5-minute batched last_seen flush. Active ONLY in foreground.
+  // --- SUPABASE REALTIME DEVICE TRACKING & INSTANT REMOTE COMMANDS ---
+  // Tracks device presence every 1 second (in-memory WebSocket) while app is active.
+  // Receives instant remote commands: Admin Lock, Force Logout, and Status Changes with sub-second latency.
   useEffect(() => {
-    const isRoleAdmin = String(userRole || '').toUpperCase().trim() === 'ADMIN';
-    const registryIntervalMs = isRoleAdmin ? 60000 : 30000; // 60s for Admin, 30s for Manager/Owner
+    let stopPresence = null;
+    let appStateSub = null;
 
-    console.log(`[DeviceRegistry Sync] Starting dedicated timer. Role: ${userRole || 'Guest'}, Interval: ${registryIntervalMs / 1000}s`);
+    const initSupabaseTracking = () => {
+      try {
+        const { getCurrentDeviceRecord, checkAndExecuteForceLogout, syncRemoteDeviceToLocal } = require('./services/deviceRegistry');
+        const { startDevicePresence } = require('./services/supabaseDeviceControl.js');
+        const deviceRecord = getCurrentDeviceRecord();
+        if (!deviceRecord || !deviceRecord.device_id) return;
 
-    // Immediate pull on start/login
-    try {
-      const { syncDeviceRegistry } = require('./database');
-      syncDeviceRegistry();
-    } catch (e) {}
+        const metadataProvider = () => {
+          const rec = getCurrentDeviceRecord() || {};
+          return {
+            deviceName: rec.device_name || rec.model || '',
+            status: rec.status || 'PENDING',
+            userRole: userRole || 'Guest',
+            username: userDisplayName || 'Anonymous'
+          };
+        };
 
-    // Dedicated Device Registry Delta Pull Timer (Foreground Only)
-    const registryTimer = setInterval(async () => {
-      if (AppState.currentState === 'active') {
-        try {
-          const { syncDeviceRegistry } = require('./database');
-          await syncDeviceRegistry();
-        } catch (e) {}
+        const onRemoteCommand = async (remoteRecord) => {
+          const cmdT0 = Date.now();
+          const cmdId = remoteRecord.force_logout_token || remoteRecord.updated_at || 'unknown';
+          const cmdDeviceId = remoteRecord.device_id || 'unknown';
+          try {
+            console.log(`[ForceLogout] stage=realtime_received deviceId=${cmdDeviceId} commandId=${cmdId} force_logout=${remoteRecord.force_logout} elapsed=0ms`);
+            // Immediately sync remote state to local SQLite database
+            syncRemoteDeviceToLocal(remoteRecord);
+
+            // Handle remote Force Logout
+            if (remoteRecord.force_logout) {
+              console.log(`[ForceLogout] stage=executing_check deviceId=${cmdDeviceId} commandId=${cmdId} elapsed=${Date.now()-cmdT0}ms`);
+              const res = await checkAndExecuteForceLogout(remoteRecord);
+              if (res && res.triggered) {
+                console.log(`[ForceLogout] stage=triggered_navigation deviceId=${cmdDeviceId} commandId=${cmdId} elapsed=${Date.now()-cmdT0}ms`);
+                setIsLoggedIn(false);
+                setUserRole('');
+                setUserDisplayName('');
+                setPendingLoginInfo(null);
+                setCurrentScreen('LOGIN');
+                setForceReauthRequired(true);
+                Alert.alert(
+                  'সেশন বাতিল',
+                  res.message || 'প্রশাসক আপনার সেশন বন্ধ করেছেন। অনুগ্রহ করে আবার লগইন করুন।'
+                );
+                console.log(`[ForceLogout] stage=complete deviceId=${cmdDeviceId} commandId=${cmdId} elapsed=${Date.now()-cmdT0}ms`);
+                return;
+              } else {
+                console.log(`[ForceLogout] stage=check_not_triggered deviceId=${cmdDeviceId} commandId=${cmdId} elapsed=${Date.now()-cmdT0}ms reason=already_handled_or_no_flag`);
+              }
+            }
+
+            // Handle remote Admin Lock or Block (Applies regardless of login state)
+            if (remoteRecord.admin_lock || remoteRecord.status === 'BLOCKED') {
+              setIsLoggedIn(false);
+              setUserRole('');
+              setUserDisplayName('');
+              setPendingLoginInfo({ isAdminLock: Boolean(remoteRecord.admin_lock) });
+              setPendingDeviceId(remoteRecord.device_id);
+              setCurrentScreen('DEVICE_BLOCKED');
+              return;
+            } else if (remoteRecord.status === 'ACTIVE') {
+              // ─── BUG-2 / BUG-6 FIX ─────────────────────────────────────
+              // Previously only acted if screen was exactly 'DEVICE_PENDING'.
+              // Now we handle approval from: DEVICE_PENDING, DEVICE_BLOCKED, LOGIN.
+              // ─────────────────────────────────────────────────────────────
+              const approvalScreens = ['DEVICE_PENDING', 'DEVICE_BLOCKED', 'LOGIN'];
+              const onApprovableScreen = approvalScreens.includes(currentScreenRef.current);
+              const alreadyLoggedIn = isLoggedIn;
+
+              if (!alreadyLoggedIn && onApprovableScreen) {
+                if (pendingLoginInfoRef.current) {
+                  const { role, displayName, mode } = pendingLoginInfoRef.current;
+                  handleLoginSuccess(role, displayName, mode);
+                } else {
+                  if (currentScreenRef.current !== 'LOGIN') {
+                    setCurrentScreen('LOGIN');
+                  }
+                }
+              }
+            }
+          } catch (err) {
+            console.error('[SupabaseDeviceControl] Error handling remote command:', err);
+          }
+        };
+
+        if (AppState.currentState === 'active') {
+          stopPresence = startDevicePresence(deviceRecord.device_id, metadataProvider, onRemoteCommand);
+        }
+      } catch (e) {
+        console.warn('[SupabaseDeviceControl] Init error:', e.message);
       }
-    }, registryIntervalMs);
+    };
 
-    // Step 7: last_seen Flush Timer (Foreground Only)
-    // Admin: 60s, Manager/Owner: 90s
-    const lastSeenIntervalMs = isRoleAdmin ? 60000 : 90000;
-    const lastSeenTimer = setInterval(() => {
-      if (AppState.currentState === 'active') {
+    initSupabaseTracking();
+
+    let appWasBackgrounded = false;
+
+    appStateSub = AppState.addEventListener('change', async (nextState) => {
+      if (nextState === 'active') {
+        const isReturningFromBackground = appWasBackgrounded;
+        appWasBackgrounded = false;
+
+        initSupabaseTracking();
+
+        // Check version and authoritative device access on every return to foreground
+        if (isReturningFromBackground) {
+          try {
+            // 1. Mandatory version check on foreground resume
+            const { checkAppVersionPolicy } = require('./services/firebaseAppConfig');
+            const effectiveCheckRole = userRole || (ACTIVE_APP_PROFILE === 'ADMIN' ? 'ADMIN' : ACTIVE_APP_PROFILE);
+            const verPolicyRes = await checkAppVersionPolicy(effectiveCheckRole);
+            if (verPolicyRes && verPolicyRes.updateRequired) {
+              setUpdatePolicy(verPolicyRes.policy);
+              setCurrentScreen('APP_UPDATE_REQUIRED');
+              return;
+            }
+
+            // 2. Authoritative self-check on foreground resume for all roles
+            const { verifyDeviceAccessOnStartupOrResume, registerDeviceIfNeeded, reconcileAdminFleet } = require('./services/deviceRegistry');
+            
+            // TODO: If OWNER is granted Device Control screen access in the future, enable full device fleet fetching and reconciliation for OWNER here.
+            if (ACTIVE_APP_PROFILE === 'ADMIN') {
+              const resumeEventId = 'resume_' + Date.now();
+              await registerDeviceIfNeeded({ eventId: resumeEventId, isResume: true });
+              await reconcileAdminFleet();
+              refreshData();
+            }
+
+            const devAccess = await verifyDeviceAccessOnStartupOrResume(userRole);
+            if (devAccess && devAccess.blocked) {
+              setIsLoggedIn(false);
+              setUserRole('');
+              setUserDisplayName('');
+              setPendingDeviceId(devAccess.deviceId || '');
+              setPendingLoginInfo({ isAdminLock: Boolean(devAccess.isAdminLock) });
+              setCurrentScreen('DEVICE_BLOCKED');
+              return;
+            }
+            if (devAccess && devAccess.forceLogout) {
+              setIsLoggedIn(false);
+              setUserRole('');
+              setUserDisplayName('');
+              setPendingLoginInfo(null);
+              setCurrentScreen('LOGIN');
+              setForceReauthRequired(true);
+              Alert.alert(
+                'সেশন বাতিল',
+                devAccess.message || 'Your session has been terminated by the administrator. Please log in again.'
+              );
+              return;
+            }
+            if (devAccess && devAccess.verificationRequired) {
+              setIsLoggedIn(false);
+              setCurrentScreen('OFFLINE_VERIFICATION');
+              return;
+            }
+          } catch (resumeErr) {
+            console.warn('[App] Error on foreground resume verification:', resumeErr.message);
+          }
+        }
+      } else if (nextState === 'background' || nextState === 'inactive') {
+        appWasBackgrounded = true;
+        if (typeof stopPresence === 'function') {
+          stopPresence();
+          stopPresence = null;
+        }
         try {
           const { checkAndFlushLastSeen } = require('./services/deviceRegistry');
           checkAndFlushLastSeen();
-        } catch (e) {}
+        } catch (_) {}
       }
-    }, lastSeenIntervalMs);
+    });
 
     return () => {
-      clearInterval(registryTimer);
-      clearInterval(lastSeenTimer);
+      if (typeof stopPresence === 'function') {
+        stopPresence();
+      }
+      if (appStateSub) {
+        appStateSub.remove();
+      }
     };
-  }, [userRole, isLoggedIn]);
+  }, [userRole, userDisplayName, isLoggedIn]);
+
+  // --- FOREGROUND APP USAGE TRACKING (Day-wise Business Day Telemetry) ---
+  // Tracks active foreground usage only when authenticated (counts zero in background or on login screen)
+  useEffect(() => {
+    let appStateSub = null;
+    try {
+      const { startAppUsageTracker, stopAppUsageTracker, handleUsageAppStateChange } = require('./services/appUsageTracker.js');
+      const { getCurrentDeviceRecord } = require('./services/deviceRegistry');
+      const deviceRecord = getCurrentDeviceRecord();
+      const deviceId = deviceRecord?.device_id;
+
+      if (isLoggedIn && userRole && deviceId) {
+        startAppUsageTracker({
+          deviceId,
+          userRole,
+          appProfile: ACTIVE_APP_PROFILE,
+          isLoggedIn
+        });
+
+        appStateSub = AppState.addEventListener('change', (nextState) => {
+          handleUsageAppStateChange(nextState);
+        });
+      } else {
+        stopAppUsageTracker();
+      }
+    } catch (err) {
+      console.warn('[App] Usage tracker hook warning:', err.message);
+    }
+
+    return () => {
+      try {
+        const { stopAppUsageTracker } = require('./services/appUsageTracker.js');
+        stopAppUsageTracker();
+      } catch (e) {}
+      if (appStateSub) {
+        appStateSub.remove();
+      }
+    };
+  }, [isLoggedIn, userRole]);
 
   // --- FOREGROUND RECOVERY ---
   // React Native may suspend JS timers in background; run one pull immediately when app returns active.
@@ -577,13 +843,12 @@ export default function App() {
       recordAutoSyncEvent('app-state', 'appstate', nextState);
       if (previousState !== 'active' && nextState === 'active') {
         console.log("[AppState Sync] Device woke up in Foreground! Triggering immediate recovery pull...");
-        const { incrementForegroundRecoveryCount, syncDeviceRegistry } = require('./database');
+        const { incrementForegroundRecoveryCount } = require('./database');
         const { checkAndFlushLastSeen } = require('./services/deviceRegistry');
         incrementForegroundRecoveryCount();
         await runAutoPull('foreground-tables-pull', syncTablesOnly, refreshData);
         await runAutoPull('foreground-high-frequency-pull', syncHighFrequencyCollections, refreshData);
         await runAutoPull('foreground-low-frequency-pull', syncLowFrequencyCollections, refreshData);
-        await syncDeviceRegistry();
         checkAndFlushLastSeen();
       }
       previousState = nextState;
@@ -673,12 +938,10 @@ export default function App() {
           console.log("[Network Recovery] 3/4: Running Low Frequency pull sync...");
           await syncLowFrequencyCollections();
 
-          // 4. Tables, Deletions & Device Registry
-          console.log("[Network Recovery] 4/4: Running Tables, Deletions and Device Registry sync...");
+          // 4. Tables & Deletions
+          console.log("[Network Recovery] 4/4: Running Tables and Deletions sync...");
           await syncTablesOnly();
           await syncDeletionsOnly();
-          const { syncDeviceRegistry } = require('./database');
-          await syncDeviceRegistry();
 
           console.log("[Network Recovery] Instant recovery cycle COMPLETED successfully.");
           
@@ -923,11 +1186,32 @@ export default function App() {
       setAppConfig('force_reauth_required', '0');
     } catch (e) {}
 
-    // --- DEVICE ACCESS CONTROL (PHASE 3 & 5) ---
+    // --- MANDATORY VERSION CHECK ON LOGIN ---
     try {
-      const { checkDeviceLoginPermission, checkAndExecuteForceLogout } = require('./services/deviceRegistry');
-      const forceRes = checkAndExecuteForceLogout();
-      if (forceRes && forceRes.triggered) {
+      const { checkAppVersionPolicy } = require('./services/firebaseAppConfig');
+      const verRes = await checkAppVersionPolicy(role);
+      if (verRes && verRes.updateRequired) {
+        setUpdatePolicy(verRes.policy);
+        setIsLoggedIn(false);
+        setCurrentScreen('APP_UPDATE_REQUIRED');
+        return;
+      }
+    } catch (verErr) {
+      console.warn("[App] Login version check error:", verErr);
+    }
+
+    // --- DEVICE ACCESS CONTROL (AUTHORITATIVE VERIFICATION) ---
+    try {
+      const { verifyDeviceAccessOnStartupOrResume } = require('./services/deviceRegistry');
+      const devAccess = await verifyDeviceAccessOnStartupOrResume(role);
+      if (devAccess && devAccess.blocked) {
+        setPendingDeviceId(devAccess.deviceId || '');
+        setPendingLoginInfo({ role, displayName, mode, isAdminLock: Boolean(devAccess.isAdminLock) });
+        setIsLoggedIn(false);
+        setCurrentScreen('DEVICE_BLOCKED');
+        return;
+      }
+      if (devAccess && devAccess.forceLogout) {
         setIsLoggedIn(false);
         setUserRole('');
         setUserDisplayName('');
@@ -935,24 +1219,21 @@ export default function App() {
         setCurrentScreen('LOGIN');
         setForceReauthRequired(true);
         Alert.alert(
-          'সাকিব সাইন-আউট',
-          forceRes.message || 'সাকিব আপনাকে সাইন-আউট করিয়েছেন।\nঅনুগ্রহ করে আপনার ইউজারনেম এবং PIN ব্যবহার করে আবার লগইন করুন।',
-          [{ text: 'ঠিক আছে' }]
+          'সেশন বাতিল',
+          devAccess.message || 'Your session has been terminated by the administrator. Please log in again.'
         );
         return;
       }
-
-      const devPerm = checkDeviceLoginPermission(role);
-      if (!devPerm.allowed) {
-        setPendingDeviceId(devPerm.deviceId || '');
-        setPendingLoginInfo({ role, displayName, mode, isAdminLock: !!devPerm.isAdminLock });
+      if (devAccess && devAccess.verificationRequired) {
         setIsLoggedIn(false);
-
-        if (devPerm.status === 'BLOCKED') {
-          setCurrentScreen('DEVICE_BLOCKED');
-        } else {
-          setCurrentScreen('DEVICE_PENDING');
-        }
+        setCurrentScreen('OFFLINE_VERIFICATION');
+        return;
+      }
+      if (devAccess && devAccess.status === 'PENDING' && ACTIVE_APP_PROFILE !== 'ADMIN') {
+        setPendingDeviceId(devAccess.deviceId || '');
+        setPendingLoginInfo({ role, displayName, mode, isAdminLock: false });
+        setIsLoggedIn(false);
+        setCurrentScreen('DEVICE_PENDING');
         return;
       }
     } catch (devErr) {
@@ -963,20 +1244,10 @@ export default function App() {
     const userRoleNormalized = String(role || '').toUpperCase().trim();
 
     if (ACTIVE_APP_PROFILE === 'MANAGER' && userRoleNormalized !== 'MANAGER') {
-      Alert.alert(
-        "অ্যাক্সেস সংরক্ষিত (Access Restricted)",
-        "This application is for Manager accounts only.",
-        [{ text: "ঠিক আছে (OK)" }]
-      );
       return;
     }
 
     if (ACTIVE_APP_PROFILE === 'OWNER' && userRoleNormalized !== 'OWNER') {
-      Alert.alert(
-        "অ্যাক্সেস সংরক্ষিত (Access Restricted)",
-        "This application is for Owner accounts only.",
-        [{ text: "ঠিক আছে (OK)" }]
-      );
       return;
     }
 
@@ -1018,6 +1289,10 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    try {
+      const { stopAppUsageTracker } = require('./services/appUsageTracker.js');
+      stopAppUsageTracker();
+    } catch (e) {}
     try {
       const { setAppConfig } = require('./database');
       setAppConfig('remembered_username', '');
@@ -1085,6 +1360,25 @@ export default function App() {
 
   // Navigates to a table detail billing screen
   const handleTableSelect = (tableId) => {
+    const roleNormalized = String(userRole || '').toLowerCase().trim();
+    if (roleNormalized === 'admin') {
+      const isDelivery = String(tableId || '').startsWith('D-');
+      if (isDelivery) {
+        const del = deliveries.find(d => d.id === tableId);
+        if (!del || del.status !== 'BUSY') {
+          Alert.alert("অ্যাডমিন এক্সেস", "অ্যাডমিন নতুন ডেলিভারি তৈরি করতে পারবেন না।");
+          return;
+        }
+      } else {
+        const tbl = tables.find(t => t.id === tableId || `table_${t.id}` === tableId || t.name === tableId);
+        const isBusy = tbl && tbl.status === 'BUSY';
+        const isDoneOrder = completedOrders.some(o => o.id === tableId);
+        if (!isBusy && !isDoneOrder) {
+          Alert.alert("অ্যাডমিন এক্সেস", "অ্যাডমিন শুধুমাত্র মনিটর ও ম্যানেজ করতে পারেন। নতুন অর্ডার তৈরি করার অনুমতি নেই।");
+          return;
+        }
+      }
+    }
     setSelectedTableId(tableId);
     setCurrentScreen('TABLE_DETAIL');
   };
@@ -1141,6 +1435,11 @@ export default function App() {
 
   // Creates a new delivery order with a unique ID in SQLite
   const handleCreateDelivery = async () => {
+    const roleNormalized = String(userRole || '').toLowerCase().trim();
+    if (roleNormalized === 'admin') {
+      Alert.alert("অ্যাডমিন এক্সেস", "অ্যাডমিন নতুন ডেলিভারি তৈরি করতে পারবেন না।");
+      return;
+    }
     const uniqueId = `D-${Date.now()}`;
     const newName = `🛵 Delivery`;
 
@@ -1666,6 +1965,56 @@ export default function App() {
     );
   };
 
+  const handleSameDayResync = async () => {
+    const { getSameDayResyncStatus, resyncSameDayFromCloud } = require('./database');
+    const status = getSameDayResyncStatus();
+
+    if (status.limitReached) {
+      Alert.alert(
+        "দৈনিক সীমা শেষ",
+        "আজকের জন্য ক্লাউড রিসিন্ক সীমা (সর্বোচ্চ ২ বার) শেষ হয়ে গেছে। আবার আগামীকাল করতে পারবেন।"
+      );
+      return;
+    }
+
+    Alert.alert(
+      "আজকের ডেটা রিসিন্ক (Same-Day Resync)",
+      `এটি শুধুমাত্র আজকের দিনের স্থানীয় ডাটা মুছে ক্লাউড (Firebase) থেকে ফ্রেশ ডাটা পুনরায় ডাউনলোড করবে।\n\nআজকের অবশিষ্ট সুযোগ: ${status.remaining} বার।\n\nআপনি কি চালিয়ে যেতে চান?`,
+      [
+        { text: "বাতিল", style: "cancel" },
+        {
+          text: "রিসিন্ক করুন",
+          onPress: async () => {
+            showToast("🔄 আজকের ডেটা রিসিন্ক করা হচ্ছে...", "sync");
+            try {
+              const res = await resyncSameDayFromCloud();
+              if (res.success) {
+                refreshData();
+                logActivity({
+                  actionType: ACTION_TYPES.SYNC,
+                  actionTitle: 'আজকের ডেটা রিসিন্ক',
+                  description: `ক্লাউড থেকে আজকের ${res.count} টি রেকর্ড পুনরায় ডাউনলোড ও সিন্ক করা হয়েছে (অবশিষ্ট সুযোগ: ${res.remaining} বার)`,
+                  metadata: { count: res.count, remaining: res.remaining, date: res.businessDate },
+                  userRole: userRole,
+                  userName: userDisplayName
+                }).catch(() => {});
+                Alert.alert(
+                  "সফল",
+                  `Cloud থেকে আজকের ডেটা সফলভাবে রিসিন্ক করা হয়েছে।\nমোট রিস্টোর: ${res.count} টি রেকর্ড।\nআজকের অবশিষ্ট সুযোগ: ${res.remaining} বার।`
+                );
+              } else {
+                Alert.alert("ব্যর্থ", res.error || res.message || "ডাটা রিসিন্ক করতে সমস্যা হয়েছে। দয়া করে নেটওয়ার্ক কানেকশন চেক করুন।");
+              }
+            } catch (err) {
+              console.error("[SameDay Resync] Error:", err);
+              Alert.alert("ব্যর্থ", "একটি অপ্রত্যাশিত ত্রুটি ঘটেছে।");
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const handleCloudRestore = async () => {
     Alert.alert(
       "Cloud Restore",
@@ -1765,6 +2114,57 @@ export default function App() {
 
   // Renders screen content based on custom router state
   const renderScreen = () => {
+    const roleUpper = String(userRole || '').toUpperCase().trim();
+    const isAuthenticatedAdmin = isLoggedIn && roleUpper === 'ADMIN';
+
+    // Critical Server/Policy Gate Screens (enforced regardless of isLoggedIn)
+    if (currentScreen === 'APP_UPDATE_REQUIRED') {
+      if (!isAuthenticatedAdmin) {
+        return (
+          <AppUpdateRequiredScreen
+            policy={updatePolicy}
+            onUpdateSuccess={() => {
+              setUpdatePolicy(null);
+              checkAndInitialize();
+            }}
+          />
+        );
+      }
+    }
+
+    if (currentScreen === 'OFFLINE_VERIFICATION') {
+      return (
+        <OfflineVerificationScreen
+          onRetry={async () => {
+            await checkAndInitialize();
+          }}
+          onExit={() => BackHandler.exitApp()}
+        />
+      );
+    }
+
+    if (currentScreen === 'DEVICE_BLOCKED') {
+      return (
+        <DeviceBlockedScreen
+          deviceId={pendingDeviceId}
+          isAdminLock={pendingLoginInfo?.isAdminLock}
+          onRecheck={async () => {
+            const { verifyDeviceAccessOnStartupOrResume } = require('./services/deviceRegistry');
+            const res = await verifyDeviceAccessOnStartupOrResume(userRole);
+            if (res && res.allowed) {
+              setPendingDeviceId('');
+              setPendingLoginInfo(null);
+              setCurrentScreen('LOGIN');
+              Alert.alert('✅ অনুমোদিত', 'ডিভাইসটি সফলভাবে আনব্লক করা হয়েছে। এখন লগইন করতে পারেন।');
+            } else {
+              Alert.alert('❌ ব্লকড', 'ডিভাইসটি এখনো সার্ভার থেকে আনব্লক করা হয়নি।');
+            }
+          }}
+          onExit={() => BackHandler.exitApp()}
+        />
+      );
+    }
+
     if (!isLoggedIn) {
       if (currentScreen === 'DEVICE_PENDING') {
         return (
@@ -1788,24 +2188,14 @@ export default function App() {
         );
       }
 
-      if (currentScreen === 'DEVICE_BLOCKED') {
-        return (
-          <DeviceBlockedScreen
-            deviceId={pendingDeviceId}
-            isAdminLock={pendingLoginInfo?.isAdminLock}
-            onExit={() => {
-              setIsLoggedIn(false);
-              setPendingLoginInfo(null);
-              setCurrentScreen('LOGIN');
-            }}
-          />
-        );
-      }
-
       return <LoginScreen onLoginSuccess={(role, name, mode) => handleLoginSuccess(role, name, mode)} forceReauth={forceReauthRequired} />;
     }
 
-    switch (currentScreen) {
+    const effectiveScreen = (currentScreen === 'APP_UPDATE_REQUIRED' && isAuthenticatedAdmin)
+      ? 'DASHBOARD'
+      : currentScreen;
+
+    switch (effectiveScreen) {
       case 'DASHBOARD':
         if (ACTIVE_APP_PROFILE === 'ADMIN') {
           const roleNormalized = String(userRole || '').toLowerCase().trim();
@@ -1820,7 +2210,6 @@ export default function App() {
                 tabCountdown={tabCountdown}
                 fullCountdown={fullCountdown}
                 onTableSelect={handleTableSelect}
-                onCreateDelivery={handleCreateDelivery}
                 onUpdateTableName={handleUpdateTableName}
                 onNavigateToExpenses={() => setCurrentScreen('EXPENSES')}
                 onNavigateToSubmit={(mandatory = false) => { setIsMandatorySubmit(mandatory); setCurrentScreen('DAILY_SUBMIT'); }}
@@ -1837,6 +2226,7 @@ export default function App() {
                 onNavigateToEmployees={() => setCurrentScreen('EMPLOYEE_LIST')}
                 onNavigateToActivityLog={() => setCurrentScreen('ACTIVITY_LOG')}
                 onCloudRestore={handleCloudRestore}
+                onSameDayResync={handleSameDayResync}
                 onMenuRecovery={handleMenuRecovery}
                 onResetHistoryLimits={handleResetHistoryLimits}
                 onHistoricalMonthDownload={handleHistoricalMonthDownload}
@@ -1876,6 +2266,7 @@ export default function App() {
                 onNavigateToAnalytics={() => setCurrentScreen('ADMIN_ANALYTICS')}
                 onNavigateToActivityLog={() => setCurrentScreen('ACTIVITY_LOG')}
                 onCloudRestore={handleCloudRestore}
+                onSameDayResync={handleSameDayResync}
 
                 onMenuRecovery={handleMenuRecovery}
                 onHistoricalMonthDownload={handleHistoricalMonthDownload}
@@ -1913,6 +2304,7 @@ export default function App() {
                 onNavigateToSupplierDue={() => setCurrentScreen('SUPPLIER_DUE')}
                 onNavigateToItemSalesReport={() => setCurrentScreen('ITEM_SALES_REPORT')}
                 onCloudRestore={handleCloudRestore}
+                onSameDayResync={handleSameDayResync}
                 onMenuRecovery={handleMenuRecovery}
 
                 dailyExpenses={dailyExpenses}
@@ -1945,6 +2337,7 @@ export default function App() {
               onNavigateToAnalytics={() => setCurrentScreen('ADMIN_ANALYTICS')}
               onNavigateToActivityLog={() => setCurrentScreen('ACTIVITY_LOG')}
               onCloudRestore={handleCloudRestore}
+              onSameDayResync={handleSameDayResync}
 
               onMenuRecovery={handleMenuRecovery}
               onHistoricalMonthDownload={handleHistoricalMonthDownload}
@@ -1982,6 +2375,7 @@ export default function App() {
               onNavigateToSupplierDue={() => setCurrentScreen('SUPPLIER_DUE')}
               onNavigateToItemSalesReport={() => setCurrentScreen('ITEM_SALES_REPORT')}
               onCloudRestore={handleCloudRestore}
+              onSameDayResync={handleSameDayResync}
               onMenuRecovery={handleMenuRecovery}
 
               dailyExpenses={dailyExpenses}
@@ -2234,6 +2628,7 @@ export default function App() {
         }
 
       case 'DEVICE_MANAGEMENT':
+        // TODO: If OWNER is granted Device Control screen access in the future, enable full device fleet fetching and reconciliation for OWNER here.
         if (ACTIVE_APP_PROFILE === 'ADMIN' && String(userRole || '').toLowerCase().trim() === 'admin') {
           return (
             <DeviceManagementScreen

@@ -1053,15 +1053,28 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
           </View>
         </View>
 
-        {/* ── টেবিলের অবস্থা (4 COLUMNS) ── */}
+        {/* ── টেবিল ও সক্রিয় ডেলিভারি (Combined Table & Active Delivery Section) ── */}
         <View style={styles.card}>
-          <View style={styles.tableHeaderRow}>
-            <Text style={styles.sectionHeaderTitle}>টেবিলের অবস্থা</Text>
-            <Text style={styles.tableSummaryBadge}>
-              {freeTablesCount} ফাঁকা · {busyTablesCount} চলছে{activeDeliveriesList.length > 0 ? ` · ${activeDeliveriesList.length} ডেলিভারি` : ''}
-            </Text>
+          <View style={styles.combinedHeader}>
+            <View style={styles.combinedHeaderTitleCol}>
+              <Text style={styles.sectionHeaderTitle}>টেবিল ও সক্রিয় ডেলিভারি</Text>
+              <Text style={styles.combinedSubtitle}>লাইভ ফ্লোর ও পার্সেল মনিটর</Text>
+            </View>
+            <View style={styles.combinedPillsRow}>
+              <View style={styles.tableSummaryBadge}>
+                <Text style={styles.tableSummaryBadgeText}>
+                  {freeTablesCount} ফাঁকা · {busyTablesCount} চলছে
+                </Text>
+              </View>
+              <View style={[styles.deliverySummaryBadge, activeDeliveriesList.length > 0 ? styles.deliveryBadgeAmber : styles.deliveryBadgeGreen]}>
+                <Text style={[styles.deliverySummaryBadgeText, activeDeliveriesList.length > 0 ? { color: '#F59E0B' } : { color: '#10B981' }]}>
+                  {activeDeliveriesList.length} ডেলিভারি
+                </Text>
+              </View>
+            </View>
           </View>
 
+          {/* 4-Column Responsive Table Grid */}
           <View style={styles.tableVisualGrid}>
             {tables.map(t => {
               const isBusy = t.status === 'BUSY';
@@ -1077,8 +1090,17 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               return (
                 <TouchableOpacity
                   key={t.id}
-                  activeOpacity={0.7}
-                  onPress={() => onTableSelect(t.id)}
+                  activeOpacity={isBusy ? 0.7 : 0.9}
+                  onPress={() => {
+                    if (isBusy) {
+                      onTableSelect(t.id);
+                    } else {
+                      Alert.alert(
+                        "অ্যাডমিন এক্সেস",
+                        "অ্যাডমিন শুধুমাত্র মনিটর ও ম্যানেজ করতে পারেন। নতুন অর্ডার তৈরি করার অনুমতি নেই।"
+                      );
+                    }
+                  }}
                   onLongPress={() => handleTableLongPress(t)}
                   style={[styles.tableGridCard, { backgroundColor: cardBg, borderColor: cardBorder }]}
                 >
@@ -1095,32 +1117,23 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               );
             })}
           </View>
-          <Text style={styles.tableBottomHint}>যেকোনো টেবিলে চাপ দিন</Text>
-        </View>
+          <Text style={styles.tableBottomHint}>বিস্তারিত দেখতে চলমান টেবিলে চাপ দিন</Text>
 
-        {/* ── সক্রিয় ডেলিভারি (Active Delivery Section Directly Below Tables) ── */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <View style={styles.cardHeaderLeft}>
-              <View style={[styles.cardIconPill, { backgroundColor: 'rgba(59,130,246,0.15)' }]}>
-                <Text style={styles.cardIconEmoji}>🛵</Text>
-              </View>
-              <View style={styles.cardTitleCol}>
-                <Text style={styles.cardTitle}>সক্রিয় ডেলিভারি</Text>
-                <Text style={styles.cardSubtitle}>চলমান রাইডার ও পার্সেল স্থিতি</Text>
-              </View>
-            </View>
-            <View style={[styles.statusPill, activeDeliveriesList.length > 0 ? styles.statusPillAmber : styles.statusPillGreen]}>
-              <Text style={[styles.statusPillText, activeDeliveriesList.length > 0 ? { color: '#F59E0B' } : { color: '#10B981' }]}>
-                {activeDeliveriesList.length} টি সক্রিয়
-              </Text>
-            </View>
+          {/* ───── সক্রিয় ডেলিভারি ───── Divider Inside the Same Card */}
+          <View style={styles.deliveryDividerContainer}>
+            <View style={styles.deliveryDividerLine} />
+            <Text style={styles.deliveryDividerText}>───── সক্রিয় ডেলিভারি ─────</Text>
+            <View style={styles.deliveryDividerLine} />
           </View>
 
+          {/* Active Deliveries List inside Same Card */}
           {activeDeliveriesList.length > 0 ? (
             activeDeliveriesList.map(delivery => {
               const delAmt = delivery.items ? delivery.items.reduce((s, i) => s + ((parseFloat(i.price) || 0) * (parseInt(i.qty, 10) || 1)), 0) : 0;
+              const delElapsed = getTableElapsedMinutes(delivery);
               const delStartTime = formatStartTime(delivery.startTime);
+              const timeDisplay = delElapsed !== null ? `${delElapsed} min` : (delStartTime ? `শুরু: ${delStartTime}` : 'চলমান');
+
               return (
                 <TouchableOpacity
                   key={delivery.id}
@@ -1135,7 +1148,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                       </View>
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={styles.activeDeliveryName} numberOfLines={1}>{delivery.name || delivery.id}</Text>
-                        <Text style={styles.activeDeliverySub}>{delStartTime ? `শুরু: ${delStartTime}` : 'চলমান ডেলিভারি'}</Text>
+                        <Text style={styles.activeDeliverySub}>সময়: {timeDisplay} • চলমান</Text>
                       </View>
                     </View>
                     <View style={styles.activeDeliveryRight}>
@@ -1153,12 +1166,6 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               <Text style={styles.emptyDeliveryEmoji}>🛵</Text>
               <Text style={styles.emptyDeliveryText}>বর্তমানে কোনো সক্রিয় ডেলিভারি নেই</Text>
             </View>
-          )}
-
-          {typeof onCreateDelivery === 'function' && (
-            <TouchableOpacity style={styles.createDeliveryBtn} onPress={onCreateDelivery} activeOpacity={0.8}>
-              <Text style={styles.createDeliveryBtnText}>➕ নতুন ডেলিভারি শুরু করুন</Text>
-            </TouchableOpacity>
           )}
         </View>
 
@@ -1711,8 +1718,15 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                     <TouchableOpacity
                       key={table.id}
                       onPress={() => {
-                        setFloorModalVisible(false);
-                        onTableSelect(table.id);
+                        if (isBusy) {
+                          setFloorModalVisible(false);
+                          onTableSelect(table.id);
+                        } else {
+                          Alert.alert(
+                            "অ্যাডমিন এক্সেস",
+                            "অ্যাডমিন শুধুমাত্র মনিটর ও ম্যানেজ করতে পারেন। নতুন অর্ডার তৈরি করার অনুমতি নেই।"
+                          );
+                        }
                       }}
                       onLongPress={() => handleTableLongPress(table)}
                       style={[styles.tableCard, isBusy ? styles.tableBusyBorder : styles.tableFreeBorder]}
@@ -2494,9 +2508,17 @@ const styles = StyleSheet.create({
   legendLabel: { color: '#E8E9EF', fontSize: 12, fontWeight: '600', flex: 1 },
   legendVal: { color: '#E8E9EF', fontSize: 12, fontWeight: '700' },
 
-  // ── TABLE GRID (4 COLUMNS) ──
-  tableHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  tableSummaryBadge: { color: '#8B8FA8', fontSize: 11, fontWeight: '600' },
+  // ── COMBINED TABLE & ACTIVE DELIVERY SECTION ──
+  combinedHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  combinedHeaderTitleCol: { flex: 1, minWidth: 0, marginRight: 8 },
+  combinedSubtitle: { color: '#6B6F85', fontSize: 10, marginTop: 1 },
+  combinedPillsRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
+  tableSummaryBadge: { backgroundColor: '#141520', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: '#1E2030' },
+  tableSummaryBadgeText: { color: '#8B8FA8', fontSize: 10, fontWeight: '600' },
+  deliverySummaryBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6, borderWidth: 1 },
+  deliveryBadgeAmber: { backgroundColor: 'rgba(245,158,11,0.12)', borderColor: 'rgba(245,158,11,0.3)' },
+  deliveryBadgeGreen: { backgroundColor: 'rgba(16,185,129,0.12)', borderColor: 'rgba(16,185,129,0.3)' },
+  deliverySummaryBadgeText: { fontSize: 10, fontWeight: '700' },
   tableVisualGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 8 },
   tableGridCard: { width: '23.5%', minHeight: 74, borderRadius: 10, borderWidth: 1.2, justifyContent: 'center', alignItems: 'center', padding: 5 },
   tableCardTitle: { fontSize: 13, fontWeight: '800', marginBottom: 2 },
@@ -2504,7 +2526,10 @@ const styles = StyleSheet.create({
   tableCardAmount: { fontSize: 10.5, fontWeight: '800' },
   tableBottomHint: { color: '#6B6F85', fontSize: 10.5, textAlign: 'center', marginTop: 10 },
 
-  // ── ACTIVE DELIVERIES (Directly Below Tables) ──
+  // ── DELIVERIES SUB-SECTION ──
+  deliveryDividerContainer: { flexDirection: 'row', alignItems: 'center', marginVertical: 14 },
+  deliveryDividerLine: { flex: 1, height: 1, backgroundColor: '#1E2030' },
+  deliveryDividerText: { color: '#8B8FA8', fontSize: 11, fontWeight: '700', marginHorizontal: 8, letterSpacing: 0.5 },
   activeDeliveryCard: { backgroundColor: '#141520', borderRadius: 10, padding: 11, borderWidth: 1, borderColor: '#1E2030', marginBottom: 8 },
   activeDeliveryHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   activeDeliveryLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8, minWidth: 0 },
@@ -2518,8 +2543,6 @@ const styles = StyleSheet.create({
   emptyDeliveryBox: { alignItems: 'center', paddingVertical: 18 },
   emptyDeliveryEmoji: { fontSize: 26, marginBottom: 4 },
   emptyDeliveryText: { color: '#6B6F85', fontSize: 11, fontWeight: '600' },
-  createDeliveryBtn: { backgroundColor: '#141520', borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,183,3,0.3)', paddingVertical: 9, alignItems: 'center', marginTop: 6 },
-  createDeliveryBtnText: { color: '#FFB703', fontSize: 11, fontWeight: '700' },
 
   // ── VERTICAL BAR CHART (LAST 7 DAYS) ──
   chartContainer: { height: 160, position: 'relative', justifyContent: 'flex-end', marginBottom: 8, paddingTop: 18 },
