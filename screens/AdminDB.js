@@ -154,6 +154,9 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
   const [cleanupModalVisible, setCleanupModalVisible] = useState(false);
   const [cleanupTargetDate, setCleanupTargetDate] = useState('2026-06-01');
   const [cleanupCounts, setCleanupCounts] = useState(null);
+
+  // Device Filter State ('ALL', 'ONLINE', 'OFFLINE', 'BLOCKED')
+  const [deviceFilter, setDeviceFilter] = useState('ALL');
   
   // Past Account States
   const [pastAccountModalVisible, setPastAccountModalVisible] = useState(false);
@@ -829,33 +832,48 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     return getDeviceRecency(b) - getDeviceRecency(a);
   });
 
+  const isDeviceOnline = (dev) => {
+    const ts = dev?.last_seen || dev?.updated_at;
+    if (!ts) return false;
+    const diffMs = Date.now() - new Date(ts).getTime();
+    return diffMs < 5 * 60000;
+  };
+
   const approvedDevicesCount = registeredDevices.filter(d => d.status === 'ACTIVE' || d.status === 'APPROVED').length;
   const pendingDevicesCount = registeredDevices.filter(d => d.status === 'PENDING').length;
   const blockedDevicesCount = registeredDevices.filter(d => d.status === 'BLOCKED').length;
+  const onlineDevicesCount = registeredDevices.filter(d => isDeviceOnline(d)).length;
 
-  const formatDeviceLastSeen = (dev) => {
+  const formatDeviceLastSeenText = (dev) => {
     const ts = dev?.last_seen || dev?.updated_at;
-    if (!ts) return 'কখনও সক্রিয় হয়নি';
+    if (!ts) return 'অফলাইন';
     try {
       const d = new Date(ts);
       if (isNaN(d.getTime())) return ts;
       const diffMs = Date.now() - d.getTime();
       const diffMinutes = Math.floor(diffMs / 60000);
-      if (diffMinutes < 5) return '🟢 অনলাইনে আছে';
-      if (diffMinutes < 60) return `${diffMinutes} মিনিট আগে`;
+      if (diffMinutes < 5) return 'এখন অনলাইনে';
+      if (diffMinutes < 60) return `${toBengaliNumber(diffMinutes)} মিনিট আগে`;
       if (diffMinutes < 1440) {
         let hours = d.getHours();
         let minutes = d.getMinutes();
         const ampm = hours >= 12 ? 'PM' : 'AM';
         hours = hours % 12 || 12;
         minutes = minutes < 10 ? '0' + minutes : minutes;
-        return `আজ ${hours}:${minutes} ${ampm}`;
+        return `আজ ${toBengaliNumber(hours)}:${toBengaliNumber(minutes)} ${ampm}`;
       }
       return formatDisplayDate(d);
     } catch (e) {
-      return ts;
+      return 'অফলাইন';
     }
   };
+
+  const filteredDevices = sortedDevices.filter(dev => {
+    if (deviceFilter === 'ONLINE') return isDeviceOnline(dev);
+    if (deviceFilter === 'OFFLINE') return !isDeviceOnline(dev) && dev.status !== 'BLOCKED';
+    if (deviceFilter === 'BLOCKED') return dev.status === 'BLOCKED';
+    return true; // 'ALL'
+  });
 
   // Live Sync Queue Status
   let pendingSyncCount = 0;
@@ -1384,77 +1402,182 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
           )}
         </View>
 
-        {/* ── SECTION 4: ডিভাইস ও পস কন্ট্রোল ── */}
+        {/* ── SECTION 4: ডিভাইস ও পস কন্ট্রোল (Redesigned matching mockup) ── */}
         <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <View style={styles.cardHeaderLeft}>
-              <View style={[styles.cardIconPill, { backgroundColor: 'rgba(16,185,129,0.15)' }]}>
-                <Text style={styles.cardIconEmoji}>🛡️</Text>
+          {/* Header */}
+          <View style={styles.deviceCardHeader}>
+            <Text style={styles.deviceSectionTitle}>ডিভাইস ও পস কন্ট্রোল</Text>
+            <Text style={styles.deviceSectionSubtitle}>রেজিস্টার্ড পিওএস সিকিউরিটি</Text>
+          </View>
+
+          {/* Teal Hero Status Banner Card */}
+          <View style={styles.deviceHeroBanner}>
+            {/* Top row: Circular Gauge (Left) & Status Header (Right) */}
+            <View style={styles.deviceHeroTopRow}>
+              {/* Circular Gauge */}
+              <View style={styles.deviceGaugeContainer}>
+                <View style={styles.deviceGaugeRing}>
+                  <Text style={styles.deviceGaugeNumber}>
+                    {toBengaliNumber(approvedDevicesCount)}
+                  </Text>
+                  <Text style={styles.deviceGaugeLabel}>অনুমোদিত</Text>
+                </View>
               </View>
-              <View style={styles.cardTitleCol}>
-                <Text style={styles.cardTitle}>ডিভাইস ও পস কন্ট্রোল</Text>
-                <Text style={styles.cardSubtitle}>রেজিস্টার্ড পিওএস সিকিউরিটি</Text>
+
+              {/* Status Header */}
+              <View style={styles.deviceHeroStatusCol}>
+                <View style={styles.deviceSecurityPill}>
+                  <View style={styles.deviceSecurityPillDot} />
+                  <Text style={styles.deviceSecurityPillText}>সিকিউরিটি সক্রিয়</Text>
+                </View>
+                <Text style={styles.deviceHeroHeadline}>
+                  {pendingDevicesCount > 0
+                    ? `${toBengaliNumber(pendingDevicesCount)}টি ডিভাইস পেন্ডিং`
+                    : 'সব ডিভাইস নিরাপদ'}
+                </Text>
+                <Text style={styles.deviceHeroSubhead}>
+                  {toBengaliNumber(approvedDevicesCount)}টি ডিভাইস অনুমোদিত ও সুরক্ষিত
+                </Text>
               </View>
             </View>
-            <TouchableOpacity style={styles.cardOutlineBtn} onPress={onNavigateToDeviceManagement} activeOpacity={0.7}>
-              <Text style={styles.cardOutlineBtnText}>কন্ট্রোল 🔒</Text>
+
+            {/* Bottom 3 Metric Sub-Tiles */}
+            <View style={styles.deviceHeroTilesRow}>
+              <View style={styles.deviceHeroTile}>
+                <Text style={styles.deviceHeroTileEmoji}>🛡️</Text>
+                <Text style={styles.deviceHeroTileNumber}>{toBengaliNumber(approvedDevicesCount)}</Text>
+                <Text style={styles.deviceHeroTileLabel}>অনুমোদিত</Text>
+              </View>
+              <View style={styles.deviceHeroTile}>
+                <Text style={styles.deviceHeroTileEmoji}>⏱️</Text>
+                <Text style={styles.deviceHeroTileNumber}>{toBengaliNumber(pendingDevicesCount)}</Text>
+                <Text style={styles.deviceHeroTileLabel}>অপেক্ষায়</Text>
+              </View>
+              <View style={styles.deviceHeroTile}>
+                <Text style={styles.deviceHeroTileEmoji}>📶</Text>
+                <Text style={styles.deviceHeroTileNumber}>{toBengaliNumber(onlineDevicesCount)}</Text>
+                <Text style={styles.deviceHeroTileLabel}>অনলাইন</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Status Alert Banner */}
+          {pendingDevicesCount > 0 ? (
+            <TouchableOpacity
+              style={[styles.deviceAlertBanner, styles.deviceAlertBannerAmber]}
+              onPress={onNavigateToDeviceManagement}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.deviceAlertCircle, { backgroundColor: '#F59E0B' }]}>
+                <Text style={styles.deviceAlertCircleIcon}>!</Text>
+              </View>
+              <Text style={[styles.deviceAlertText, { color: '#F59E0B' }]}>
+                {toBengaliNumber(pendingDevicesCount)}টি নতুন ডিভাইস অ্যাডমিন অনুমোদনের অপেক্ষায়!
+              </Text>
             </TouchableOpacity>
-          </View>
-
-          {/* Device count chips */}
-          <View style={styles.deviceChipsRow}>
-            <View style={[styles.deviceChip, { borderColor: 'rgba(16,185,129,0.3)', backgroundColor: 'rgba(16,185,129,0.08)' }]}>
-              <View style={[styles.deviceChipDot, { backgroundColor: '#10B981' }]} />
-              <Text style={styles.deviceChipLabel}>অনুমোদিত </Text>
-              <Text style={[styles.deviceChipValue, { color: '#10B981' }]}>{approvedDevicesCount}</Text>
-            </View>
-            <View style={[styles.deviceChip, pendingDevicesCount > 0 ? { borderColor: '#F59E0B', backgroundColor: 'rgba(245,158,11,0.15)' } : { borderColor: 'rgba(245,158,11,0.3)', backgroundColor: 'rgba(245,158,11,0.08)' }]}>
-              <View style={[styles.deviceChipDot, { backgroundColor: '#F59E0B' }]} />
-              <Text style={styles.deviceChipLabel}>অপেক্ষায় </Text>
-              <Text style={[styles.deviceChipValue, { color: '#F59E0B' }]}>{pendingDevicesCount}</Text>
-            </View>
-            {blockedDevicesCount > 0 && (
-              <View style={[styles.deviceChip, { borderColor: 'rgba(239,68,68,0.3)', backgroundColor: 'rgba(239,68,68,0.08)' }]}>
-                <View style={[styles.deviceChipDot, { backgroundColor: '#EF4444' }]} />
-                <Text style={styles.deviceChipLabel}>ব্লকড </Text>
-                <Text style={[styles.deviceChipValue, { color: '#EF4444' }]}>{blockedDevicesCount}</Text>
+          ) : (
+            <View style={[styles.deviceAlertBanner, styles.deviceAlertBannerGreen]}>
+              <View style={[styles.deviceAlertCircle, { backgroundColor: '#10B981' }]}>
+                <Text style={styles.deviceAlertCircleIcon}>✓</Text>
               </View>
-            )}
-          </View>
-
-          {/* Pending alert */}
-          {pendingDevicesCount > 0 && (
-            <View style={styles.pendingAlert}>
-              <Text style={styles.pendingAlertEmoji}>⚠️</Text>
-              <Text style={styles.pendingAlertText}>{pendingDevicesCount}টি নতুন ডিভাইস অ্যাডমিন অনুমোদনের অপেক্ষায়!</Text>
-              <TouchableOpacity style={styles.pendingAlertBtn} onPress={onNavigateToDeviceManagement}>
-                <Text style={styles.pendingAlertBtnText}>রিভিউ</Text>
-              </TouchableOpacity>
+              <Text style={[styles.deviceAlertText, { color: '#10B981' }]}>
+                সব ঠিক আছে — কোনো নতুন ডিভাইস অনুমোদনের অপেক্ষায় নেই
+              </Text>
             </View>
           )}
 
-          {/* Device mini list */}
-          {sortedDevices.slice(0, 4).map(dev => {
-            const isAppr = dev.status === 'ACTIVE' || dev.status === 'APPROVED';
-            const isPend = dev.status === 'PENDING';
-            return (
-              <View key={dev.id || dev.device_id} style={styles.deviceMiniRow}>
-                <View style={styles.deviceMiniLeft}>
-                  <Text style={styles.deviceMiniEmoji}>{isAppr ? '📱' : isPend ? '⏳' : '🚫'}</Text>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={styles.deviceMiniName} numberOfLines={1}>{dev.device_name || dev.model || 'POS Terminal'}</Text>
-                    <Text style={styles.deviceMiniRole} numberOfLines={1}>{dev.role || 'Cashier'} • {formatDeviceLastSeen(dev)}</Text>
-                  </View>
-                </View>
-                <View style={[styles.statusPill, isAppr ? styles.statusPillGreen : isPend ? styles.statusPillAmber : styles.statusPillRed]}>
-                  <Text style={[styles.statusPillText, isAppr ? { color: '#10B981' } : isPend ? { color: '#F59E0B' } : { color: '#EF4444' }]}>{dev.status}</Text>
-                </View>
-              </View>
-            );
-          })}
+          {/* Segmented Filter Tabs */}
+          <View style={styles.deviceFilterTabsContainer}>
+            {[
+              { key: 'ALL', label: 'সব' },
+              { key: 'ONLINE', label: 'অনলাইন' },
+              { key: 'OFFLINE', label: 'অফলাইন' },
+              { key: 'BLOCKED', label: 'ব্লকড' },
+            ].map(tab => {
+              const isActive = deviceFilter === tab.key;
+              return (
+                <TouchableOpacity
+                  key={tab.key}
+                  style={[styles.deviceFilterTab, isActive && styles.deviceFilterTabActive]}
+                  onPress={() => setDeviceFilter(tab.key)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.deviceFilterTabText, isActive && styles.deviceFilterTabTextActive]}>
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
 
-          <TouchableOpacity style={styles.fullWidthBtn} onPress={onNavigateToDeviceManagement} activeOpacity={0.8}>
-            <Text style={styles.fullWidthBtnText}>🔒 ডিভাইস ম্যানেজমেন্ট ও সিকিউরিটি কন্ট্রোল</Text>
+          {/* Hint Caption */}
+          <Text style={styles.deviceTapHint}>কার্ডে ট্যাপ করলে আরও কন্ট্রোল দেখা যাবে</Text>
+
+          {/* Device Items List */}
+          {filteredDevices.length === 0 ? (
+            <View style={styles.deviceEmptyBox}>
+              <Text style={styles.deviceEmptyText}>এই ক্যাটাগরিতে কোনো ডিভাইস নেই</Text>
+            </View>
+          ) : (
+            filteredDevices.slice(0, 4).map(dev => {
+              const isOnline = isDeviceOnline(dev);
+              const initial = (dev.device_name || dev.model || 'P').trim().charAt(0).toUpperCase();
+              return (
+                <TouchableOpacity
+                  key={dev.id || dev.device_id}
+                  style={styles.deviceItemCard}
+                  onPress={onNavigateToDeviceManagement}
+                  activeOpacity={0.75}
+                >
+                  {/* Left Avatar with Online Dot Badge */}
+                  <View style={styles.deviceAvatarContainer}>
+                    <View style={styles.deviceAvatarBox}>
+                      <Text style={styles.deviceAvatarLetter}>{initial}</Text>
+                    </View>
+                    <View style={[styles.deviceOnlineDot, { backgroundColor: isOnline ? '#10B981' : '#4B5563' }]} />
+                  </View>
+
+                  {/* Middle Info */}
+                  <View style={styles.deviceInfoCol}>
+                    <Text style={styles.deviceItemTitle} numberOfLines={1}>
+                      {dev.device_name || dev.model || 'POS Terminal'}
+                    </Text>
+                    <View style={styles.deviceMetaRow}>
+                      <View style={styles.deviceRoleBadge}>
+                        <Text style={styles.deviceRoleBadgeText}>{dev.role || 'Cashier'}</Text>
+                      </View>
+                      <Text style={[styles.deviceStatusText, { color: isOnline ? '#10B981' : '#8B8FA8' }]}>
+                        {isOnline ? '● এখন অনলাইনে' : `● ${formatDeviceLastSeenText(dev)}`}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Right Chevron */}
+                  <Text style={styles.deviceChevron}>›</Text>
+                </TouchableOpacity>
+              );
+            })
+          )}
+
+          {/* Centered Link */}
+          <TouchableOpacity
+            style={styles.deviceViewAllLink}
+            onPress={onNavigateToDeviceManagement}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.deviceViewAllText}>
+              সব {toBengaliNumber(registeredDevices.length)}টি ডিভাইস দেখুন ›
+            </Text>
+          </TouchableOpacity>
+
+          {/* Primary Bottom Button */}
+          <TouchableOpacity
+            style={styles.devicePrimaryBtn}
+            onPress={onNavigateToDeviceManagement}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.devicePrimaryBtnIcon}>🔒</Text>
+            <Text style={styles.devicePrimaryBtnText}>ডিভাইস ম্যানেজমেন্ট ও সিকিউরিটি</Text>
           </TouchableOpacity>
         </View>
 
@@ -2474,24 +2597,72 @@ const styles = StyleSheet.create({
   rankedItemAmount: { color: '#E8E9EF', fontSize: 13, fontWeight: '800' },
   rankedItemQty: { color: '#2DD4BF', fontSize: 11, fontWeight: '600', marginTop: 2 },
 
-  // ── DEVICE CONTROL ──
-  deviceChipsRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 8 },
-  deviceChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, marginRight: 6, marginBottom: 6 },
-  deviceChipDot: { width: 6, height: 6, borderRadius: 3, marginRight: 5 },
-  deviceChipLabel: { color: '#8B8FA8', fontSize: 10 },
-  deviceChipValue: { fontSize: 10, fontWeight: '700' },
-  pendingAlert: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(245,158,11,0.1)', borderWidth: 1, borderColor: 'rgba(245,158,11,0.3)', borderRadius: 8, padding: 8, marginBottom: 10 },
-  pendingAlertEmoji: { fontSize: 14, marginRight: 6 },
-  pendingAlertText: { color: '#F59E0B', fontSize: 10, fontWeight: '600', flex: 1 },
-  pendingAlertBtn: { backgroundColor: '#F59E0B', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  pendingAlertBtnText: { color: '#000', fontSize: 10, fontWeight: '700' },
-  deviceMiniRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 7, borderBottomWidth: 0.8, borderColor: '#1E2030' },
-  deviceMiniLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8, minWidth: 0 },
-  deviceMiniEmoji: { fontSize: 14, marginRight: 8, flexShrink: 0 },
-  deviceMiniName: { color: '#E8E9EF', fontSize: 11, fontWeight: '600' },
-  deviceMiniRole: { color: '#6B6F85', fontSize: 9 },
-  fullWidthBtn: { backgroundColor: '#141520', borderRadius: 8, borderWidth: 1, borderColor: '#2A2B38', paddingVertical: 11, alignItems: 'center', marginTop: 8 },
-  fullWidthBtnText: { color: '#FFB703', fontSize: 11, fontWeight: '700' },
+  // ── DEVICE CONTROL (Redesigned matching mockup) ──
+  deviceCardHeader: { marginBottom: 14 },
+  deviceSectionTitle: { color: '#E8E9EF', fontSize: 15, fontWeight: '800' },
+  deviceSectionSubtitle: { color: '#6B6F85', fontSize: 10.5, marginTop: 2 },
+
+  // Teal Hero Banner
+  deviceHeroBanner: { backgroundColor: '#093830', borderRadius: 18, borderWidth: 1, borderColor: '#115E52', padding: 16, overflow: 'hidden' },
+  deviceHeroTopRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  deviceGaugeContainer: { marginRight: 16, justifyContent: 'center', alignItems: 'center' },
+  deviceGaugeRing: { width: 84, height: 84, borderRadius: 42, borderWidth: 7, borderColor: '#2DD4BF', justifyContent: 'center', alignItems: 'center', backgroundColor: '#062923' },
+  deviceGaugeNumber: { color: '#FFFFFF', fontSize: 24, fontWeight: '900' },
+  deviceGaugeLabel: { color: '#A7F3D0', fontSize: 9.5, fontWeight: '700', marginTop: 1 },
+  deviceHeroStatusCol: { flex: 1, justifyContent: 'center' },
+  deviceSecurityPill: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', backgroundColor: 'rgba(255, 255, 255, 0.12)', paddingHorizontal: 9, paddingVertical: 3.5, borderRadius: 12 },
+  deviceSecurityPillDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#34D399', marginRight: 6 },
+  deviceSecurityPillText: { color: '#E6FFFA', fontSize: 10.5, fontWeight: '700' },
+  deviceHeroHeadline: { color: '#FFFFFF', fontSize: 17, fontWeight: '800', marginTop: 6 },
+  deviceHeroSubhead: { color: '#A7F3D0', fontSize: 11, fontWeight: '500', marginTop: 3 },
+
+  // 3 Metric Sub-Tiles inside Teal Banner
+  deviceHeroTilesRow: { flexDirection: 'row', gap: 8 },
+  deviceHeroTile: { flex: 1, backgroundColor: 'rgba(255, 255, 255, 0.08)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.12)', paddingVertical: 10, alignItems: 'center' },
+  deviceHeroTileEmoji: { fontSize: 13, marginBottom: 2 },
+  deviceHeroTileNumber: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
+  deviceHeroTileLabel: { color: '#A7F3D0', fontSize: 9.5, fontWeight: '600', marginTop: 1 },
+
+  // Status Alert Strip
+  deviceAlertBanner: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, paddingVertical: 9, paddingHorizontal: 12, borderWidth: 1, marginTop: 12 },
+  deviceAlertBannerGreen: { backgroundColor: '#0A251E', borderColor: 'rgba(16, 185, 129, 0.25)' },
+  deviceAlertBannerAmber: { backgroundColor: 'rgba(245, 158, 11, 0.12)', borderColor: 'rgba(245, 158, 11, 0.3)' },
+  deviceAlertCircle: { width: 20, height: 20, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginRight: 9 },
+  deviceAlertCircleIcon: { color: '#09332C', fontSize: 11, fontWeight: '900' },
+  deviceAlertText: { fontSize: 11, fontWeight: '600', flex: 1 },
+
+  // Segmented Filter Tabs
+  deviceFilterTabsContainer: { flexDirection: 'row', backgroundColor: '#12141C', borderRadius: 10, borderWidth: 1, borderColor: '#1D202D', padding: 3, marginTop: 12 },
+  deviceFilterTab: { flex: 1, paddingVertical: 7, alignItems: 'center', borderRadius: 7 },
+  deviceFilterTabActive: { backgroundColor: '#1E202B' },
+  deviceFilterTabText: { color: '#6B6F85', fontSize: 11.5, fontWeight: '600' },
+  deviceFilterTabTextActive: { color: '#FFFFFF', fontWeight: '700' },
+
+  // Hint
+  deviceTapHint: { color: '#6B6F85', fontSize: 10.5, marginTop: 10, marginBottom: 8 },
+
+  // Device Card Items
+  deviceEmptyBox: { paddingVertical: 16, alignItems: 'center' },
+  deviceEmptyText: { color: '#6B6F85', fontSize: 11, fontWeight: '500' },
+  deviceItemCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#12141C', borderRadius: 14, borderWidth: 1, borderColor: '#1D202D', padding: 12, marginBottom: 8 },
+  deviceAvatarContainer: { position: 'relative', width: 44, height: 44, marginRight: 12 },
+  deviceAvatarBox: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#2DD4BF', justifyContent: 'center', alignItems: 'center' },
+  deviceAvatarLetter: { color: '#042F2E', fontSize: 18, fontWeight: '900' },
+  deviceOnlineDot: { position: 'absolute', bottom: -1, right: -1, width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: '#12141C' },
+  deviceInfoCol: { flex: 1, minWidth: 0 },
+  deviceItemTitle: { color: '#FFFFFF', fontSize: 13.5, fontWeight: '800' },
+  deviceMetaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 6 },
+  deviceRoleBadge: { backgroundColor: 'rgba(245, 158, 11, 0.18)', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
+  deviceRoleBadgeText: { color: '#F59E0B', fontSize: 10, fontWeight: '700' },
+  deviceStatusText: { fontSize: 11, fontWeight: '600' },
+  deviceChevron: { color: '#6B6F85', fontSize: 18, fontWeight: 'bold', marginLeft: 8 },
+
+  // Footer Actions
+  deviceViewAllLink: { alignItems: 'center', marginVertical: 12 },
+  deviceViewAllText: { color: '#F59E0B', fontSize: 12.5, fontWeight: '700' },
+  devicePrimaryBtn: { backgroundColor: '#2DD4BF', borderRadius: 24, paddingVertical: 13, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', width: '100%' },
+  devicePrimaryBtnIcon: { fontSize: 14, marginRight: 8 },
+  devicePrimaryBtnText: { color: '#042F2E', fontSize: 13.5, fontWeight: '800' },
 
   // ── SYNC HEALTH ──
   syncStatusGrid: { flexDirection: 'row', marginBottom: 10 },
