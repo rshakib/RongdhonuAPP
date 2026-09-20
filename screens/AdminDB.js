@@ -975,33 +975,24 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
         contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: keyboardHeight > 0 ? keyboardHeight + 80 : 90, paddingTop: 10 }}
       >
 
-        {/* ── KPI STRIP ── 2×2 grid of key metrics */}
-        <View style={styles.kpiStrip}>
-          <View style={[styles.kpiCard, styles.kpiCardGreen]}>
-            <View style={styles.kpiIconWrap}><Text style={styles.kpiIcon}>💰</Text></View>
-            <Text style={styles.kpiLabel}>আজকের বিক্রয়</Text>
-            <Text style={[styles.kpiValue, { color: '#34D399' }]}>৳ {todaySale.toLocaleString()}</Text>
-            <Text style={styles.kpiSub}>{totalDoneCount} টি অর্ডার</Text>
-          </View>
-          <View style={[styles.kpiCard, styles.kpiCardIndigo]}>
-            <View style={styles.kpiIconWrap}><Text style={styles.kpiIcon}>📅</Text></View>
-            <Text style={styles.kpiLabel}>মাসিক মোট</Text>
-            <Text style={[styles.kpiValue, { color: '#818CF8' }]}>৳ {monthlyTotalSell.toLocaleString()}</Text>
-            <Text style={styles.kpiSub}>{getBengaliMonthRange()}</Text>
-          </View>
-          <View style={[styles.kpiCard, styles.kpiCardAmber]}>
-            <View style={styles.kpiIconWrap}><Text style={styles.kpiIcon}>🪑</Text></View>
-            <Text style={styles.kpiLabel}>সক্রিয় টেবিল</Text>
-            <Text style={[styles.kpiValue, { color: '#F59E0B' }]}>{activeTablesCount} / {tables.length}</Text>
-            <Text style={styles.kpiSub}>{occupancyPercentage}% অকুপেন্সি</Text>
-          </View>
-          <View style={[styles.kpiCard, styles.kpiCardRed]}>
-            <View style={styles.kpiIconWrap}><Text style={styles.kpiIcon}>📋</Text></View>
-            <Text style={styles.kpiLabel}>মোট খরচ (আজ)</Text>
-            <Text style={[styles.kpiValue, { color: '#F87171' }]}>৳ {totalExpenses.toLocaleString()}</Text>
-            <Text style={styles.kpiSub}>সাপ্লায়ার + বাজার</Text>
-          </View>
-        </View>
+        {/* Horizontal Stats Row: Today's Sales and Monthly Total (Restored from Backup) */}
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false} 
+          style={styles.statsScroll}
+          contentContainerStyle={styles.statsContainer}
+        >
+          <TodaySalesCard
+            todaySale={todaySale}
+            bkashSale={bkashSale}
+            nagadSale={nagadSale}
+            rocketSale={rocketSale}
+            totalDoneCount={totalDoneCount}
+          />
+          <MonthlyTotalCard
+            monthlyTotalSell={monthlyTotalSell}
+          />
+        </ScrollView>
 
         {/* ── 3-METRIC EXECUTIVE ROW (Image 4) ── */}
         <View style={styles.metricsRowCard}>
@@ -2373,18 +2364,9 @@ const styles = StyleSheet.create({
   menuDotsButton: { padding: 6 },
   menuDotsIcon: { fontSize: 24, color: '#FFB703', fontWeight: 'bold' },
 
-  // ── KPI STRIP ──
-  kpiStrip: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingBottom: 4 },
-  kpiCard: { width: '48.5%', marginBottom: 10, borderRadius: 14, padding: 13, borderWidth: 1 },
-  kpiCardGreen:  { backgroundColor: '#0B1812', borderColor: 'rgba(52,211,153,0.25)' },
-  kpiCardIndigo: { backgroundColor: '#0D0E1C', borderColor: 'rgba(99,102,241,0.25)' },
-  kpiCardAmber:  { backgroundColor: '#191108', borderColor: 'rgba(245,158,11,0.25)' },
-  kpiCardRed:    { backgroundColor: '#170B0B', borderColor: 'rgba(248,113,113,0.25)' },
-  kpiIconWrap: { marginBottom: 6 },
-  kpiIcon: { fontSize: 20 },
-  kpiLabel: { color: '#8B8FA8', fontSize: 10, fontWeight: '600', marginBottom: 4, letterSpacing: 0.3 },
-  kpiValue: { fontSize: 17, fontWeight: '800', marginBottom: 2 },
-  kpiSub: { color: '#5A5E73', fontSize: 9, fontWeight: '500' },
+  // ── STATS CARDS (Restored from Backup) ──
+  statsScroll: { marginHorizontal: -12, marginBottom: 10 },
+  statsContainer: { paddingHorizontal: 12, paddingVertical: 2 },
 
   // ── CARD (universal card container) ──
   card: { backgroundColor: '#0E0F14', borderRadius: 14, borderWidth: 1, borderColor: '#1A1B24', marginBottom: 12, padding: 14, width: '100%' },
