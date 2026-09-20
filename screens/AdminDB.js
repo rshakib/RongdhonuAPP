@@ -698,6 +698,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     const mm = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');
     const dateKey = `${yyyy}-${mm}-${dd}`;
+    const shortDate = `${parseInt(dd, 10)}/${parseInt(mm, 10)}`;
     const dayName = dayNamesShort[d.getDay()];
     const isToday = (i === 0);
 
@@ -717,7 +718,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
       }
     }
     if (sales > max7DaySale) max7DaySale = sales;
-    last7DaysData.push({ dayName, dateKey, sales, isToday });
+    last7DaysData.push({ dayName, shortDate, dateKey, sales, isToday });
   }
 
   let bestDayKey = '';
@@ -739,7 +740,12 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     }
   } catch (e) {}
 
-  // Table status helpers
+  // Table status and order amount helpers
+  const getTableAmount = (t) => {
+    if (!t || !t.items) return 0;
+    return t.items.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.qty, 10) || 1)), 0);
+  };
+
   const getTableElapsedMinutes = (t) => {
     if (t.status !== 'BUSY' || !t.startTime) return null;
     try {
@@ -750,8 +756,10 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
       return null;
     }
   };
+
   const freeTablesCount = tables.filter(t => t.status !== 'BUSY').length;
   const busyTablesCount = tables.filter(t => t.status === 'BUSY').length;
+  const activeDeliveriesList = deliveries.filter(d => d.status === 'BUSY');
 
   // Segmented payment percentages
   const totalPaymentCalculated = (cashSale + bkashSale + nagadSale + rocketSale + dueSale) || todaySale || 1;
@@ -964,7 +972,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
         showsVerticalScrollIndicator={false}
         style={styles.scrollBody}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ paddingBottom: keyboardHeight > 0 ? keyboardHeight + 80 : 60, paddingTop: 12 }}
+        contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: keyboardHeight > 0 ? keyboardHeight + 80 : 90, paddingTop: 10 }}
       >
 
         {/* ── KPI STRIP ── 2×2 grid of key metrics */}
@@ -1054,12 +1062,12 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
           </View>
         </View>
 
-        {/* ── টেবিলের অবস্থা (Image 1) ── */}
+        {/* ── টেবিলের অবস্থা (4 COLUMNS) ── */}
         <View style={styles.card}>
           <View style={styles.tableHeaderRow}>
             <Text style={styles.sectionHeaderTitle}>টেবিলের অবস্থা</Text>
             <Text style={styles.tableSummaryBadge}>
-              {freeTablesCount} ফাঁকা · {busyTablesCount} চলছে{activeDeliveriesCount > 0 ? ` · ${activeDeliveriesCount} ডেলিভারি` : ''}
+              {freeTablesCount} ফাঁকা · {busyTablesCount} চলছে{activeDeliveriesList.length > 0 ? ` · ${activeDeliveriesList.length} ডেলিভারি` : ''}
             </Text>
           </View>
 
@@ -1068,21 +1076,29 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               const isBusy = t.status === 'BUSY';
               const m = getTableElapsedMinutes(t);
               const isLong = m && m >= 15;
+              const tblAmt = getTableAmount(t);
+              const tableDisplayId = t.name || String(t.id).replace('table_', 'T-');
 
-              const cardBg = !isBusy ? '#0E231C' : isLong ? '#2D1518' : '#2A1F12';
-              const cardBorder = !isBusy ? '#065F46' : isLong ? '#991B1B' : '#92400E';
-              const textCol = !isBusy ? '#34D399' : isLong ? '#F87171' : '#FBBF24';
+              const cardBg = !isBusy ? '#0B2017' : (isLong ? '#2A1316' : '#271B0E');
+              const cardBorder = !isBusy ? '#065F46' : (isLong ? '#991B1B' : '#92400E');
+              const textCol = !isBusy ? '#34D399' : (isLong ? '#F87171' : '#FBBF24');
 
               return (
                 <TouchableOpacity
                   key={t.id}
                   activeOpacity={0.7}
                   onPress={() => onTableSelect(t.id)}
-                  style={[styles.tableVisualCard, { backgroundColor: cardBg, borderColor: cardBorder }]}
+                  onLongPress={() => handleTableLongPress(t)}
+                  style={[styles.tableGridCard, { backgroundColor: cardBg, borderColor: cardBorder }]}
                 >
-                  <Text style={[styles.tableVisualId, { color: textCol }]}>{t.name || t.id.replace('table_', 'T')}</Text>
-                  <Text style={[styles.tableVisualSub, { color: textCol }]}>
-                    {isBusy ? (m !== null ? `${m} মিনিট` : 'চলছে') : 'ফাঁকা'}
+                  <Text style={[styles.tableCardTitle, { color: textCol }]} numberOfLines={1}>
+                    {tableDisplayId}
+                  </Text>
+                  <Text style={[styles.tableCardDuration, { color: textCol }]} numberOfLines={1}>
+                    {isBusy ? (m !== null ? `${m} min` : 'চলছে') : 'ফাঁকা'}
+                  </Text>
+                  <Text style={[styles.tableCardAmount, { color: isBusy ? '#FFB703' : 'transparent' }]} numberOfLines={1}>
+                    {isBusy ? `৳${tblAmt.toLocaleString()}` : '-'}
                   </Text>
                 </TouchableOpacity>
               );
@@ -1091,43 +1107,143 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
           <Text style={styles.tableBottomHint}>যেকোনো টেবিলে চাপ দিন</Text>
         </View>
 
-        {/* ── LAST 7 DAYS (Image 2) ── */}
-        <View style={styles.terminalCard}>
-          <Text style={styles.terminalTitle}>┌── LAST  7  DAYS ──────────────────────────────────┐</Text>
-          <View style={styles.terminalBody}>
-            {last7DaysData.map(item => {
-              const pct = Math.max(10, Math.min(100, Math.round((item.sales / (max7DaySale || 1)) * 100)));
-              const isBest = item.dateKey === bestDayKey && item.sales > 0;
-              const kVal = (item.sales >= 1000) ? (item.sales / 1000).toFixed(1) + 'k' : item.sales.toString();
-
-              return (
-                <View key={item.dateKey} style={styles.terminalRow}>
-                  <Text style={styles.terminalDayName}>│  {item.dayName}</Text>
-                  <View style={styles.terminalBarTrack}>
-                    <View style={[styles.terminalBarFill, { width: `${pct}%` }]} />
-                    <View style={[styles.terminalBarHatch, { width: `${100 - pct}%` }]} />
-                  </View>
-                  <Text style={styles.terminalVal}>{kVal}</Text>
-                  {isBest ? (
-                    <Text style={styles.terminalBadgeBest}>⭐ best</Text>
-                  ) : item.isToday ? (
-                    <Text style={styles.terminalBadgeToday}>(today)</Text>
-                  ) : (
-                    <View style={{ width: 55 }} />
-                  )}
-                  <Text style={styles.terminalRightPipe}>│</Text>
-                </View>
-              );
-            })}
-            <View style={styles.terminalRowSpace}><Text style={styles.terminalBorderSide}>│</Text><Text style={styles.terminalBorderSide}>│</Text></View>
-            <View style={styles.terminalFooterRow}>
-              <Text style={styles.terminalBorderSide}>│  </Text>
-              <Text style={styles.terminalFooterText}>Peak hour: {calculatedPeakHour}</Text>
-              <Text style={styles.terminalFooterText}>Weather: ☀️ {weatherTemp}</Text>
-              <Text style={styles.terminalBorderSide}>  │</Text>
+        {/* ── সক্রিয় ডেলিভারি (Active Delivery Section Directly Below Tables) ── */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={styles.cardHeaderLeft}>
+              <View style={[styles.cardIconPill, { backgroundColor: 'rgba(59,130,246,0.15)' }]}>
+                <Text style={styles.cardIconEmoji}>🛵</Text>
+              </View>
+              <View style={styles.cardTitleCol}>
+                <Text style={styles.cardTitle}>সক্রিয় ডেলিভারি</Text>
+                <Text style={styles.cardSubtitle}>চলমান রাইডার ও পার্সেল স্থিতি</Text>
+              </View>
+            </View>
+            <View style={[styles.statusPill, activeDeliveriesList.length > 0 ? styles.statusPillAmber : styles.statusPillGreen]}>
+              <Text style={[styles.statusPillText, activeDeliveriesList.length > 0 ? { color: '#F59E0B' } : { color: '#10B981' }]}>
+                {activeDeliveriesList.length} টি সক্রিয়
+              </Text>
             </View>
           </View>
-          <Text style={styles.terminalTitle}>└───────────────────────────────────────────────────┘</Text>
+
+          {activeDeliveriesList.length > 0 ? (
+            activeDeliveriesList.map(delivery => {
+              const delAmt = delivery.items ? delivery.items.reduce((s, i) => s + ((parseFloat(i.price) || 0) * (parseInt(i.qty, 10) || 1)), 0) : 0;
+              const delStartTime = formatStartTime(delivery.startTime);
+              return (
+                <TouchableOpacity
+                  key={delivery.id}
+                  style={styles.activeDeliveryCard}
+                  onPress={() => onTableSelect(delivery.id)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.activeDeliveryHeaderRow}>
+                    <View style={styles.activeDeliveryLeft}>
+                      <View style={styles.deliveryRiderIconWrap}>
+                        <Text style={styles.deliveryRiderIcon}>🛵</Text>
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.activeDeliveryName} numberOfLines={1}>{delivery.name || delivery.id}</Text>
+                        <Text style={styles.activeDeliverySub}>{delStartTime ? `শুরু: ${delStartTime}` : 'চলমান ডেলিভারি'}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.activeDeliveryRight}>
+                      <Text style={styles.activeDeliveryAmount}>৳{delAmt.toLocaleString()}</Text>
+                      {delivery.deliveryCharge > 0 ? (
+                        <Text style={styles.activeDeliveryCharge}>চার্জ ৳{delivery.deliveryCharge}</Text>
+                      ) : null}
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })
+          ) : (
+            <View style={styles.emptyDeliveryBox}>
+              <Text style={styles.emptyDeliveryEmoji}>🛵</Text>
+              <Text style={styles.emptyDeliveryText}>বর্তমানে কোনো সক্রিয় ডেলিভারি নেই</Text>
+            </View>
+          )}
+
+          {typeof onCreateDelivery === 'function' && (
+            <TouchableOpacity style={styles.createDeliveryBtn} onPress={onCreateDelivery} activeOpacity={0.8}>
+              <Text style={styles.createDeliveryBtnText}>➕ নতুন ডেলিভারি শুরু করুন</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* ── গত ৭ দিনের বিক্রয় (Last 7 Days Sales — Vertical Bar Chart) ── */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={styles.cardHeaderLeft}>
+              <View style={[styles.cardIconPill, { backgroundColor: 'rgba(99,102,241,0.15)' }]}>
+                <Text style={styles.cardIconEmoji}>📊</Text>
+              </View>
+              <View style={styles.cardTitleCol}>
+                <Text style={styles.cardTitle}>গত ৭ দিনের বিক্রয়</Text>
+                <Text style={styles.cardSubtitle}>দৈনিক বিক্রয় গ্রাফ (Last 7 Days)</Text>
+              </View>
+            </View>
+            <View style={[styles.statusPill, { backgroundColor: 'rgba(99,102,241,0.12)', borderColor: 'rgba(99,102,241,0.3)' }]}>
+              <Text style={[styles.statusPillText, { color: '#818CF8' }]}>সর্বোচ্চ ৳{highest7DaySale > 1000 ? (highest7DaySale/1000).toFixed(1)+'k' : highest7DaySale}</Text>
+            </View>
+          </View>
+
+          {/* Vertical Bar Chart Container */}
+          <View style={styles.chartContainer}>
+            {/* Guide lines */}
+            <View style={styles.chartGridLineTop} />
+            <View style={styles.chartGridLineMid} />
+            <View style={styles.chartGridLineBase} />
+
+            <View style={styles.chartBarsRow}>
+              {last7DaysData.map(item => {
+                const pct = Math.max(6, Math.min(100, Math.round((item.sales / (max7DaySale || 1)) * 100)));
+                const isBest = item.dateKey === bestDayKey && item.sales > 0;
+                const kVal = (item.sales >= 1000) ? (item.sales / 1000).toFixed(1) + 'k' : (item.sales > 0 ? item.sales.toString() : '0');
+
+                const barColor = item.isToday ? '#10B981' : (isBest ? '#F59E0B' : '#6366F1');
+
+                return (
+                  <View key={item.dateKey} style={styles.chartCol}>
+                    {/* Top value badge */}
+                    <View style={styles.chartTopLabelWrap}>
+                      {isBest && <Text style={styles.chartBestBadge}>⭐</Text>}
+                      <Text style={[styles.chartBarValueText, item.isToday ? { color: '#10B981', fontWeight: '800' } : null]}>
+                        {kVal}
+                      </Text>
+                    </View>
+
+                    {/* Vertical track and bar */}
+                    <View style={styles.chartBarTrack}>
+                      <View style={[styles.chartBarFill, { height: `${pct}%`, backgroundColor: barColor }]} />
+                    </View>
+
+                    {/* Day name & date */}
+                    <Text style={[styles.chartDayText, item.isToday ? styles.chartDayTextToday : null]}>
+                      {item.dayName}
+                    </Text>
+                    <Text style={[styles.chartDateSubText, item.isToday ? styles.chartDateSubTextToday : null]}>
+                      {item.isToday ? 'আজ' : item.shortDate}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Peak Hour & Weather Info Strip */}
+          <View style={styles.chartFooterStrip}>
+            <View style={styles.chartFooterItem}>
+              <Text style={styles.chartFooterEmoji}>🕒</Text>
+              <Text style={styles.chartFooterLabel}>পিক সময়:</Text>
+              <Text style={styles.chartFooterVal}>{calculatedPeakHour}</Text>
+            </View>
+            <View style={[styles.chartFooterItem, { borderLeftWidth: 1, borderColor: '#1F202E', paddingLeft: 10 }]}>
+              <Text style={styles.chartFooterEmoji}>☀️</Text>
+              <Text style={styles.chartFooterLabel}>আবহাওয়া:</Text>
+              <Text style={styles.chartFooterVal}>{weatherTemp}</Text>
+            </View>
+          </View>
         </View>
 
         {/* ── SECTION 1: দৈনিক হিসাব ও ক্লোজিং ── */}
@@ -2258,8 +2374,8 @@ const styles = StyleSheet.create({
   menuDotsIcon: { fontSize: 24, color: '#FFB703', fontWeight: 'bold' },
 
   // ── KPI STRIP ──
-  kpiStrip: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 12, paddingBottom: 4 },
-  kpiCard: { width: '47%', marginHorizontal: '1.5%', marginBottom: 10, borderRadius: 14, padding: 14, borderWidth: 1 },
+  kpiStrip: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', paddingBottom: 4 },
+  kpiCard: { width: '48.5%', marginBottom: 10, borderRadius: 14, padding: 13, borderWidth: 1 },
   kpiCardGreen:  { backgroundColor: '#0B1812', borderColor: 'rgba(52,211,153,0.25)' },
   kpiCardIndigo: { backgroundColor: '#0D0E1C', borderColor: 'rgba(99,102,241,0.25)' },
   kpiCardAmber:  { backgroundColor: '#191108', borderColor: 'rgba(245,158,11,0.25)' },
@@ -2267,11 +2383,11 @@ const styles = StyleSheet.create({
   kpiIconWrap: { marginBottom: 6 },
   kpiIcon: { fontSize: 20 },
   kpiLabel: { color: '#8B8FA8', fontSize: 10, fontWeight: '600', marginBottom: 4, letterSpacing: 0.3 },
-  kpiValue: { fontSize: 18, fontWeight: '800', marginBottom: 2 },
+  kpiValue: { fontSize: 17, fontWeight: '800', marginBottom: 2 },
   kpiSub: { color: '#5A5E73', fontSize: 9, fontWeight: '500' },
 
   // ── CARD (universal card container) ──
-  card: { backgroundColor: '#0E0F14', borderRadius: 16, borderWidth: 1, borderColor: '#1A1B24', marginHorizontal: 12, marginBottom: 12, padding: 14 },
+  card: { backgroundColor: '#0E0F14', borderRadius: 14, borderWidth: 1, borderColor: '#1A1B24', marginBottom: 12, padding: 14, width: '100%' },
 
   // ── CARD HEADER ──
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
@@ -2381,7 +2497,7 @@ const styles = StyleSheet.create({
   employeeRowArrow: { color: '#6366F1', fontSize: 13, fontWeight: '700' },
 
   // ── 3-METRIC EXECUTIVE ROW (Image 4) ──
-  metricsRowCard: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#0E0F14', borderRadius: 14, borderWidth: 1, borderColor: '#1A1B24', marginHorizontal: 12, marginBottom: 12, paddingVertical: 14, paddingHorizontal: 16 },
+  metricsRowCard: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#0E0F14', borderRadius: 14, borderWidth: 1, borderColor: '#1A1B24', marginBottom: 12, paddingVertical: 14, paddingHorizontal: 16, width: '100%' },
   metricRowCol: { flex: 1, alignItems: 'center' },
   metricRowLabel: { color: '#6B6F85', fontSize: 11, fontWeight: '600', marginBottom: 4 },
   metricRowValue: { color: '#E8E9EF', fontSize: 16, fontWeight: '800' },
@@ -2396,32 +2512,54 @@ const styles = StyleSheet.create({
   legendLabel: { color: '#E8E9EF', fontSize: 12, fontWeight: '600', flex: 1 },
   legendVal: { color: '#E8E9EF', fontSize: 12, fontWeight: '700' },
 
-  // ── TABLE VISUAL GRID (Image 1) ──
+  // ── TABLE GRID (4 COLUMNS) ──
   tableHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   tableSummaryBadge: { color: '#8B8FA8', fontSize: 11, fontWeight: '600' },
   tableVisualGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 8 },
-  tableVisualCard: { width: '18.5%', aspectRatio: 0.9, borderRadius: 10, borderWidth: 1.2, justifyContent: 'center', alignItems: 'center', padding: 4 },
-  tableVisualId: { fontSize: 13, fontWeight: '800', marginBottom: 2 },
-  tableVisualSub: { fontSize: 9, fontWeight: '700' },
-  tableBottomHint: { color: '#6B6F85', fontSize: 11, textAlign: 'center', marginTop: 12 },
+  tableGridCard: { width: '23.5%', minHeight: 74, borderRadius: 10, borderWidth: 1.2, justifyContent: 'center', alignItems: 'center', padding: 5 },
+  tableCardTitle: { fontSize: 13, fontWeight: '800', marginBottom: 2 },
+  tableCardDuration: { fontSize: 10, fontWeight: '700', marginBottom: 2 },
+  tableCardAmount: { fontSize: 10.5, fontWeight: '800' },
+  tableBottomHint: { color: '#6B6F85', fontSize: 10.5, textAlign: 'center', marginTop: 10 },
 
-  // ── TERMINAL LAST 7 DAYS (Image 2) ──
-  terminalCard: { backgroundColor: '#0A0A0A', borderRadius: 12, borderWidth: 1, borderColor: '#2A2A2A', marginHorizontal: 12, marginBottom: 12, padding: 12 },
-  terminalTitle: { color: '#E4E4E7', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 11, letterSpacing: -0.5 },
-  terminalBody: { paddingVertical: 4 },
-  terminalRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 2 },
-  terminalDayName: { color: '#E4E4E7', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 11, width: 62 },
-  terminalBarTrack: { flex: 1, height: 12, flexDirection: 'row', marginHorizontal: 6 },
-  terminalBarFill: { height: '100%', backgroundColor: '#E4E4E7' },
-  terminalBarHatch: { height: '100%', backgroundColor: '#27272A' },
-  terminalVal: { color: '#E4E4E7', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 11, width: 46, textAlign: 'right' },
-  terminalBadgeBest: { color: '#FBBF24', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 10, fontWeight: 'bold', width: 58, textAlign: 'center' },
-  terminalBadgeToday: { color: '#A1A1AA', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 9, width: 58, textAlign: 'center' },
-  terminalRightPipe: { color: '#E4E4E7', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 11 },
-  terminalRowSpace: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: 2 },
-  terminalBorderSide: { color: '#E4E4E7', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 11 },
-  terminalFooterRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
-  terminalFooterText: { color: '#E4E4E7', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 10.5 },
+  // ── ACTIVE DELIVERIES (Directly Below Tables) ──
+  activeDeliveryCard: { backgroundColor: '#141520', borderRadius: 10, padding: 11, borderWidth: 1, borderColor: '#1E2030', marginBottom: 8 },
+  activeDeliveryHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  activeDeliveryLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8, minWidth: 0 },
+  deliveryRiderIconWrap: { width: 34, height: 34, borderRadius: 8, backgroundColor: 'rgba(59,130,246,0.15)', justifyContent: 'center', alignItems: 'center', marginRight: 10, flexShrink: 0 },
+  deliveryRiderIcon: { fontSize: 17 },
+  activeDeliveryName: { color: '#E8E9EF', fontSize: 12, fontWeight: '700' },
+  activeDeliverySub: { color: '#6B6F85', fontSize: 10, marginTop: 2 },
+  activeDeliveryRight: { alignItems: 'flex-end', flexShrink: 0 },
+  activeDeliveryAmount: { color: '#FFB703', fontSize: 13, fontWeight: '800' },
+  activeDeliveryCharge: { color: '#6B6F85', fontSize: 9.5, marginTop: 2 },
+  emptyDeliveryBox: { alignItems: 'center', paddingVertical: 18 },
+  emptyDeliveryEmoji: { fontSize: 26, marginBottom: 4 },
+  emptyDeliveryText: { color: '#6B6F85', fontSize: 11, fontWeight: '600' },
+  createDeliveryBtn: { backgroundColor: '#141520', borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,183,3,0.3)', paddingVertical: 9, alignItems: 'center', marginTop: 6 },
+  createDeliveryBtnText: { color: '#FFB703', fontSize: 11, fontWeight: '700' },
+
+  // ── VERTICAL BAR CHART (LAST 7 DAYS) ──
+  chartContainer: { height: 160, position: 'relative', justifyContent: 'flex-end', marginBottom: 8, paddingTop: 18 },
+  chartGridLineTop: { position: 'absolute', top: 22, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.04)' },
+  chartGridLineMid: { position: 'absolute', top: 68, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.04)' },
+  chartGridLineBase: { position: 'absolute', bottom: 34, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.1)' },
+  chartBarsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', height: 145 },
+  chartCol: { flex: 1, alignItems: 'center' },
+  chartTopLabelWrap: { height: 22, justifyContent: 'flex-end', alignItems: 'center', marginBottom: 4 },
+  chartBestBadge: { fontSize: 9, lineHeight: 10 },
+  chartBarValueText: { color: '#8B8FA8', fontSize: 9, fontWeight: '700' },
+  chartBarTrack: { height: 75, width: 14, justifyContent: 'flex-end', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 4, overflow: 'hidden' },
+  chartBarFill: { width: '100%', borderRadius: 4 },
+  chartDayText: { color: '#8B8FA8', fontSize: 10, fontWeight: '600', marginTop: 6 },
+  chartDayTextToday: { color: '#10B981', fontWeight: '800' },
+  chartDateSubText: { color: '#5A5E73', fontSize: 8.5, marginTop: 1 },
+  chartDateSubTextToday: { color: '#10B981', fontWeight: '700' },
+  chartFooterStrip: { flexDirection: 'row', backgroundColor: '#141520', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12, borderWidth: 1, borderColor: '#1E2030', marginTop: 6 },
+  chartFooterItem: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  chartFooterEmoji: { fontSize: 12, marginRight: 6 },
+  chartFooterLabel: { color: '#6B6F85', fontSize: 10, marginRight: 4 },
+  chartFooterVal: { color: '#E8E9EF', fontSize: 10.5, fontWeight: '700' },
 
   // ── REPORTS ──
   reportTile: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#141520', borderRadius: 10, padding: 11, borderWidth: 1, borderColor: '#1E2030', marginBottom: 8 },
