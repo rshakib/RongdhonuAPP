@@ -19,7 +19,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { exportSalesReportPDF, exportDepositReportPDF } from '../pdfHelper';
 import { formatDisplayDate, getBusinessDate, inspectDatabaseStats, executeInspectorQuery, getFirebaseUsageStats, verifyPinCode, deleteDataByDate, getItemSalesReport, getDb } from '../database';
-import { getAllRegisteredDevices } from '../services/deviceRegistry';
+import { getAllRegisteredDevices, getCurrentDeviceRecord } from '../services/deviceRegistry';
 import { fetchMinimumVersion, setMinimumVersion, APP_VERSION, compareSemver } from '../services/firebaseAppConfig';
 import * as Application from 'expo-application';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -154,9 +154,6 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
   const [cleanupModalVisible, setCleanupModalVisible] = useState(false);
   const [cleanupTargetDate, setCleanupTargetDate] = useState('2026-06-01');
   const [cleanupCounts, setCleanupCounts] = useState(null);
-
-  // Device Filter State ('ALL', 'ONLINE', 'OFFLINE', 'BLOCKED')
-  const [deviceFilter, setDeviceFilter] = useState('ALL');
   
   // Past Account States
   const [pastAccountModalVisible, setPastAccountModalVisible] = useState(false);
@@ -819,6 +816,11 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     console.error("[AdminDB] Error fetching devices:", err);
   }
 
+  let currentDeviceRecord = null;
+  try {
+    currentDeviceRecord = getCurrentDeviceRecord();
+  } catch (err) {}
+
   const getDeviceRecency = (dev) => {
     if (!dev) return 0;
     const val = dev.last_seen || dev.updated_at || dev.created_at;
@@ -827,17 +829,20 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     return isNaN(t) ? 0 : t;
   };
 
-  // Sort: highest recency timestamp first, oldest/late devices at the bottom ("je late se ses e")
-  const sortedDevices = [...registeredDevices].sort((a, b) => {
-    return getDeviceRecency(b) - getDeviceRecency(a);
-  });
-
   const isDeviceOnline = (dev) => {
+    if (currentDeviceRecord && (dev.device_id === currentDeviceRecord.device_id || dev.id === currentDeviceRecord.id)) {
+      return true;
+    }
     const ts = dev?.last_seen || dev?.updated_at;
     if (!ts) return false;
     const diffMs = Date.now() - new Date(ts).getTime();
     return diffMs < 5 * 60000;
   };
+
+  // Sort: highest recency timestamp first, oldest/late devices at the bottom ("je late se ses e")
+  const sortedDevices = [...registeredDevices].sort((a, b) => {
+    return getDeviceRecency(b) - getDeviceRecency(a);
+  });
 
   const approvedDevicesCount = registeredDevices.filter(d => d.status === 'ACTIVE' || d.status === 'APPROVED').length;
   const pendingDevicesCount = registeredDevices.filter(d => d.status === 'PENDING').length;
@@ -845,6 +850,9 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
   const onlineDevicesCount = registeredDevices.filter(d => isDeviceOnline(d)).length;
 
   const formatDeviceLastSeenText = (dev) => {
+    if (currentDeviceRecord && (dev.device_id === currentDeviceRecord.device_id || dev.id === currentDeviceRecord.id)) {
+      return 'এখন অনলাইনে (এই ডিভাইস)';
+    }
     const ts = dev?.last_seen || dev?.updated_at;
     if (!ts) return 'অফলাইন';
     try {
@@ -868,12 +876,10 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     }
   };
 
-  const filteredDevices = sortedDevices.filter(dev => {
-    if (deviceFilter === 'ONLINE') return isDeviceOnline(dev);
-    if (deviceFilter === 'OFFLINE') return !isDeviceOnline(dev) && dev.status !== 'BLOCKED';
-    if (deviceFilter === 'BLOCKED') return dev.status === 'BLOCKED';
-    return true; // 'ALL'
-  });
+  // Only active (online) devices shown on the dashboard per user request
+  const activeDevices = sortedDevices.filter(dev => 
+    isDeviceOnline(dev) && dev.status !== 'BLOCKED'
+  );
 
   // Live Sync Queue Status
   let pendingSyncCount = 0;
@@ -1486,40 +1492,25 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
             </View>
           )}
 
-          {/* Segmented Filter Tabs */}
-          <View style={styles.deviceFilterTabsContainer}>
-            {[
-              { key: 'ALL', label: 'সব' },
-              { key: 'ONLINE', label: 'অনলাইন' },
-              { key: 'OFFLINE', label: 'অফলাইন' },
-              { key: 'BLOCKED', label: 'ব্লকড' },
-            ].map(tab => {
-              const isActive = deviceFilter === tab.key;
-              return (
-                <TouchableOpacity
-                  key={tab.key}
-                  style={[styles.deviceFilterTab, isActive && styles.deviceFilterTabActive]}
-                  onPress={() => setDeviceFilter(tab.key)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.deviceFilterTabText, isActive && styles.deviceFilterTabTextActive]}>
-                    {tab.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+          {/* Active Devices Subtitle / Hint */}
+          <View style={styles.deviceActiveHeaderRow}>
+            <Text style={styles.deviceTapHint}>কার্ডে ট্যাপ করলে আরও কন্ট্রোল দেখা যাবে</Text>
+            <View style={styles.deviceActiveCountPill}>
+              <View style={styles.deviceActiveDot} />
+              <Text style={styles.deviceActiveCountText}>
+                {toBengaliNumber(activeDevices.length)}টি সক্রিয়
+              </Text>
+            </View>
           </View>
 
-          {/* Hint Caption */}
-          <Text style={styles.deviceTapHint}>কার্ডে ট্যাপ করলে আরও কন্ট্রোল দেখা যাবে</Text>
-
-          {/* Device Items List */}
-          {filteredDevices.length === 0 ? (
+          {/* Active Device Items List (Only active/online devices shown) */}
+          {activeDevices.length === 0 ? (
             <View style={styles.deviceEmptyBox}>
-              <Text style={styles.deviceEmptyText}>এই ক্যাটাগরিতে কোনো ডিভাইস নেই</Text>
+              <Text style={styles.deviceEmptyEmoji}>📵</Text>
+              <Text style={styles.deviceEmptyText}>বর্তমানে কোনো সক্রিয় ডিভাইস নেই</Text>
             </View>
           ) : (
-            filteredDevices.slice(0, 4).map(dev => {
+            activeDevices.slice(0, 4).map(dev => {
               const isOnline = isDeviceOnline(dev);
               const initial = (dev.device_name || dev.model || 'P').trim().charAt(0).toUpperCase();
               return (
@@ -2631,19 +2622,17 @@ const styles = StyleSheet.create({
   deviceAlertCircleIcon: { color: '#09332C', fontSize: 11, fontWeight: '900' },
   deviceAlertText: { fontSize: 11, fontWeight: '600', flex: 1 },
 
-  // Segmented Filter Tabs
-  deviceFilterTabsContainer: { flexDirection: 'row', backgroundColor: '#12141C', borderRadius: 10, borderWidth: 1, borderColor: '#1D202D', padding: 3, marginTop: 12 },
-  deviceFilterTab: { flex: 1, paddingVertical: 7, alignItems: 'center', borderRadius: 7 },
-  deviceFilterTabActive: { backgroundColor: '#1E202B' },
-  deviceFilterTabText: { color: '#6B6F85', fontSize: 11.5, fontWeight: '600' },
-  deviceFilterTabTextActive: { color: '#FFFFFF', fontWeight: '700' },
-
-  // Hint
-  deviceTapHint: { color: '#6B6F85', fontSize: 10.5, marginTop: 10, marginBottom: 8 },
+  // Active Device Header & Hint
+  deviceActiveHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, marginBottom: 8 },
+  deviceTapHint: { color: '#6B6F85', fontSize: 10.5, flex: 1, marginRight: 8 },
+  deviceActiveCountPill: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(16, 185, 129, 0.12)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(16, 185, 129, 0.25)' },
+  deviceActiveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981', marginRight: 5 },
+  deviceActiveCountText: { color: '#10B981', fontSize: 10, fontWeight: '700' },
 
   // Device Card Items
-  deviceEmptyBox: { paddingVertical: 16, alignItems: 'center' },
-  deviceEmptyText: { color: '#6B6F85', fontSize: 11, fontWeight: '500' },
+  deviceEmptyBox: { paddingVertical: 20, alignItems: 'center', backgroundColor: '#12141C', borderRadius: 14, borderWidth: 1, borderColor: '#1D202D', marginBottom: 8 },
+  deviceEmptyEmoji: { fontSize: 22, marginBottom: 6 },
+  deviceEmptyText: { color: '#6B6F85', fontSize: 11, fontWeight: '600' },
   deviceItemCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#12141C', borderRadius: 14, borderWidth: 1, borderColor: '#1D202D', padding: 12, marginBottom: 8 },
   deviceAvatarContainer: { position: 'relative', width: 44, height: 44, marginRight: 12 },
   deviceAvatarBox: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#2DD4BF', justifyContent: 'center', alignItems: 'center' },
