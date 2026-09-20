@@ -42,6 +42,12 @@ const getBengaliMonthRange = () => {
   return `(১ ${monthName} - বর্তমান)`;
 };
 
+const toBengaliNumber = (num) => {
+  if (num === null || num === undefined) return '';
+  const bengaliDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+  return String(num).replace(/\d/g, d => bengaliDigits[parseInt(d, 10)]);
+};
+
 // --- CUSTOM CALENDAR PICKER COMPONENT ---
 const CalendarPicker = ({ visible, onClose, onSelectDate }) => {
   const [viewDate, setViewDate] = useState(new Date());
@@ -784,14 +790,38 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
 
   const totalDoneCount = todaysOrders.length;
   
-  // Executive Dashboard Insights: Top Selling Items for Today
+  // Executive Dashboard Insights: Top Selling Items & Category Breakdown for Today
   let topSellingItems = [];
+  let categoryBreakdown = [];
+  let topItemPct = 0;
   try {
     const rawReport = getItemSalesReport(todayStr, todayStr) || [];
-    topSellingItems = rawReport
+    const validItems = rawReport
       .filter(item => (item.quantitySold || 0) > 0 && (item.name || '').trim().toLowerCase() !== 'পানি')
-      .sort((a, b) => (b.quantitySold || 0) - (a.quantitySold || 0))
-      .slice(0, 5);
+      .sort((a, b) => (b.quantitySold || 0) - (a.quantitySold || 0));
+
+    topSellingItems = validItems.slice(0, 5);
+    const totalFoodSalesToday = validItems.reduce((sum, it) => sum + (it.totalSales || 0), 0);
+    topItemPct = totalFoodSalesToday > 0 && topSellingItems[0]
+      ? Math.round(((topSellingItems[0].totalSales || 0) / totalFoodSalesToday) * 100)
+      : 0;
+
+    // Group sales by category for Donut Ring Chart & Legend (Image 2)
+    const catMap = {};
+    validItems.forEach(it => {
+      const cat = (it.category || 'অন্যান্য').trim();
+      catMap[cat] = (catMap[cat] || 0) + (it.totalSales || 0);
+    });
+
+    const catColors = ['#F59E0B', '#F97316', '#8B5CF6', '#2DD4BF', '#EC4899', '#3B82F6', '#10B981'];
+    categoryBreakdown = Object.entries(catMap)
+      .map(([name, total], idx) => ({
+        name,
+        total,
+        percentage: totalFoodSalesToday > 0 ? Math.round((total / totalFoodSalesToday) * 100) : 0,
+        color: catColors[idx % catColors.length]
+      }))
+      .sort((a, b) => b.total - a.total);
   } catch (err) {
     console.error("[AdminDB] Error fetching top selling items:", err);
   }
@@ -1296,52 +1326,139 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
           </View>
         </View>
 
-        {/* ── SECTION 3: শীর্ষ বিক্রিত খাবার ── */}
+        {/* ── SECTION 3: শীর্ষ বিক্রিত খাবার (Top Selling Food Redesign) ── */}
         <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <View style={styles.cardHeaderLeft}>
-              <View style={[styles.cardIconPill, { backgroundColor: 'rgba(245,158,11,0.15)' }]}>
-                <Text style={styles.cardIconEmoji}>🔥</Text>
-              </View>
-              <View style={styles.cardTitleCol}>
-                <Text style={styles.cardTitle}>শীর্ষ বিক্রিত খাবার</Text>
-                <Text style={styles.cardSubtitle}>আজকের সেরা ৫টি আইটেম</Text>
-              </View>
+          <View style={styles.topSellerHeader}>
+            <View>
+              <Text style={styles.sectionHeaderTitle}>শীর্ষ বিক্রিত খাবার</Text>
+              <Text style={styles.topSellerSubtitle}>আজকের সেরা ৫টি আইটেম</Text>
             </View>
-            <TouchableOpacity style={styles.cardOutlineBtn} onPress={onNavigateToItemSalesReport} activeOpacity={0.7}>
-              <Text style={styles.cardOutlineBtnText}>পূর্ণ রিপোর্ট 📊</Text>
+            <TouchableOpacity 
+              onPress={onNavigateToItemSalesReport} 
+              activeOpacity={0.7}
+              style={styles.topSellerReportBtn}
+            >
+              <Text style={styles.topSellerReportBtnText}>পূর্ণ রিপোর্ট ❯</Text>
             </TouchableOpacity>
           </View>
 
-          <View style={styles.bestSellerList}>
-            {topSellingItems.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyStateEmoji}>🍽️</Text>
-                <Text style={styles.emptyStateText}>আজ এখনও কোনো খাবার বিক্রয় হয়নি</Text>
-                <Text style={styles.emptyStateSub}>অর্ডার সম্পন্ন হলে এখানে লাইভ র‍্যাংকিং দেখাবে।</Text>
-              </View>
-            ) : (
-              topSellingItems.map((item, index) => {
-                const rankColors = ['#FFB703', '#94A3B8', '#F59E0B', '#64748B', '#64748B'];
-                const rankColor = rankColors[index] || '#64748B';
-                return (
-                  <View key={item.id || item.name || index} style={styles.bestSellerRow}>
-                    <View style={[styles.rankBadge, { borderColor: rankColor }]}>
-                      <Text style={[styles.rankText, { color: rankColor }]}>#{index + 1}</Text>
+          {topSellingItems.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyStateEmoji}>🍽️</Text>
+              <Text style={styles.emptyStateText}>আজ এখনও কোনো খাবার বিক্রয় হয়নি</Text>
+              <Text style={styles.emptyStateSub}>অর্ডার সম্পন্ন হলে এখানে লাইভ র‍্যাংকিং দেখাবে।</Text>
+            </View>
+          ) : (
+            <>
+              {/* #1 Top Item Hero Banner (Amber/Gold Card) - NO food emoji */}
+              {topSellingItems[0] && (
+                <View style={styles.topHeroCard}>
+                  <View style={styles.topHeroDecorCircle} />
+                  
+                  <View style={styles.topHeroBadge}>
+                    <Text style={styles.topHeroBadgeText}>🥇 আজকের সেরা</Text>
+                  </View>
+
+                  <View style={styles.topHeroContentRow}>
+                    <View style={styles.topHeroRankBox}>
+                      <Text style={styles.topHeroRankNum}>1</Text>
                     </View>
-                    <View style={styles.bestSellerInfo}>
-                      <Text style={styles.bestSellerName} numberOfLines={1}>{item.name}</Text>
-                      {item.category ? <Text style={styles.bestSellerCategory}>{item.category}</Text> : null}
-                    </View>
-                    <View style={styles.bestSellerMetrics}>
-                      <View style={styles.qtyBadge}><Text style={styles.qtyBadgeText}>{item.quantitySold} পিস</Text></View>
-                      <Text style={styles.itemSalesAmount}>৳ {(item.totalSales || 0).toLocaleString()}</Text>
+                    <View style={styles.topHeroInfoCol}>
+                      <Text style={styles.topHeroTitle} numberOfLines={1}>
+                        {topSellingItems[0].name}
+                      </Text>
+                      <Text style={styles.topHeroSub}>
+                        {toBengaliNumber(topSellingItems[0].quantitySold)} পিস · মোট বিক্রির {toBengaliNumber(topItemPct)}%
+                      </Text>
+                      <Text style={styles.topHeroPrice}>
+                        ৳ {toBengaliNumber((topSellingItems[0].totalSales || 0).toLocaleString())}
+                      </Text>
                     </View>
                   </View>
-                );
-              })
-            )}
-          </View>
+                </View>
+              )}
+
+              {/* Items #2 to #5 Ranked List - NO food emojis */}
+              {topSellingItems.length > 1 && (
+                <View style={styles.rankedListCard}>
+                  {topSellingItems.slice(1, 5).map((item, index) => {
+                    const rankNum = index + 2;
+                    const maxSales = topSellingItems[0]?.totalSales || 1;
+                    const barWidthPct = Math.max(12, Math.min(100, Math.round(((item.totalSales || 0) / maxSales) * 100)));
+                    const isLast = index === topSellingItems.slice(1, 5).length - 1;
+
+                    return (
+                      <View 
+                        key={item.id || item.name || index} 
+                        style={[styles.rankedItemRow, !isLast && styles.rankedItemBorderBottom]}
+                      >
+                        <View style={styles.rankedBadge}>
+                          <Text style={styles.rankedBadgeText}>{rankNum}</Text>
+                        </View>
+
+                        <View style={styles.rankedItemMiddleCol}>
+                          <Text style={styles.rankedItemName} numberOfLines={1}>{item.name}</Text>
+                          <View style={styles.rankedItemSubRow}>
+                            {item.category ? (
+                              <Text style={styles.rankedItemCategory} numberOfLines={1}>{item.category}</Text>
+                            ) : null}
+                            <View style={styles.rankedProgressBarTrack}>
+                              <View style={[styles.rankedProgressBarFill, { width: `${barWidthPct}%` }]} />
+                            </View>
+                          </View>
+                        </View>
+
+                        <View style={styles.rankedItemRightCol}>
+                          <Text style={styles.rankedItemAmount}>
+                            ৳ {toBengaliNumber((item.totalSales || 0).toLocaleString())}
+                          </Text>
+                          <Text style={styles.rankedItemQty}>
+                            {toBengaliNumber(item.quantitySold)} পিস
+                          </Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+
+              {/* Category Breakdown Donut / Ring & Legend (Image 2) */}
+              {categoryBreakdown.length > 0 && (
+                <View style={styles.catBreakdownCard}>
+                  {/* Left: Donut Ring Chart */}
+                  <View style={styles.donutContainer}>
+                    <View style={[
+                      styles.donutRing,
+                      {
+                        borderTopColor: categoryBreakdown[0]?.color || '#F59E0B',
+                        borderRightColor: categoryBreakdown[1]?.color || categoryBreakdown[0]?.color || '#F97316',
+                        borderBottomColor: categoryBreakdown[2]?.color || categoryBreakdown[1]?.color || '#8B5CF6',
+                        borderLeftColor: categoryBreakdown[3]?.color || categoryBreakdown[2]?.color || '#2DD4BF',
+                      }
+                    ]}>
+                      <View style={styles.donutCenter}>
+                        <Text style={styles.donutCount}>
+                          {toBengaliNumber(categoryBreakdown.length)}
+                        </Text>
+                        <Text style={styles.donutLabel}>ক্যাটাগরি</Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Right: Category Legend */}
+                  <View style={styles.catLegendList}>
+                    {categoryBreakdown.slice(0, 4).map(cat => (
+                      <View key={cat.name} style={styles.catLegendRow}>
+                        <View style={[styles.catLegendDot, { backgroundColor: cat.color }]} />
+                        <Text style={styles.catLegendName} numberOfLines={1}>{cat.name}</Text>
+                        <Text style={styles.catLegendPct}>{toBengaliNumber(cat.percentage)}%</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+            </>
+          )}
         </View>
 
         {/* ── SECTION 4: ডিভাইস ও পস কন্ট্রোল ── */}
@@ -2448,18 +2565,53 @@ const styles = StyleSheet.create({
   activeTblChipText: { color: '#E8E9EF', fontSize: 11, fontWeight: '600', marginRight: 6 },
   activeTblChipAmt: { color: '#F59E0B', fontSize: 10, fontWeight: '700' },
 
-  // ── BEST SELLERS ──
-  bestSellerList: { backgroundColor: '#141520', borderRadius: 12, padding: 10, borderWidth: 1, borderColor: '#1E2030' },
-  bestSellerRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderColor: '#1E2030' },
-  rankBadge: { width: 26, height: 26, borderRadius: 13, borderWidth: 1.2, justifyContent: 'center', alignItems: 'center', marginRight: 10, flexShrink: 0 },
-  rankText: { fontSize: 9, fontWeight: '800' },
-  bestSellerInfo: { flex: 1, marginRight: 8, minWidth: 0 },
-  bestSellerName: { color: '#E8E9EF', fontSize: 12, fontWeight: '600' },
-  bestSellerCategory: { color: '#6B6F85', fontSize: 9, marginTop: 1 },
-  bestSellerMetrics: { alignItems: 'flex-end', flexShrink: 0 },
-  qtyBadge: { backgroundColor: 'rgba(16,185,129,0.12)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginBottom: 2 },
-  qtyBadgeText: { color: '#10B981', fontSize: 9, fontWeight: '700' },
-  itemSalesAmount: { color: '#E8E9EF', fontSize: 12, fontWeight: '700' },
+  // ── TOP SELLING FOOD REDESIGN ──
+  topSellerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
+  topSellerSubtitle: { color: '#6B6F85', fontSize: 11, marginTop: 2 },
+  topSellerReportBtn: { paddingVertical: 4, paddingHorizontal: 6 },
+  topSellerReportBtnText: { color: '#FFB703', fontSize: 12, fontWeight: '700' },
+
+  // Hero Card (#1 Item)
+  topHeroCard: { backgroundColor: '#F59E0B', borderRadius: 16, padding: 16, marginBottom: 12, position: 'relative', overflow: 'hidden' },
+  topHeroDecorCircle: { position: 'absolute', right: -25, top: -25, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(255, 255, 255, 0.14)' },
+  topHeroBadge: { backgroundColor: 'rgba(0, 0, 0, 0.28)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, alignSelf: 'flex-start', marginBottom: 10 },
+  topHeroBadgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
+  topHeroContentRow: { flexDirection: 'row', alignItems: 'center' },
+  topHeroRankBox: { width: 50, height: 50, borderRadius: 14, backgroundColor: 'rgba(0, 0, 0, 0.12)', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  topHeroRankNum: { color: '#1F1300', fontSize: 24, fontWeight: '900' },
+  topHeroInfoCol: { flex: 1, minWidth: 0 },
+  topHeroTitle: { color: '#1F1300', fontSize: 18, fontWeight: '800' },
+  topHeroSub: { color: 'rgba(31, 19, 0, 0.75)', fontSize: 12, fontWeight: '600', marginTop: 2, marginBottom: 4 },
+  topHeroPrice: { color: '#1F1300', fontSize: 20, fontWeight: '900' },
+
+  // Ranked List (#2 to #5 Items)
+  rankedListCard: { backgroundColor: '#0F1118', borderRadius: 14, borderWidth: 1, borderColor: '#1A1C29', marginBottom: 12, overflow: 'hidden' },
+  rankedItemRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 12 },
+  rankedItemBorderBottom: { borderBottomWidth: 1, borderColor: '#161824' },
+  rankedBadge: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#E2E8F0', justifyContent: 'center', alignItems: 'center', marginRight: 10, flexShrink: 0 },
+  rankedBadgeText: { color: '#0F172A', fontSize: 11, fontWeight: '800' },
+  rankedItemMiddleCol: { flex: 1, marginRight: 12, minWidth: 0 },
+  rankedItemName: { color: '#E8E9EF', fontSize: 13, fontWeight: '700', marginBottom: 4 },
+  rankedItemSubRow: { flexDirection: 'row', alignItems: 'center' },
+  rankedItemCategory: { color: '#6B6F85', fontSize: 10, marginRight: 8, maxWidth: 65 },
+  rankedProgressBarTrack: { flex: 1, height: 5, borderRadius: 2.5, backgroundColor: '#1E2130', overflow: 'hidden' },
+  rankedProgressBarFill: { height: '100%', borderRadius: 2.5, backgroundColor: '#F97316' },
+  rankedItemRightCol: { alignItems: 'flex-end', flexShrink: 0 },
+  rankedItemAmount: { color: '#E8E9EF', fontSize: 13, fontWeight: '800' },
+  rankedItemQty: { color: '#2DD4BF', fontSize: 11, fontWeight: '600', marginTop: 2 },
+
+  // Category Breakdown Card (Donut + Legend)
+  catBreakdownCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0F1118', borderRadius: 14, borderWidth: 1, borderColor: '#1A1C29', padding: 14 },
+  donutContainer: { marginRight: 16, justifyContent: 'center', alignItems: 'center' },
+  donutRing: { width: 82, height: 82, borderRadius: 41, borderWidth: 9, justifyContent: 'center', alignItems: 'center' },
+  donutCenter: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#0F1118', justifyContent: 'center', alignItems: 'center' },
+  donutCount: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
+  donutLabel: { color: '#6B6F85', fontSize: 9, marginTop: 1 },
+  catLegendList: { flex: 1, justifyContent: 'center' },
+  catLegendRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 3.5 },
+  catLegendDot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
+  catLegendName: { color: '#E8E9EF', fontSize: 12, fontWeight: '600', flex: 1 },
+  catLegendPct: { color: '#E8E9EF', fontSize: 12, fontWeight: '700' },
 
   // ── DEVICE CONTROL ──
   deviceChipsRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 8 },
