@@ -999,22 +999,6 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
           />
         </ScrollView>
 
-        {/* ── 3-METRIC EXECUTIVE ROW (Image 4) ── */}
-        <View style={styles.metricsRowCard}>
-          <View style={styles.metricRowCol}>
-            <Text style={styles.metricRowLabel}>ডিসকাউন্ট</Text>
-            <Text style={styles.metricRowValue}>৳{todayDiscount.toLocaleString()}</Text>
-          </View>
-          <View style={styles.metricRowCol}>
-            <Text style={styles.metricRowLabel}>ডেলিভারি</Text>
-            <Text style={styles.metricRowValue}>৳{todayDeliverySales.toLocaleString()}</Text>
-          </View>
-          <View style={styles.metricRowCol}>
-            <Text style={styles.metricRowLabel}>পিক টাইম</Text>
-            <Text style={styles.metricRowValue}>{calculatedPeakHour}</Text>
-          </View>
-        </View>
-
         {/* ── টাকা কোন পথে এল (Image 3) ── */}
         <View style={styles.card}>
           <Text style={styles.sectionHeaderTitle}>টাকা কোন পথে এল</Text>
@@ -2516,12 +2500,6 @@ const styles = StyleSheet.create({
   syncStatusVal: { fontSize: 11, fontWeight: '700' },
   syncTimerBar: { backgroundColor: '#0A0B10', borderRadius: 8, paddingVertical: 7, paddingHorizontal: 12, borderWidth: 1, borderColor: '#1A1B24', alignItems: 'center' },
   syncTimerBarText: { color: '#6B6F85', fontSize: 9.5 },
-
-  // ── 3-METRIC EXECUTIVE ROW (Image 4) ──
-  metricsRowCard: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#0E0F14', borderRadius: 14, borderWidth: 1, borderColor: '#1A1B24', marginBottom: 12, paddingVertical: 14, paddingHorizontal: 16, width: '100%' },
-  metricRowCol: { flex: 1, alignItems: 'center' },
-  metricRowLabel: { color: '#6B6F85', fontSize: 11, fontWeight: '600', marginBottom: 4 },
-  metricRowValue: { color: '#E8E9EF', fontSize: 16, fontWeight: '800' },
 
   // ── PAYMENT SEGMENTED BAR (Image 3) ──
   sectionHeaderTitle: { color: '#E8E9EF', fontSize: 14, fontWeight: '700', marginBottom: 12 },
