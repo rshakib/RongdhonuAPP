@@ -1124,7 +1124,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
         </ScrollView>
 
         {/* ── টাকা কোন পথে এল (Image 3) ── */}
-        <View style={styles.card}>
+        <View style={styles.paymentSourceCard}>
           <Text style={styles.sectionHeaderTitle}>টাকা কোন পথে এল</Text>
           {/* Segmented multi-color horizontal bar */}
           <View style={styles.segmentedBarTrack}>
@@ -2923,8 +2923,17 @@ const styles = StyleSheet.create({
   syncEngineDivider: { width: 1, height: 14, backgroundColor: '#2C2C32' },
 
   // ── PAYMENT SEGMENTED BAR (Image 3) ──
+  paymentSourceCard: {
+    backgroundColor: '#181E25',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#242C37',
+    padding: 16,
+    marginBottom: 16,
+    width: '100%',
+  },
   sectionHeaderTitle: { color: '#FFFFFF', fontSize: 14, fontWeight: '700', marginBottom: 12 },
-  segmentedBarTrack: { height: 16, borderRadius: 8, flexDirection: 'row', overflow: 'hidden', backgroundColor: '#222226', marginBottom: 14 },
+  segmentedBarTrack: { height: 16, borderRadius: 8, flexDirection: 'row', overflow: 'hidden', backgroundColor: '#111417', marginBottom: 14 },
   segmentBar: { height: '100%' },
   paymentLegendGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 8 },
   paymentLegendItem: { width: '48%', flexDirection: 'row', alignItems: 'center' },
