@@ -1572,42 +1572,141 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
           </TouchableOpacity>
         </View>
 
-        {/* ── SECTION 5: ক্লাউড সিঙ্ক ও সিস্টেম হেলথ ── */}
+        {/* ── SECTION 5: ক্লাউড সিঙ্ক ও সিস্টেম হেলথ (Redesigned with Real App Sync) ── */}
         <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <View style={styles.cardHeaderLeft}>
-              <View style={[styles.cardIconPill, { backgroundColor: 'rgba(6,182,212,0.15)' }]}>
-                <Text style={styles.cardIconEmoji}>🔄</Text>
-              </View>
-              <View style={styles.cardTitleCol}>
-                <Text style={styles.cardTitle}>ক্লাউড সিঙ্ক ও হেলথ</Text>
-                <Text style={styles.cardSubtitle}>ডাটাবেজ সিঙ্ক স্থিতি</Text>
-              </View>
+          {/* Header */}
+          <View style={styles.syncCardHeader}>
+            <View style={styles.syncHeaderLeft}>
+              <Text style={styles.syncSectionTitle}>ক্লাউড সিঙ্ক ও হেলথ</Text>
+              <Text style={styles.syncSectionSubtitle}>ডাটাবেজ সিঙ্ক স্থিতি</Text>
             </View>
-            <TouchableOpacity style={styles.cardOutlineBtn} onPress={onNavigateToSyncDiagnostics} activeOpacity={0.7}>
-              <Text style={styles.cardOutlineBtnText}>ডায়াগনস্টিকস 🛠️</Text>
+            <TouchableOpacity
+              style={styles.syncDiagLink}
+              onPress={onNavigateToSyncDiagnostics}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.syncDiagLinkText}>⚡ ডায়াগনস্টিকস</Text>
             </TouchableOpacity>
           </View>
 
-          <View style={styles.syncStatusGrid}>
-            <View style={styles.syncStatusCell}>
-              <Text style={styles.syncStatusLabel}>SQLite লোকাল ডাটাবেজ</Text>
-              <Text style={[styles.syncStatusVal, { color: '#10B981' }]}>🟢 সক্রিয় ও সুরক্ষিত</Text>
+          {/* Deep Indigo / Royal Blue Hero Card */}
+          <View style={styles.syncHeroBanner}>
+            {/* Top Status Row */}
+            <View style={styles.syncHeroTopRow}>
+              <View style={styles.syncHeroIconBox}>
+                <Text style={styles.syncHeroIconEmoji}>🔄</Text>
+              </View>
+              <View style={styles.syncHeroTitleCol}>
+                <Text style={styles.syncHeroTitle}>
+                  {pendingSyncCount > 0 ? 'ডাটা সিঙ্ক হচ্ছে...' : 'সিস্টেম সুস্থ আছে'}
+                </Text>
+                <Text style={styles.syncHeroSubtitle}>
+                  {pendingSyncCount > 0
+                    ? `${toBengaliNumber(pendingSyncCount)}টি ডাটা ক্লাউডে পাঠানো হচ্ছে`
+                    : 'লোকাল ও ক্লাউড ডাটাবেজ সিঙ্কে আছে'}
+                </Text>
+              </View>
             </View>
-            <View style={[styles.syncStatusCell, { borderLeftWidth: 1, borderColor: '#232331', paddingLeft: 12 }]}>
-              <Text style={styles.syncStatusLabel}>ক্লাউড সিঙ্ক কিউ</Text>
-              <Text style={[styles.syncStatusVal, pendingSyncCount > 0 ? { color: '#F59E0B' } : { color: '#10B981' }]}>
-                {pendingSyncCount === 0 ? 'সব ডাটা সিঙ্কড ✅' : `${pendingSyncCount} টি অপেক্ষমান 🔄`}
-              </Text>
+
+            {/* Tile 1: SQLite Local Database */}
+            <View style={styles.syncTile}>
+              <View style={styles.syncTileIconWrap}>
+                <Text style={styles.syncTileIconEmoji}>🗄️</Text>
+              </View>
+              <View style={styles.syncTileMidCol}>
+                <Text style={styles.syncTileLabel}>SQLite লোকাল ডাটাবেজ</Text>
+                <View style={styles.syncTileStatusRow}>
+                  <View style={[styles.syncStatusDot, { backgroundColor: '#2DD4BF' }]} />
+                  <Text style={styles.syncTileStatusText}>সক্রিয় ও সুরক্ষিত</Text>
+                </View>
+              </View>
+              <View style={[styles.syncCheckCircle, { backgroundColor: '#10B981' }]}>
+                <Text style={styles.syncCheckMark}>✓</Text>
+              </View>
+            </View>
+
+            {/* Tile 2: Cloud Sync Queue */}
+            <View style={styles.syncTile}>
+              <View style={styles.syncTileIconWrap}>
+                <Text style={styles.syncTileIconEmoji}>☁️</Text>
+              </View>
+              <View style={styles.syncTileMidCol}>
+                <Text style={styles.syncTileLabel}>ক্লাউড সিঙ্ক কিউ</Text>
+                <View style={styles.syncTileStatusRow}>
+                  <View style={[styles.syncStatusDot, { backgroundColor: pendingSyncCount > 0 ? '#F59E0B' : '#10B981' }]} />
+                  <Text style={[styles.syncTileStatusText, pendingSyncCount > 0 && { color: '#F59E0B' }]}>
+                    {pendingSyncCount === 0 ? 'সব ডাটা সিঙ্কড' : `${toBengaliNumber(pendingSyncCount)}টি অপেক্ষমান`}
+                  </Text>
+                </View>
+              </View>
+              {pendingSyncCount === 0 ? (
+                <View style={[styles.syncCheckCircle, { backgroundColor: '#10B981' }]}>
+                  <Text style={styles.syncCheckMark}>✓</Text>
+                </View>
+              ) : (
+                <View style={[styles.syncCheckCircle, { backgroundColor: '#F59E0B' }]}>
+                  <Text style={[styles.syncCheckMark, { color: '#000' }]}>!</Text>
+                </View>
+              )}
             </View>
           </View>
 
-          <View style={styles.syncTimerBar}>
-            <Text style={styles.syncTimerBarText}>
-              ⏱️ অটো-সিঙ্ক টাইমার: ডেলিভারি {delCountdown}s | টেবিল {tabCountdown}s | ফুল সিঙ্ক {fullCountdown}s
-            </Text>
-          </View>
+          {/* Bottom Card: Auto-Sync Timers (Real App Timers) */}
+          <View style={styles.syncTimersCard}>
+            <View style={styles.syncTimersHeaderRow}>
+              <Text style={styles.syncTimersHeaderIcon}>⏱️</Text>
+              <Text style={styles.syncTimersTitle}>অটো-সিঙ্ক টাইমার</Text>
+              <View style={styles.syncActivePill}>
+                <Text style={styles.syncActivePillText}>লাইভ</Text>
+              </View>
+            </View>
 
+            {/* 3 Circular Countdown Gauge Rings (Real system timers) */}
+            <View style={styles.syncRingsRow}>
+              {/* Delivery Timer (Real App Interval: 90s) */}
+              <View style={styles.syncRingCol}>
+                <View style={[styles.syncCircularRing, styles.syncRingOrange]}>
+                  <Text style={styles.syncRingNumber}>{toBengaliNumber(delCountdown)}</Text>
+                  <Text style={styles.syncRingUnit}>সেকেন্ড</Text>
+                </View>
+                <Text style={styles.syncRingName}>ডেলিভারি</Text>
+                <Text style={styles.syncRingCycle}>প্রতি ৯০ সে.</Text>
+              </View>
+
+              {/* Table Timer (Real App Interval: 15s) */}
+              <View style={styles.syncRingCol}>
+                <View style={[styles.syncCircularRing, styles.syncRingTeal]}>
+                  <Text style={styles.syncRingNumber}>{toBengaliNumber(tabCountdown)}</Text>
+                  <Text style={styles.syncRingUnit}>সেকেন্ড</Text>
+                </View>
+                <Text style={styles.syncRingName}>টেবিল</Text>
+                <Text style={styles.syncRingCycle}>প্রতি ১৫ সে.</Text>
+              </View>
+
+              {/* Full Sync Timer (Real App Interval: 30s) */}
+              <View style={styles.syncRingCol}>
+                <View style={[styles.syncCircularRing, styles.syncRingPurple]}>
+                  <Text style={styles.syncRingNumber}>{toBengaliNumber(fullCountdown)}</Text>
+                  <Text style={styles.syncRingUnit}>সেকেন্ড</Text>
+                </View>
+                <Text style={styles.syncRingName}>ফুল সিঙ্ক</Text>
+                <Text style={styles.syncRingCycle}>প্রতি ৩০ সে.</Text>
+              </View>
+            </View>
+
+            {/* Background System Sync Engine Info Strip */}
+            <View style={styles.syncEngineStrip}>
+              <View style={styles.syncEngineItem}>
+                <Text style={styles.syncEngineDot}>⚡</Text>
+                <Text style={styles.syncEngineText}>পুশ ইঞ্জিন: প্রতি ৫ সে.</Text>
+              </View>
+              <View style={styles.syncEngineDivider} />
+              <View style={styles.syncEngineItem}>
+                <Text style={styles.syncEngineDot}>📦</Text>
+                <Text style={styles.syncEngineText}>হিসাব সিঙ্ক: প্রতি ৩ মি.</Text>
+              </View>
+            </View>
+          </View>
         </View>
 
         {/* ── SECTION 8: অ্যাপ ভার্সন কন্ট্রোল ── */}
@@ -2653,13 +2752,61 @@ const styles = StyleSheet.create({
   devicePrimaryBtnIcon: { fontSize: 14, marginRight: 8 },
   devicePrimaryBtnText: { color: '#042F2E', fontSize: 13.5, fontWeight: '800' },
 
-  // ── SYNC HEALTH ──
-  syncStatusGrid: { flexDirection: 'row', marginBottom: 10 },
-  syncStatusCell: { flex: 1 },
-  syncStatusLabel: { color: '#6B6F85', fontSize: 10, marginBottom: 3 },
-  syncStatusVal: { fontSize: 11, fontWeight: '700' },
-  syncTimerBar: { backgroundColor: '#0A0B10', borderRadius: 8, paddingVertical: 7, paddingHorizontal: 12, borderWidth: 1, borderColor: '#1A1B24', alignItems: 'center' },
-  syncTimerBarText: { color: '#6B6F85', fontSize: 9.5 },
+  // ── CLOUD SYNC & HEALTH (Redesigned with Real App Sync) ──
+  syncCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  syncHeaderLeft: { flex: 1, minWidth: 0, marginRight: 8 },
+  syncSectionTitle: { color: '#E8E9EF', fontSize: 15, fontWeight: '800' },
+  syncSectionSubtitle: { color: '#6B6F85', fontSize: 10.5, marginTop: 2 },
+  syncDiagLink: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 8 },
+  syncDiagLinkText: { color: '#F59E0B', fontSize: 13, fontWeight: '700' },
+
+  // Deep Indigo Hero Banner
+  syncHeroBanner: { backgroundColor: '#141D4E', borderRadius: 18, borderWidth: 1, borderColor: '#222E73', padding: 16, overflow: 'hidden' },
+  syncHeroTopRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
+  syncHeroIconBox: { width: 42, height: 42, borderRadius: 12, backgroundColor: 'rgba(255, 255, 255, 0.12)', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  syncHeroIconEmoji: { fontSize: 18 },
+  syncHeroTitleCol: { flex: 1, minWidth: 0 },
+  syncHeroTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
+  syncHeroSubtitle: { color: '#A5B4FC', fontSize: 11, fontWeight: '500', marginTop: 2 },
+
+  // Hero Tiles (SQLite & Cloud Sync Queue)
+  syncTile: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255, 255, 255, 0.08)', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.12)', paddingHorizontal: 12, paddingVertical: 10, marginTop: 8 },
+  syncTileIconWrap: { width: 34, height: 34, borderRadius: 10, backgroundColor: 'rgba(255, 255, 255, 0.1)', justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+  syncTileIconEmoji: { fontSize: 15 },
+  syncTileMidCol: { flex: 1, minWidth: 0 },
+  syncTileLabel: { color: '#94A3B8', fontSize: 10, fontWeight: '500' },
+  syncTileStatusRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
+  syncStatusDot: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
+  syncTileStatusText: { color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' },
+  syncCheckCircle: { width: 22, height: 22, borderRadius: 11, justifyContent: 'center', alignItems: 'center', marginLeft: 8 },
+  syncCheckMark: { color: '#0A2016', fontSize: 12, fontWeight: '900' },
+
+  // Bottom Auto-Sync Timers Card
+  syncTimersCard: { backgroundColor: '#12141C', borderRadius: 16, borderWidth: 1, borderColor: '#1D202D', padding: 14, marginTop: 12 },
+  syncTimersHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
+  syncTimersHeaderIcon: { fontSize: 14, marginRight: 6 },
+  syncTimersTitle: { color: '#FFFFFF', fontSize: 13, fontWeight: '800', flex: 1 },
+  syncActivePill: { backgroundColor: 'rgba(16, 185, 129, 0.15)', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, borderWidth: 1, borderColor: 'rgba(16, 185, 129, 0.3)' },
+  syncActivePillText: { color: '#10B981', fontSize: 9.5, fontWeight: '700' },
+
+  // 3 Circular Countdown Gauge Rings
+  syncRingsRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', marginBottom: 12 },
+  syncRingCol: { alignItems: 'center' },
+  syncCircularRing: { width: 72, height: 72, borderRadius: 36, borderWidth: 5, backgroundColor: '#0C0E17', justifyContent: 'center', alignItems: 'center' },
+  syncRingOrange: { borderColor: '#2A2020', borderTopColor: '#F97316', borderRightColor: '#F97316' },
+  syncRingTeal: { borderColor: '#152525', borderTopColor: '#2DD4BF', borderRightColor: '#2DD4BF', borderBottomColor: '#2DD4BF' },
+  syncRingPurple: { borderColor: '#201C2E', borderTopColor: '#8B5CF6', borderRightColor: '#8B5CF6' },
+  syncRingNumber: { color: '#FFFFFF', fontSize: 18, fontWeight: '900' },
+  syncRingUnit: { color: '#6B6F85', fontSize: 9, marginTop: 1 },
+  syncRingName: { color: '#FFFFFF', fontSize: 12, fontWeight: '700', marginTop: 8 },
+  syncRingCycle: { color: '#6B6F85', fontSize: 10, marginTop: 2 },
+
+  // Sync Engine Background Strip
+  syncEngineStrip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#090B10', borderRadius: 8, paddingVertical: 7, paddingHorizontal: 12, borderWidth: 1, borderColor: '#181A24', marginTop: 4 },
+  syncEngineItem: { flexDirection: 'row', alignItems: 'center' },
+  syncEngineDot: { fontSize: 11, marginRight: 5 },
+  syncEngineText: { color: '#8B8FA8', fontSize: 10, fontWeight: '600' },
+  syncEngineDivider: { width: 1, height: 14, backgroundColor: '#1E2030' },
 
   // ── PAYMENT SEGMENTED BAR (Image 3) ──
   sectionHeaderTitle: { color: '#E8E9EF', fontSize: 14, fontWeight: '700', marginBottom: 12 },
