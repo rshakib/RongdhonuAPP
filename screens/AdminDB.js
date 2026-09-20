@@ -10,7 +10,6 @@ import {
   StatusBar as RNStatusBar,
   Modal,
   TextInput,
-  Alert,
   BackHandler,
   ActivityIndicator,
   Keyboard,
@@ -354,10 +353,26 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
   const [selectedMonitoringItem, setSelectedMonitoringItem] = useState(null);
   const [monitoringModalVisible, setMonitoringModalVisible] = useState(false);
 
+  // Custom Dark Theme Alert State (Replaces native white Alert.alert to match Admin UI)
+  const [darkAlert, setDarkAlert] = useState(null);
+
+  const Alert = {
+    alert: (title, message, buttons) => {
+      setDarkAlert({
+        title: title || '',
+        message: message || '',
+        buttons: buttons && buttons.length > 0
+          ? buttons
+          : [{ text: 'ঠিক আছে', onPress: () => setDarkAlert(null) }]
+      });
+    }
+  };
+
   // Android Back Handler for Modals
   useEffect(() => {
     const backAction = () => {
       // Priority: Close modals from top to bottom
+      if (darkAlert) { setDarkAlert(null); return true; }
       if (versionPinModalVisible) { setVersionPinModalVisible(false); return true; }
       if (monitoringModalVisible) { setMonitoringModalVisible(false); return true; }
       if (orderDetailVisible) { setOrderDetailVisible(false); return true; }
@@ -382,7 +397,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     );
 
     return () => backHandler.remove();
-  }, [versionPinModalVisible, monitoringModalVisible, orderDetailVisible, calendarVisible, yearPickerVisible, monthPickerVisible, pastAccountModalVisible, cleanupModalVisible, firebaseUsageVisible, ijaraModalVisible, salesReportVisible, depositReportVisible, menuModalVisible, renameModalVisible]);
+  }, [darkAlert, versionPinModalVisible, monitoringModalVisible, orderDetailVisible, calendarVisible, yearPickerVisible, monthPickerVisible, pastAccountModalVisible, cleanupModalVisible, firebaseUsageVisible, ijaraModalVisible, salesReportVisible, depositReportVisible, menuModalVisible, renameModalVisible]);
 
   // Load/Refresh Firebase minimum version
   const loadFirebaseVersion = async () => {
@@ -2912,6 +2927,128 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
         </KeyboardAvoidingView>
       </Modal>
 
+      {/* ── CUSTOM DARK THEME ALERT / NOTIFICATION MODAL (Matches Admin App Theme #181E25) ── */}
+      <Modal
+        visible={!!darkAlert}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setDarkAlert(null)}
+      >
+        <View style={styles.darkAlertBackdrop}>
+          <View style={styles.darkAlertBox}>
+            {/* Top Icon Badge */}
+            {(() => {
+              const title = darkAlert?.title || '';
+              const isSuccess = title.includes('সফল') || title.includes('✅');
+              const isDanger = title.includes('লগআউট') || title.includes('🔄') || title.includes('ব্লক') || title.includes('🚫') || title.includes('ত্রুটি') || title.includes('❌') || title.includes('মুছুন') || title.includes('🗑️') || title.includes('ব্যর্থ') || title.includes('ভুল') || title.includes('ডিনাইড');
+              const isLock = title.includes('লক') || title.includes('🔒') || title.includes('নিরাপত্তা') || title.includes('বায়োমেট্রিক');
+
+              const iconBg = isSuccess 
+                ? 'rgba(16, 185, 129, 0.15)' 
+                : isDanger 
+                ? 'rgba(239, 68, 68, 0.15)' 
+                : isLock 
+                ? 'rgba(245, 158, 11, 0.15)' 
+                : 'rgba(99, 102, 241, 0.15)';
+              
+              const iconBorder = isSuccess 
+                ? 'rgba(16, 185, 129, 0.35)' 
+                : isDanger 
+                ? 'rgba(239, 68, 68, 0.35)' 
+                : isLock 
+                ? 'rgba(245, 158, 11, 0.35)' 
+                : 'rgba(99, 102, 241, 0.35)';
+
+              const iconSymbol = isSuccess
+                ? '✅'
+                : isDanger
+                ? '⚠️'
+                : isLock
+                ? '🔒'
+                : 'ℹ️';
+
+              return (
+                <View style={[styles.darkAlertIconCircle, { backgroundColor: iconBg, borderColor: iconBorder }]}>
+                  <Text style={{ fontSize: 24 }}>{iconSymbol}</Text>
+                </View>
+              );
+            })()}
+
+            {/* Title */}
+            <Text style={styles.darkAlertTitle}>
+              {(darkAlert?.title || '').replace(/^[✅❌🔄🚫⚠️🔒📡\s]+/, '').trim() || darkAlert?.title}
+            </Text>
+
+            {/* Message Body */}
+            <ScrollView style={{ maxHeight: 220 }} showsVerticalScrollIndicator={false}>
+              <Text style={styles.darkAlertMessage}>
+                {darkAlert?.message}
+              </Text>
+            </ScrollView>
+
+            {/* Button Actions */}
+            <View style={styles.darkAlertBtnRow}>
+              {(darkAlert?.buttons || [{ text: 'ঠিক আছে', onPress: () => setDarkAlert(null) }]).map((btn, index) => {
+                const isCancel = btn.style === 'cancel' || btn.text === 'বাতিল' || btn.text === 'Cancel' || btn.text === 'না';
+                const isDestructive = btn.style === 'destructive' || btn.text.includes('Delete') || btn.text.includes('ডিলিট') || btn.text.includes('মুছুন') || btn.text === 'হ্যাঁ';
+                const isSingle = (darkAlert?.buttons || []).length <= 1;
+
+                let btnBg = '#6366F1';
+                let btnBorder = 'transparent';
+                let textColor = '#FFFFFF';
+
+                if (isCancel) {
+                  btnBg = '#202630';
+                  btnBorder = '#2D3748';
+                  textColor = '#94A3B8';
+                } else if (isDestructive) {
+                  btnBg = '#EF4444';
+                } else if (isSingle) {
+                  const title = darkAlert?.title || '';
+                  if (title.includes('সফল') || title.includes('✅')) {
+                    btnBg = '#10B981';
+                  } else if (title.includes('ত্রুটি') || title.includes('❌') || title.includes('ব্যর্থ') || title.includes('ভুল')) {
+                    btnBg = '#EF4444';
+                  } else {
+                    btnBg = '#6366F1';
+                  }
+                }
+
+                return (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.darkAlertBtn,
+                      {
+                        backgroundColor: btnBg,
+                        borderColor: btnBorder,
+                        borderWidth: btnBorder !== 'transparent' ? 1 : 0,
+                        flex: isSingle ? 0 : 1,
+                        width: isSingle ? '100%' : undefined,
+                      }
+                    ]}
+                    activeOpacity={0.8}
+                    onPress={() => {
+                      const handler = btn.onPress;
+                      setDarkAlert(null);
+                      if (typeof handler === 'function') {
+                        setTimeout(() => {
+                          handler();
+                        }, 70);
+                      }
+                    }}
+                  >
+                    <Text style={[styles.darkAlertBtnText, { color: textColor }]}>
+                      {btn.text}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -3881,5 +4018,71 @@ const styles = StyleSheet.create({
   statusBadgeTextSmall: { fontSize: 9, fontWeight: '700' },
   textAmber: { color: '#FFB703' },
   textRed: { color: '#EF4444' },
+
+  // ── CUSTOM DARK ALERT MODAL STYLES (Admin Theme #181E25) ──
+  darkAlertBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.78)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  darkAlertBox: {
+    backgroundColor: '#181E25',
+    borderWidth: 1,
+    borderColor: '#242C37',
+    borderRadius: 22,
+    padding: 22,
+    width: '90%',
+    maxWidth: 360,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  darkAlertIconCircle: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    borderWidth: 1.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  darkAlertTitle: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  darkAlertMessage: {
+    color: '#94A3B8',
+    fontSize: 13.5,
+    lineHeight: 21,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  darkAlertBtnRow: {
+    flexDirection: 'row',
+    width: '100%',
+    gap: 10,
+    marginTop: 4,
+  },
+  darkAlertBtn: {
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 46,
+  },
+  darkAlertBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
 });
 
