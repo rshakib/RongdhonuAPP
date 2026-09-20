@@ -2450,6 +2450,7 @@ export default function App() {
             table={activeItemTable}
             menuItems={menuItems}
             userRole={userRole}
+            userDisplayName={userDisplayName}
             onBack={() => setCurrentScreen('TABLE_DETAIL')}
             onUpdateTableItems={handleUpdateTableItems}
             onUpdateMenuPrice={handleUpdateMenuPrice}

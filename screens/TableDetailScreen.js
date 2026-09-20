@@ -108,10 +108,13 @@ export default function TableDetailScreen({
   const handleQuickAddWater = () => {
     const existingIndex = items.findIndex(item => item.name === 'পানি');
     const updated = [...items];
+    const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     if (existingIndex > -1) {
       updated[existingIndex].qty += 1;
+      if (!updated[existingIndex].time) updated[existingIndex].time = nowTime;
+      if (!updated[existingIndex].addedBy) updated[existingIndex].addedBy = 'কাউন্টার';
     } else {
-      updated.push({ name: 'পানি', price: 20, qty: 1 });
+      updated.push({ name: 'পানি', price: 20, qty: 1, time: nowTime, addedBy: 'কাউন্টার' });
     }
     onUpdateTableItems(table.id, updated);
   };

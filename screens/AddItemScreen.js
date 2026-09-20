@@ -19,6 +19,7 @@ export default function AddItemScreen({
   table = { items: [] },
   menuItems,
   userRole,
+  userDisplayName,
   onBack,
   onUpdateTableItems,
   onUpdateMenuPrice,
@@ -151,11 +152,21 @@ export default function AddItemScreen({
   const confirmAddItem = (menuItem, qty) => {
     const existingIndex = cartItems.findIndex(i => i.name === menuItem.name);
     const updated = [...cartItems];
+    const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const taker = userDisplayName || (userRole === 'admin' ? 'অ্যাডমিন' : userRole === 'owner' ? 'মালিক' : 'ম্যানেজার');
     
     if (existingIndex > -1) {
       updated[existingIndex].qty += qty;
+      if (!updated[existingIndex].time) updated[existingIndex].time = nowTime;
+      if (!updated[existingIndex].addedBy) updated[existingIndex].addedBy = taker;
     } else {
-      updated.push({ name: menuItem.name, price: menuItem.price, qty: qty });
+      updated.push({
+        name: menuItem.name,
+        price: menuItem.price,
+        qty: qty,
+        time: nowTime,
+        addedBy: taker
+      });
     }
     
     onUpdateTableItems(table.id, updated);

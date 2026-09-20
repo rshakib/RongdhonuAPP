@@ -350,11 +350,16 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [orderDetailVisible, setOrderDetailVisible] = useState(false);
 
+  // Table & Delivery Read-Only Monitoring Modal State
+  const [selectedMonitoringItem, setSelectedMonitoringItem] = useState(null);
+  const [monitoringModalVisible, setMonitoringModalVisible] = useState(false);
+
   // Android Back Handler for Modals
   useEffect(() => {
     const backAction = () => {
       // Priority: Close modals from top to bottom
       if (versionPinModalVisible) { setVersionPinModalVisible(false); return true; }
+      if (monitoringModalVisible) { setMonitoringModalVisible(false); return true; }
       if (orderDetailVisible) { setOrderDetailVisible(false); return true; }
       if (calendarVisible) { setCalendarVisible(false); return true; }
       if (yearPickerVisible) { setYearPickerVisible(false); return true; }
@@ -377,7 +382,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     );
 
     return () => backHandler.remove();
-  }, [versionPinModalVisible, orderDetailVisible, calendarVisible, yearPickerVisible, monthPickerVisible, pastAccountModalVisible, cleanupModalVisible, firebaseUsageVisible, ijaraModalVisible, salesReportVisible, depositReportVisible, menuModalVisible, renameModalVisible]);
+  }, [versionPinModalVisible, monitoringModalVisible, orderDetailVisible, calendarVisible, yearPickerVisible, monthPickerVisible, pastAccountModalVisible, cleanupModalVisible, firebaseUsageVisible, ijaraModalVisible, salesReportVisible, depositReportVisible, menuModalVisible, renameModalVisible]);
 
   // Load/Refresh Firebase minimum version
   const loadFirebaseVersion = async () => {
@@ -1253,14 +1258,12 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                   key={t.id}
                   activeOpacity={isBusy ? 0.7 : 0.9}
                   onPress={() => {
+                    // Open read-only monitoring details modal per user request (cannot edit, shows all details with timestamps)
                     if (isBusy) {
-                      onTableSelect(t.id);
-                    } else {
-                      Alert.alert(
-                        "অ্যাডমিন এক্সেস",
-                        "অ্যাডমিন শুধুমাত্র মনিটর ও ম্যানেজ করতে পারেন। নতুন অর্ডার তৈরি করার অনুমতি নেই।"
-                      );
+                      // onTableSelect(t.id);
                     }
+                    setSelectedMonitoringItem({ ...t, isDelivery: false });
+                    setMonitoringModalVisible(true);
                   }}
                   onLongPress={() => handleTableLongPress(t)}
                   style={[
@@ -1293,7 +1296,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
           </View>
 
           {/* Bottom Hint */}
-          <Text style={styles.tableBottomHint}>চলমান টেবিলে চাপ দিলে বিস্তারিত</Text>
+          <Text style={styles.tableBottomHint}>টেবিল বা ডেলিভারিতে চাপ দিলে বিস্তারিত দেখুন (রিড-অনলি)</Text>
 
           {/* ───── সক্রিয় ডেলিভারি ───── Divider Inside the Same Card */}
           <View style={styles.deliveryDividerContainer}>
@@ -1320,7 +1323,11 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                 <TouchableOpacity
                   key={delivery.id}
                   style={styles.activeDeliveryCard}
-                  onPress={() => onTableSelect(delivery.id)}
+                  onPress={() => {
+                    // onTableSelect(delivery.id);
+                    setSelectedMonitoringItem({ ...delivery, isDelivery: true });
+                    setMonitoringModalVisible(true);
+                  }}
                   activeOpacity={0.7}
                 >
                   <View style={styles.activeDeliveryHeaderRow}>
@@ -2035,15 +2042,12 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                     <TouchableOpacity
                       key={table.id}
                       onPress={() => {
+                        setFloorModalVisible(false);
                         if (isBusy) {
-                          setFloorModalVisible(false);
-                          onTableSelect(table.id);
-                        } else {
-                          Alert.alert(
-                            "অ্যাডমিন এক্সেস",
-                            "অ্যাডমিন শুধুমাত্র মনিটর ও ম্যানেজ করতে পারেন। নতুন অর্ডার তৈরি করার অনুমতি নেই।"
-                          );
+                          // onTableSelect(table.id);
                         }
+                        setSelectedMonitoringItem({ ...table, isDelivery: false });
+                        setMonitoringModalVisible(true);
                       }}
                       onLongPress={() => handleTableLongPress(table)}
                       style={[styles.tableCard, isBusy ? styles.tableBusyBorder : styles.tableFreeBorder]}
@@ -2070,7 +2074,9 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                       style={[styles.deliveryCard, { marginBottom: 10 }]}
                       onPress={() => {
                         setFloorModalVisible(false);
-                        onTableSelect(delivery.id);
+                        // onTableSelect(delivery.id);
+                        setSelectedMonitoringItem({ ...delivery, isDelivery: true });
+                        setMonitoringModalVisible(true);
                       }}
                     >
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2088,6 +2094,237 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                 </View>
               </View>
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── TABLE & DELIVERY READ-ONLY MONITORING MODAL (User Request: Shows all items, timing, order taker, cannot edit) ── */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={monitoringModalVisible}
+        onRequestClose={() => setMonitoringModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { width: '92%', maxHeight: '88%', padding: 18, backgroundColor: '#181E25', borderColor: '#242C37', borderWidth: 1, borderRadius: 24 }]}>
+            {/* Header */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', alignItems: 'center', marginBottom: 16 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 10 }}>
+                <View style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 14,
+                  backgroundColor: selectedMonitoringItem?.isDelivery ? 'rgba(99, 102, 241, 0.15)' : (selectedMonitoringItem?.status === 'BUSY' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(45, 212, 191, 0.15)'),
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  marginRight: 12
+                }}>
+                  <Text style={{ fontSize: 20 }}>
+                    {selectedMonitoringItem?.isDelivery ? '🛵' : '🪑'}
+                  </Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '800' }} numberOfLines={1}>
+                    {selectedMonitoringItem?.isDelivery 
+                      ? (selectedMonitoringItem?.name || 'ডেলিভারি অর্ডার')
+                      : `টেবিল - ${selectedMonitoringItem?.name || String(selectedMonitoringItem?.id || '').replace('table_', 'T-')}`}
+                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 3 }}>
+                    <View style={{
+                      width: 7,
+                      height: 7,
+                      borderRadius: 3.5,
+                      backgroundColor: selectedMonitoringItem?.status === 'BUSY' ? '#F59E0B' : '#2DD4BF',
+                      marginRight: 6
+                    }} />
+                    <Text style={{ color: selectedMonitoringItem?.status === 'BUSY' ? '#F59E0B' : '#2DD4BF', fontSize: 11, fontWeight: '700' }}>
+                      {selectedMonitoringItem?.status === 'BUSY' ? 'চলমান (BUSY)' : 'খালি (FREE)'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+              <TouchableOpacity onPress={() => setMonitoringModalVisible(false)} style={styles.closeCircle}>
+                <Text style={styles.closeCircleText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {selectedMonitoringItem && (
+              <ScrollView showsVerticalScrollIndicator={false} style={{ width: '100%' }}>
+                {selectedMonitoringItem.status !== 'BUSY' || (!selectedMonitoringItem.items || selectedMonitoringItem.items.length === 0) ? (
+                  /* ── FREE TABLE STATE ── */
+                  <View style={{ alignItems: 'center', paddingVertical: 24, paddingHorizontal: 12 }}>
+                    <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: '#111417', justifyContent: 'center', alignItems: 'center', marginBottom: 14, borderWidth: 1, borderColor: '#242C37' }}>
+                      <Text style={{ fontSize: 30 }}>🍽️</Text>
+                    </View>
+                    <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700', marginBottom: 6, textAlign: 'center' }}>
+                      এই টেবিলে বর্তমানে কোনো চলমান অর্ডার নেই
+                    </Text>
+                    <Text style={{ color: '#8B95A5', fontSize: 12, textAlign: 'center', lineHeight: 18, marginBottom: 18 }}>
+                      টেবিলটি বর্তমানে ফ্রি আছে। যখন ক্যাশ কাউন্টার বা ম্যানেজার কোনো অর্ডার নেবেন, তখন এখানে বিস্তারিত দেখা যাবে।
+                    </Text>
+
+                    {/* Admin Access Restriction Notice per TC-06 */}
+                    <View style={{ width: '100%', backgroundColor: 'rgba(239, 68, 68, 0.08)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.25)', padding: 12, flexDirection: 'row', alignItems: 'center' }}>
+                      <Text style={{ fontSize: 18, marginRight: 10 }}>🔒</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: '#F87171', fontSize: 11.5, fontWeight: '700' }}>অ্যাডমিন এক্সেস</Text>
+                        <Text style={{ color: '#EF4444', fontSize: 11, marginTop: 2 }}>
+                          অ্যাডমিন শুধুমাত্র মনিটর ও ম্যানেজ করতে পারেন। নতুন অর্ডার তৈরি করার অনুমতি নেই।
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                ) : (
+                  /* ── BUSY TABLE / DELIVERY DETAILS ── */
+                  <View style={{ width: '100%' }}>
+                    {/* Timing & Order Info Strip */}
+                    <View style={{ backgroundColor: '#111417', borderRadius: 14, borderWidth: 1, borderColor: '#202630', padding: 12, marginBottom: 14 }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: '#8B95A5', fontSize: 11, fontWeight: '600' }}>⏱️ শুরুর সময়</Text>
+                          <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700', marginTop: 2 }}>
+                            {formatStartTime(selectedMonitoringItem.startTime) || 'এইমাত্র'}
+                          </Text>
+                        </View>
+                        <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                          <Text style={{ color: '#8B95A5', fontSize: 11, fontWeight: '600' }}>⏳ চলছে</Text>
+                          <Text style={{ color: '#F59E0B', fontSize: 12.5, fontWeight: '700', marginTop: 2 }}>
+                            {getTableElapsedMinutes(selectedMonitoringItem) !== null
+                              ? `${getTableElapsedMinutes(selectedMonitoringItem)} মিনিট ধরে`
+                              : 'চলমান'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={{ height: 1, backgroundColor: '#1E242C', marginVertical: 4 }} />
+
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: '#8B95A5', fontSize: 11, fontWeight: '600' }}>👤 অর্ডার দিয়েছেন</Text>
+                          <Text style={{ color: '#38BDF8', fontSize: 12, fontWeight: '700', marginTop: 2 }}>
+                            {selectedMonitoringItem.orderedBy || selectedMonitoringItem.created_by || 'ম্যানেজার / ক্যাশ কাউন্টার'}
+                          </Text>
+                        </View>
+                        <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                          <Text style={{ color: '#8B95A5', fontSize: 11, fontWeight: '600' }}>📦 মোট পরিমাণ</Text>
+                          <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700', marginTop: 2 }}>
+                            {(selectedMonitoringItem.items || []).reduce((sum, i) => sum + (parseInt(i.qty, 10) || 1), 0)} টি খাবার
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    {/* Items Section */}
+                    <View style={{ marginBottom: 12 }}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, paddingHorizontal: 2 }}>
+                        <Text style={{ color: '#8B95A5', fontSize: 12, fontWeight: '700' }}>
+                          অর্ডারের খাবার সমূহ ({(selectedMonitoringItem.items || []).length} পদ)
+                        </Text>
+                        <Text style={{ color: '#8B95A5', fontSize: 11, fontWeight: '600' }}>
+                          মূল্য ও পরিমাণ
+                        </Text>
+                      </View>
+
+                      {/* Items List */}
+                      {(selectedMonitoringItem.items || []).map((item, idx) => {
+                        const itemQty = parseInt(item.qty, 10) || 1;
+                        const itemPrice = parseFloat(item.price) || 0;
+                        const itemTotal = itemQty * itemPrice;
+                        const itemTime = item.time || formatStartTime(selectedMonitoringItem.startTime) || 'চলমান';
+                        const itemTaker = item.addedBy || selectedMonitoringItem.orderedBy || 'কাউন্টার';
+
+                        return (
+                          <View
+                            key={idx}
+                            style={{
+                              backgroundColor: '#14181D',
+                              borderRadius: 12,
+                              borderWidth: 1,
+                              borderColor: '#202630',
+                              padding: 12,
+                              marginBottom: 8,
+                            }}
+                          >
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                              <View style={{ flex: 1, paddingRight: 8 }}>
+                                <Text style={{ color: '#FFFFFF', fontSize: 13.5, fontWeight: '700' }}>
+                                  {item.name}
+                                </Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginTop: 5, gap: 6 }}>
+                                  <View style={{ backgroundColor: 'rgba(56, 189, 248, 0.1)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 }}>
+                                    <Text style={{ color: '#38BDF8', fontSize: 10, fontWeight: '600' }}>
+                                      🕒 {itemTime}
+                                    </Text>
+                                  </View>
+                                  <View style={{ backgroundColor: 'rgba(168, 85, 247, 0.1)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 }}>
+                                    <Text style={{ color: '#C084FC', fontSize: 10, fontWeight: '600' }}>
+                                      👤 {itemTaker}
+                                    </Text>
+                                  </View>
+                                </View>
+                              </View>
+                              <View style={{ alignItems: 'flex-end' }}>
+                                <Text style={{ color: '#10B981', fontSize: 14, fontWeight: '800' }}>
+                                  ৳{itemTotal.toLocaleString()}
+                                </Text>
+                                <Text style={{ color: '#8B95A5', fontSize: 11, fontWeight: '600', marginTop: 3 }}>
+                                  ৳{itemPrice} × {itemQty}
+                                </Text>
+                              </View>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+
+                    {/* Delivery Charge & Change Money (for Delivery Orders) */}
+                    {selectedMonitoringItem.isDelivery && (
+                      <View style={{ backgroundColor: '#111417', borderRadius: 12, borderWidth: 1, borderColor: '#202630', padding: 10, marginBottom: 12 }}>
+                        {parseFloat(selectedMonitoringItem.deliveryCharge) > 0 && (
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
+                            <Text style={{ color: '#8B95A5', fontSize: 12 }}>🚚 ডেলিভারি চার্জ:</Text>
+                            <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>৳{selectedMonitoringItem.deliveryCharge}</Text>
+                          </View>
+                        )}
+                        {parseFloat(selectedMonitoringItem.changeMoneyGiven) > 0 && (
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 3 }}>
+                            <Text style={{ color: '#8B95A5', fontSize: 12 }}>💵 রাইডারকে ভাংতি দেওয়া:</Text>
+                            <Text style={{ color: '#F59E0B', fontSize: 12, fontWeight: '700' }}>৳{selectedMonitoringItem.changeMoneyGiven}</Text>
+                          </View>
+                        )}
+                      </View>
+                    )}
+
+                    {/* Grand Total Strip */}
+                    <View style={{ backgroundColor: '#141E28', borderRadius: 14, borderWidth: 1, borderColor: '#1E3A5F', padding: 14, marginBottom: 14, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <View>
+                        <Text style={{ color: '#8B95A5', fontSize: 11, fontWeight: '700' }}>সর্বমোট প্রদেয় বিল</Text>
+                        <Text style={{ color: '#64748B', fontSize: 10, marginTop: 2 }}>চলমান অর্ডার হিসাব</Text>
+                      </View>
+                      <Text style={{ color: '#34D399', fontSize: 22, fontWeight: '900' }}>
+                        ৳{((selectedMonitoringItem.items || []).reduce((s, i) => s + ((parseFloat(i.price) || 0) * (parseInt(i.qty, 10) || 1)), 0) + (selectedMonitoringItem.isDelivery ? (parseFloat(selectedMonitoringItem.deliveryCharge) || 0) + (parseFloat(selectedMonitoringItem.changeMoneyGiven) || 0) : 0)).toLocaleString()}
+                      </Text>
+                    </View>
+
+                    {/* Read-Only Restriction Badge */}
+                    <View style={{ backgroundColor: '#111417', borderRadius: 10, borderWidth: 1, borderColor: '#1E242C', padding: 10, flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
+                      <Text style={{ fontSize: 15, marginRight: 8 }}>🔒</Text>
+                      <Text style={{ color: '#8B95A5', fontSize: 11, flex: 1, lineHeight: 16 }}>
+                        ভিউ-অনলি মোড: অ্যাডমিন সরাসরি অর্ডার এডিট বা পরিবর্তন করতে পারবেন না।
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </ScrollView>
+            )}
+
+            {/* Bottom Close Button */}
+            <TouchableOpacity
+              style={{ width: '100%', backgroundColor: '#242C37', borderRadius: 12, paddingVertical: 12, alignItems: 'center', marginTop: 8 }}
+              onPress={() => setMonitoringModalVisible(false)}
+            >
+              <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>✕ বন্ধ করুন</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
