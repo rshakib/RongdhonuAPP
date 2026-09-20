@@ -1922,7 +1922,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                 <ActivityIndicator size="small" color="#FFF" />
               ) : (
                 <View style={styles.versionUpdateBtnContent}>
-                  <Text style={styles.versionUpdateBtnIcon}>📥</Text>
+                  <Text style={styles.versionUpdateBtnIcon}>⤓</Text>
                   <Text style={styles.versionUpdateBtnText}>আপডেট করুন</Text>
                 </View>
               )}
@@ -3194,10 +3194,10 @@ const styles = StyleSheet.create({
   versionAutoPickPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 183, 3, 0.12)',
+    backgroundColor: 'rgba(99, 102, 241, 0.15)',
     borderWidth: 1,
-    borderColor: 'rgba(255, 183, 3, 0.25)',
-    borderRadius: 10,
+    borderColor: 'rgba(99, 102, 241, 0.4)',
+    borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
@@ -3206,7 +3206,7 @@ const styles = StyleSheet.create({
     marginRight: 4,
   },
   versionAutoPickPillText: {
-    color: '#FFB703',
+    color: '#A5B4FC',
     fontSize: 11.5,
     fontWeight: '700',
   },
@@ -3221,7 +3221,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   versionInputPrefixV: {
-    color: '#FFB703',
+    color: '#8E8E93',
     fontSize: 18,
     fontWeight: '800',
     marginRight: 10,
@@ -3256,12 +3256,16 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   versionFullUpdateBtn: {
-    backgroundColor: '#2563EB',
-    borderRadius: 14,
-    paddingVertical: 14,
+    backgroundColor: '#6366F1',
+    borderRadius: 16,
+    paddingVertical: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 3,
+    shadowColor: '#6366F1',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 4,
   },
   versionUpdateBtnContent: {
     flexDirection: 'row',
@@ -3269,13 +3273,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   versionUpdateBtnIcon: {
-    fontSize: 16,
-    marginRight: 6,
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '900',
+    marginRight: 8,
   },
   versionUpdateBtnText: {
     color: '#FFFFFF',
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '800',
+    letterSpacing: 0.3,
   },
 
   // ── EMPTY STATE ──
