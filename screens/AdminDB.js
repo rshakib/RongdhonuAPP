@@ -787,7 +787,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
   } catch (e) {}
 
   // Last 7 Days History
-  const dayNamesShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const dayNamesShortBn = ['রবি', 'সোম', 'মঙ্গল', 'বুধ', 'বৃহ', 'শুক্র', 'শনি'];
   const last7DaysData = [];
   let max7DaySale = 1;
 
@@ -799,8 +799,8 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     const dd = String(d.getDate()).padStart(2, '0');
     const dateKey = `${yyyy}-${mm}-${dd}`;
     const shortDate = `${parseInt(dd, 10)}/${parseInt(mm, 10)}`;
-    const dayName = dayNamesShort[d.getDay()];
     const isToday = (i === 0);
+    const dayName = isToday ? 'আজ' : dayNamesShortBn[d.getDay()];
 
     let sales = 0;
     if (isToday) {
@@ -1165,78 +1165,47 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
           </View>
         </View>
 
-        {/* ── গত ৭ দিনের বিক্রয় (Last 7 Days Sales — Vertical Bar Chart) ── */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <View style={styles.cardHeaderLeft}>
-              <View style={[styles.cardIconPill, { backgroundColor: 'rgba(59, 130, 246, 0.12)' }]}>
-                <Text style={styles.cardIconEmoji}>📊</Text>
-              </View>
-              <View style={styles.cardTitleCol}>
-                <Text style={styles.cardTitle}>গত ৭ দিনের বিক্রয়</Text>
-                <Text style={styles.cardSubtitle}>দৈনিক বিক্রয় গ্রাফ (Last 7 Days)</Text>
-              </View>
+        {/* ── গত ৭ দিনের বিক্রয় (Last 7 Days Sales — Vertical Bar Chart matching reference image) ── */}
+        <View style={styles.chartCard}>
+          {/* Header Row */}
+          <View style={styles.chartHeaderRow}>
+            <View>
+              <Text style={styles.chartCardTitle}>গত ৭ দিনের বিক্রয়</Text>
+              <Text style={styles.chartCardSubtitle}>আজ: ৳{(todaySale || 0).toLocaleString()}</Text>
             </View>
-            <View style={[styles.statusPill, { backgroundColor: 'rgba(59, 130, 246, 0.1)', borderColor: 'rgba(59, 130, 246, 0.25)' }]}>
-              <Text style={[styles.statusPillText, { color: '#60A5FA' }]}>সর্বোচ্চ ৳{highest7DaySale > 1000 ? (highest7DaySale/1000).toFixed(1)+'k' : highest7DaySale}</Text>
+            <View style={styles.chartHighestBadge}>
+              <Text style={styles.chartHighestBadgeText}>
+                সর্বোচ্চ ৳{highest7DaySale >= 1000 ? (highest7DaySale / 1000).toFixed(1) + 'k' : highest7DaySale}
+              </Text>
             </View>
           </View>
 
           {/* Vertical Bar Chart Container */}
-          <View style={styles.chartContainer}>
-            {/* Guide lines */}
-            <View style={styles.chartGridLineTop} />
-            <View style={styles.chartGridLineMid} />
-            <View style={styles.chartGridLineBase} />
+          <View style={styles.chartBarsRow}>
+            {last7DaysData.map(item => {
+              const barHeight = Math.max(16, Math.round((item.sales / (max7DaySale || 1)) * 105));
+              const isBest = item.dateKey === bestDayKey && item.sales > 0 && !item.isToday;
+              const kVal = (item.sales >= 1000)
+                ? (item.sales / 1000).toFixed(1) + 'k'
+                : (item.sales > 0 ? item.sales.toString() : '0');
 
-            <View style={styles.chartBarsRow}>
-              {last7DaysData.map(item => {
-                const pct = Math.max(6, Math.min(100, Math.round((item.sales / (max7DaySale || 1)) * 100)));
-                const isBest = item.dateKey === bestDayKey && item.sales > 0;
-                const kVal = (item.sales >= 1000) ? (item.sales / 1000).toFixed(1) + 'k' : (item.sales > 0 ? item.sales.toString() : '0');
+              const barColor = item.isToday ? '#4BDD7F' : (isBest ? '#9B702C' : '#575298');
 
-                const barColor = item.isToday ? '#10B981' : (isBest ? '#F59E0B' : '#3B82F6');
-
-                return (
-                  <View key={item.dateKey} style={styles.chartCol}>
-                    {/* Top value badge */}
-                    <View style={styles.chartTopLabelWrap}>
-                      {isBest && <Text style={styles.chartBestBadge}>⭐</Text>}
-                      <Text style={[styles.chartBarValueText, item.isToday ? { color: '#10B981', fontWeight: '800' } : null]}>
-                        {kVal}
-                      </Text>
-                    </View>
-
-                    {/* Vertical track and bar */}
-                    <View style={styles.chartBarTrack}>
-                      <View style={[styles.chartBarFill, { height: `${pct}%`, backgroundColor: barColor }]} />
-                    </View>
-
-                    {/* Day name & date */}
-                    <Text style={[styles.chartDayText, item.isToday ? styles.chartDayTextToday : null]}>
-                      {item.dayName}
+              return (
+                <View key={item.dateKey} style={styles.chartCol}>
+                  <View style={styles.chartBarCol}>
+                    <Text style={[styles.chartBarValueText, item.isToday && styles.chartBarValueTextToday]}>
+                      {kVal}
                     </Text>
-                    <Text style={[styles.chartDateSubText, item.isToday ? styles.chartDateSubTextToday : null]}>
-                      {item.isToday ? 'আজ' : item.shortDate}
-                    </Text>
+                    <View style={[styles.chartBarFill, { height: barHeight, backgroundColor: barColor }]} />
                   </View>
-                );
-              })}
-            </View>
-          </View>
 
-          {/* Peak Hour & Weather Info Strip */}
-          <View style={styles.chartFooterStrip}>
-            <View style={styles.chartFooterItem}>
-              <Text style={styles.chartFooterEmoji}>🕒</Text>
-              <Text style={styles.chartFooterLabel}>পিক সময়:</Text>
-              <Text style={styles.chartFooterVal}>{calculatedPeakHour}</Text>
-            </View>
-            <View style={[styles.chartFooterItem, { borderLeftWidth: 1, borderColor: '#1F202E', paddingLeft: 10 }]}>
-              <Text style={styles.chartFooterEmoji}>☀️</Text>
-              <Text style={styles.chartFooterLabel}>আবহাওয়া:</Text>
-              <Text style={styles.chartFooterVal}>{weatherTemp}</Text>
-            </View>
+                  <Text style={[styles.chartDayText, item.isToday && styles.chartDayTextToday]}>
+                    {item.dayName}
+                  </Text>
+                </View>
+              );
+            })}
           </View>
         </View>
 
@@ -2974,27 +2943,93 @@ const styles = StyleSheet.create({
   emptyDeliveryEmoji: { fontSize: 26, marginBottom: 4 },
   emptyDeliveryText: { color: '#8E8E93', fontSize: 11, fontWeight: '600' },
 
-  // ── VERTICAL BAR CHART (LAST 7 DAYS) ──
-  chartContainer: { height: 160, position: 'relative', justifyContent: 'flex-end', marginBottom: 8, paddingTop: 18 },
-  chartGridLineTop: { position: 'absolute', top: 22, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.04)' },
-  chartGridLineMid: { position: 'absolute', top: 68, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.04)' },
-  chartGridLineBase: { position: 'absolute', bottom: 34, left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.08)' },
-  chartBarsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', height: 145 },
-  chartCol: { flex: 1, alignItems: 'center' },
-  chartTopLabelWrap: { height: 22, justifyContent: 'flex-end', alignItems: 'center', marginBottom: 4 },
-  chartBestBadge: { fontSize: 9, lineHeight: 10 },
-  chartBarValueText: { color: '#8E8E93', fontSize: 9, fontWeight: '700' },
-  chartBarTrack: { height: 75, width: 14, justifyContent: 'flex-end', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 4, overflow: 'hidden' },
-  chartBarFill: { width: '100%', borderRadius: 4 },
-  chartDayText: { color: '#8E8E93', fontSize: 10, fontWeight: '600', marginTop: 6 },
-  chartDayTextToday: { color: '#10B981', fontWeight: '800' },
-  chartDateSubText: { color: '#666666', fontSize: 8.5, marginTop: 1 },
-  chartDateSubTextToday: { color: '#10B981', fontWeight: '700' },
-  chartFooterStrip: { flexDirection: 'row', backgroundColor: '#1E1E22', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12, borderWidth: 1, borderColor: '#27272A', marginTop: 6 },
-  chartFooterItem: { flex: 1, flexDirection: 'row', alignItems: 'center' },
-  chartFooterEmoji: { fontSize: 12, marginRight: 6 },
-  chartFooterLabel: { color: '#8E8E93', fontSize: 10, marginRight: 4 },
-  chartFooterVal: { color: '#FFFFFF', fontSize: 10.5, fontWeight: '700' },
+  // ── VERTICAL BAR CHART (LAST 7 DAYS — Reference Image Match) ──
+  chartCard: {
+    backgroundColor: '#181E25',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#242C37',
+    padding: 18,
+    marginBottom: 16,
+  },
+  chartHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  chartCardTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  chartCardSubtitle: {
+    color: '#8B95A5',
+    fontSize: 13,
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  chartHighestBadge: {
+    backgroundColor: 'rgba(217, 119, 6, 0.18)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chartHighestBadgeText: {
+    color: '#F59E0B',
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
+  chartBarsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    height: 155,
+    paddingTop: 8,
+  },
+  chartCol: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    height: '100%',
+  },
+  chartBarCol: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    height: 125,
+  },
+  chartBarValueText: {
+    color: '#8B95A5',
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 5,
+  },
+  chartBarValueTextToday: {
+    color: '#FFFFFF',
+    fontSize: 12.5,
+    fontWeight: '800',
+  },
+  chartBarFill: {
+    width: '84%',
+    maxWidth: 42,
+    borderRadius: 8,
+  },
+  chartDayText: {
+    color: '#8B95A5',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  chartDayTextToday: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '900',
+  },
 
   // ── VERSION CONTROL (User-friendly Slate & Royal Blue Palette) ──
   versionHeroCard: {
