@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { exportSalesReportPDF, exportDepositReportPDF } from '../pdfHelper';
-import { formatDisplayDate, getBusinessDate, inspectDatabaseStats, executeInspectorQuery, getFirebaseUsageStats, verifyPinCode, deleteDataByDate, getItemSalesReport, getDb, getOwnerEmployees } from '../database';
+import { formatDisplayDate, getBusinessDate, inspectDatabaseStats, executeInspectorQuery, getFirebaseUsageStats, verifyPinCode, deleteDataByDate, getItemSalesReport, getDb } from '../database';
 import { getAllRegisteredDevices } from '../services/deviceRegistry';
 import { fetchMinimumVersion, setMinimumVersion, APP_VERSION, compareSemver } from '../services/firebaseAppConfig';
 import * as Application from 'expo-application';
@@ -865,13 +865,6 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     pendingSyncCount = row?.count || 0;
   } catch (err) {}
 
-  // Active Staff / Employees
-  let activeEmployeesCount = 0;
-  try {
-    const emps = getOwnerEmployees() || [];
-    activeEmployeesCount = emps.filter(e => e.status !== 'INACTIVE').length;
-  } catch (err) {}
-
   const occupancyPercentage = tables.length > 0 ? Math.round((activeTablesCount / tables.length) * 100) : 0;
   
   const availableMonthsRaw = Array.from(new Set(submissionHistory.map(item => getMonthName(item.date)).filter(Boolean)));
@@ -1517,55 +1510,6 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
             </Text>
           </View>
 
-          {activeEmployeesCount > 0 && (
-            <TouchableOpacity style={styles.employeeRow} onPress={onNavigateToEmployees} activeOpacity={0.7}>
-              <Text style={styles.employeeRowEmoji}>👥</Text>
-              <Text style={styles.employeeRowText}>সক্রিয় কর্মী: {activeEmployeesCount} জন</Text>
-              <Text style={styles.employeeRowArrow}>→</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* ── SECTION 6: রিপোর্ট ও অতীত অডিট ── */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <View style={styles.cardHeaderLeft}>
-              <View style={[styles.cardIconPill, { backgroundColor: 'rgba(236,72,153,0.15)' }]}>
-                <Text style={styles.cardIconEmoji}>📑</Text>
-              </View>
-              <View style={styles.cardTitleCol}>
-                <Text style={styles.cardTitle}>রিপোর্ট ও অতীত অডিট</Text>
-                <Text style={styles.cardSubtitle}>সেলস ও ডিপোজিট পিডিএফ</Text>
-              </View>
-            </View>
-          </View>
-
-          <TouchableOpacity style={styles.reportTile} onPress={() => setSalesReportVisible(true)} activeOpacity={0.7}>
-            <View style={[styles.reportTileIcon, { backgroundColor: 'rgba(52,211,153,0.15)' }]}><Text style={{ fontSize: 17 }}>📋</Text></View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.reportTileTitle}>সেলস রিপোর্ট PDF</Text>
-              <Text style={styles.reportTileSub}>দৈনিক ও কাস্টম তারিখ ভিত্তিক বিক্রয় তালিকা</Text>
-            </View>
-            <Text style={styles.reportTileArrow}>→</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.reportTile} onPress={() => setDepositReportVisible(true)} activeOpacity={0.7}>
-            <View style={[styles.reportTileIcon, { backgroundColor: 'rgba(251,191,36,0.15)' }]}><Text style={{ fontSize: 17 }}>🏦</Text></View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.reportTileTitle}>ডিপোজিট রিপোর্ট PDF</Text>
-              <Text style={styles.reportTileSub}>মালিকের ব্যাংক ও ক্যাশ জমা স্টেটমেন্ট</Text>
-            </View>
-            <Text style={styles.reportTileArrow}>→</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.reportTile} onPress={handleOpenPastAccount} activeOpacity={0.7}>
-            <View style={[styles.reportTileIcon, { backgroundColor: 'rgba(168,85,247,0.15)' }]}><Text style={{ fontSize: 17 }}>📅</Text></View>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={styles.reportTileTitle}>অতীতের হিসাব অডিট</Text>
-              <Text style={styles.reportTileSub}>পূর্ববর্তী যেকোনো দিনের ক্লোজড হিসাব চেক করুন</Text>
-            </View>
-            <Text style={styles.reportTileArrow}>→</Text>
-          </TouchableOpacity>
         </View>
 
         {/* ── SECTION 8: অ্যাপ ভার্সন কন্ট্রোল ── */}
@@ -2572,10 +2516,6 @@ const styles = StyleSheet.create({
   syncStatusVal: { fontSize: 11, fontWeight: '700' },
   syncTimerBar: { backgroundColor: '#0A0B10', borderRadius: 8, paddingVertical: 7, paddingHorizontal: 12, borderWidth: 1, borderColor: '#1A1B24', alignItems: 'center' },
   syncTimerBarText: { color: '#6B6F85', fontSize: 9.5 },
-  employeeRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderColor: '#1E2030' },
-  employeeRowEmoji: { fontSize: 14, marginRight: 8 },
-  employeeRowText: { flex: 1, color: '#8B8FA8', fontSize: 11 },
-  employeeRowArrow: { color: '#6366F1', fontSize: 13, fontWeight: '700' },
 
   // ── 3-METRIC EXECUTIVE ROW (Image 4) ──
   metricsRowCard: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#0E0F14', borderRadius: 14, borderWidth: 1, borderColor: '#1A1B24', marginBottom: 12, paddingVertical: 14, paddingHorizontal: 16, width: '100%' },
@@ -2650,13 +2590,6 @@ const styles = StyleSheet.create({
   chartFooterEmoji: { fontSize: 12, marginRight: 6 },
   chartFooterLabel: { color: '#6B6F85', fontSize: 10, marginRight: 4 },
   chartFooterVal: { color: '#E8E9EF', fontSize: 10.5, fontWeight: '700' },
-
-  // ── REPORTS ──
-  reportTile: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#141520', borderRadius: 10, padding: 11, borderWidth: 1, borderColor: '#1E2030', marginBottom: 8 },
-  reportTileIcon: { width: 36, height: 36, borderRadius: 9, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
-  reportTileTitle: { color: '#E8E9EF', fontSize: 12, fontWeight: '700' },
-  reportTileSub: { color: '#6B6F85', fontSize: 9.5, marginTop: 2 },
-  reportTileArrow: { color: '#FFB703', fontSize: 14, fontWeight: 'bold', marginLeft: 8 },
 
   // ── VERSION CONTROL ──
   versionControlCard: { backgroundColor: '#141520', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#1E2030' },
