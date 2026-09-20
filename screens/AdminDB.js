@@ -3097,11 +3097,11 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
 
 const styles = StyleSheet.create({
   // ── ROOT ──
-  container: { flex: 1, backgroundColor: '#0A0A0C' },
+  container: { flex: 1, backgroundColor: '#0B0F15' },
   scrollBody: { flex: 1 },
 
   // ── HEADER ──
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderColor: '#1F1F24', backgroundColor: '#0D0D0F' },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderColor: '#1C232E', backgroundColor: '#0E131A' },
   headerCenter: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   titleBadgeRow: { flexDirection: 'row', alignItems: 'center' },
   headerTitle: { fontSize: 17, fontWeight: '800', color: '#FFB703', letterSpacing: 0.4 },
@@ -3116,16 +3116,16 @@ const styles = StyleSheet.create({
   statsContainer: { paddingHorizontal: 12, paddingVertical: 2 },
 
   // ── CARD (universal card container) ──
-  card: { backgroundColor: '#141416', borderRadius: 16, borderWidth: 1, borderColor: '#222226', marginBottom: 12, padding: 14, width: '100%' },
+  card: { backgroundColor: '#181E25', borderRadius: 20, borderWidth: 1, borderColor: '#242C37', marginBottom: 16, padding: 16, width: '100%' },
 
   // ── CARD HEADER ──
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   cardHeaderLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0, marginRight: 8 },
   cardIconPill: { width: 34, height: 34, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginRight: 10, flexShrink: 0 },
   cardIconEmoji: { fontSize: 17 },
   cardTitleCol: { flex: 1, minWidth: 0 },
-  cardTitle: { color: '#FFFFFF', fontSize: 13, fontWeight: '700', letterSpacing: 0.2 },
-  cardSubtitle: { color: '#8E8E93', fontSize: 10, marginTop: 1 },
+  cardTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '800', letterSpacing: 0.2 },
+  cardSubtitle: { color: '#8E8E93', fontSize: 11, marginTop: 2 },
   cardOutlineBtn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,183,3,0.3)', backgroundColor: 'rgba(255,183,3,0.08)', flexShrink: 0 },
   cardOutlineBtnText: { color: '#FFB703', fontSize: 10, fontWeight: '600' },
 
@@ -3137,10 +3137,10 @@ const styles = StyleSheet.create({
   statusPillText: { fontSize: 10, fontWeight: '700' },
 
   // ── FINANCE GRID (2×2) ──
-  financeGrid: { flexDirection: 'row', flexWrap: 'wrap', backgroundColor: '#1E1E22', borderRadius: 12, overflow: 'hidden', marginBottom: 10, borderWidth: 1, borderColor: '#27272A' },
+  financeGrid: { flexDirection: 'row', flexWrap: 'wrap', backgroundColor: '#13181F', borderRadius: 12, overflow: 'hidden', marginBottom: 10, borderWidth: 1, borderColor: '#242C37' },
   financeCell: { width: '50%', paddingVertical: 12, paddingHorizontal: 14 },
-  financeCellBorderLeft: { borderLeftWidth: 1, borderColor: '#27272A' },
-  financeCellBorderTop:  { borderTopWidth: 1, borderColor: '#27272A' },
+  financeCellBorderLeft: { borderLeftWidth: 1, borderColor: '#242C37' },
+  financeCellBorderTop:  { borderTopWidth: 1, borderColor: '#242C37' },
   financeCellLabel: { color: '#8E8E93', fontSize: 10, marginBottom: 4, fontWeight: '500' },
   financeCellVal: { fontSize: 15, fontWeight: '800' },
 
@@ -3151,7 +3151,7 @@ const styles = StyleSheet.create({
   cardInfoVal: { color: '#FFFFFF', fontSize: 12, fontWeight: '700', marginTop: 1 },
 
   // ── PAYMENT BREAKDOWN ROW ──
-  paymentBreakdownRow: { flexDirection: 'row', backgroundColor: '#1E1E22', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#27272A' },
+  paymentBreakdownRow: { flexDirection: 'row', backgroundColor: '#13181F', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#242C37' },
   payBreakItem: { flex: 1, alignItems: 'center' },
   payBreakLabel: { color: '#8E8E93', fontSize: 9, marginBottom: 3 },
   payBreakVal: { fontSize: 12, fontWeight: '700' },
@@ -3163,11 +3163,11 @@ const styles = StyleSheet.create({
   occupancyCountBig: { color: '#FFFFFF', fontSize: 20, fontWeight: '800' },
   occupancyPct: { backgroundColor: 'rgba(16,185,129,0.12)', borderWidth: 1, borderColor: 'rgba(16,185,129,0.25)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   occupancyPctText: { color: '#10B981', fontSize: 11, fontWeight: '700' },
-  occupancyTrack: { height: 6, backgroundColor: '#242428', borderRadius: 3, overflow: 'hidden' },
+  occupancyTrack: { height: 6, backgroundColor: '#1E2632', borderRadius: 3, overflow: 'hidden' },
   occupancyFill: { height: '100%', backgroundColor: '#10B981', borderRadius: 3 },
 
   // ── DELIVERY INDICATOR ──
-  deliveryIndicatorRow: { flexDirection: 'row', alignItems: 'center', paddingTop: 8, borderTopWidth: 1, borderColor: '#222226', marginTop: 4 },
+  deliveryIndicatorRow: { flexDirection: 'row', alignItems: 'center', paddingTop: 8, borderTopWidth: 1, borderColor: '#242C37', marginTop: 4 },
   deliveryIndicatorText: { color: '#8E8E93', fontSize: 11, flex: 1, marginLeft: 8 },
   floorMapLink: { color: '#60A5FA', fontSize: 11, fontWeight: '600' },
   dotLive: { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
@@ -3176,19 +3176,19 @@ const styles = StyleSheet.create({
 
   // ── ACTIVE TABLE CHIPS ──
   activeTblList: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 8, gap: 6 },
-  activeTblChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E1E22', borderWidth: 1, borderColor: 'rgba(255,183,3,0.25)', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5 },
+  activeTblChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#13181F', borderWidth: 1, borderColor: 'rgba(255,183,3,0.25)', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5 },
   dotOrangeSm: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFB703', marginRight: 6 },
   activeTblChipText: { color: '#FFFFFF', fontSize: 11, fontWeight: '600', marginRight: 6 },
   activeTblChipAmt: { color: '#FFB703', fontSize: 10, fontWeight: '700' },
 
   // ── TOP SELLING FOOD REDESIGN ──
-  topSellerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
+  topSellerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 },
   topSellerSubtitle: { color: '#8E8E93', fontSize: 11, marginTop: 2 },
   topSellerReportBtn: { paddingVertical: 4, paddingHorizontal: 6 },
   topSellerReportBtnText: { color: '#FFB703', fontSize: 12, fontWeight: '700' },
 
   // Hero Card (#1 Item)
-  topHeroCard: { backgroundColor: '#18181B', borderRadius: 16, borderWidth: 1, borderColor: '#27272A', padding: 16, marginBottom: 12, position: 'relative', overflow: 'hidden' },
+  topHeroCard: { backgroundColor: '#13181F', borderRadius: 16, borderWidth: 1, borderColor: '#242C37', padding: 16, marginBottom: 12, position: 'relative', overflow: 'hidden' },
   topHeroDecorCircle: { position: 'absolute', right: -25, top: -25, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(255, 183, 3, 0.04)' },
   topHeroBadge: { backgroundColor: 'rgba(255, 183, 3, 0.12)', borderWidth: 1, borderColor: 'rgba(255, 183, 3, 0.25)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, alignSelf: 'flex-start', marginBottom: 10 },
   topHeroBadgeText: { color: '#FFB703', fontSize: 11, fontWeight: '700' },
@@ -3201,16 +3201,16 @@ const styles = StyleSheet.create({
   topHeroPrice: { color: '#FFB703', fontSize: 20, fontWeight: '900' },
 
   // Ranked List (#2 to #5 Items)
-  rankedListCard: { backgroundColor: '#18181B', borderRadius: 14, borderWidth: 1, borderColor: '#27272A', marginBottom: 0, overflow: 'hidden' },
+  rankedListCard: { backgroundColor: '#13181F', borderRadius: 14, borderWidth: 1, borderColor: '#242C37', marginBottom: 0, overflow: 'hidden' },
   rankedItemRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 12 },
-  rankedItemBorderBottom: { borderBottomWidth: 1, borderColor: '#27272A' },
-  rankedBadge: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#27272A', justifyContent: 'center', alignItems: 'center', marginRight: 10, flexShrink: 0 },
+  rankedItemBorderBottom: { borderBottomWidth: 1, borderColor: '#1E2632' },
+  rankedBadge: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#1E2632', justifyContent: 'center', alignItems: 'center', marginRight: 10, flexShrink: 0 },
   rankedBadgeText: { color: '#8E8E93', fontSize: 11, fontWeight: '800' },
   rankedItemMiddleCol: { flex: 1, marginRight: 12, minWidth: 0 },
   rankedItemName: { color: '#FFFFFF', fontSize: 13, fontWeight: '700', marginBottom: 4 },
   rankedItemSubRow: { flexDirection: 'row', alignItems: 'center' },
   rankedItemCategory: { color: '#8E8E93', fontSize: 10, marginRight: 8, maxWidth: 65 },
-  rankedProgressBarTrack: { flex: 1, height: 5, borderRadius: 2.5, backgroundColor: '#27272A', overflow: 'hidden' },
+  rankedProgressBarTrack: { flex: 1, height: 5, borderRadius: 2.5, backgroundColor: '#1E2632', overflow: 'hidden' },
   rankedProgressBarFill: { height: '100%', borderRadius: 2.5, backgroundColor: '#FFB703' },
   rankedItemRightCol: { alignItems: 'flex-end', flexShrink: 0 },
   rankedItemAmount: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
@@ -3218,14 +3218,14 @@ const styles = StyleSheet.create({
 
   // ── DEVICE CONTROL (Redesigned matching mockup) ──
   deviceCardHeader: { marginBottom: 14 },
-  deviceSectionTitle: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  deviceSectionTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
   deviceSectionSubtitle: { color: '#8E8E93', fontSize: 10.5, marginTop: 2 },
 
   // Hero Banner
-  deviceHeroBanner: { backgroundColor: '#18181B', borderRadius: 18, borderWidth: 1, borderColor: '#27272A', padding: 16, overflow: 'hidden' },
+  deviceHeroBanner: { backgroundColor: '#13181F', borderRadius: 18, borderWidth: 1, borderColor: '#242C37', padding: 16, overflow: 'hidden' },
   deviceHeroTopRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
   deviceGaugeContainer: { marginRight: 16, justifyContent: 'center', alignItems: 'center' },
-  deviceGaugeRing: { width: 84, height: 84, borderRadius: 42, borderWidth: 5, borderColor: '#10B981', justifyContent: 'center', alignItems: 'center', backgroundColor: '#1E1E22' },
+  deviceGaugeRing: { width: 84, height: 84, borderRadius: 42, borderWidth: 5, borderColor: '#10B981', justifyContent: 'center', alignItems: 'center', backgroundColor: '#151C24' },
   deviceGaugeNumber: { color: '#FFFFFF', fontSize: 24, fontWeight: '900' },
   deviceGaugeLabel: { color: '#10B981', fontSize: 9.5, fontWeight: '700', marginTop: 1 },
   deviceHeroStatusCol: { flex: 1, justifyContent: 'center' },
@@ -3237,7 +3237,7 @@ const styles = StyleSheet.create({
 
   // 3 Metric Sub-Tiles inside Banner
   deviceHeroTilesRow: { flexDirection: 'row', gap: 8 },
-  deviceHeroTile: { flex: 1, backgroundColor: '#202024', borderRadius: 12, borderWidth: 1, borderColor: '#2C2C32', paddingVertical: 10, alignItems: 'center' },
+  deviceHeroTile: { flex: 1, backgroundColor: '#18202A', borderRadius: 12, borderWidth: 1, borderColor: '#242C37', paddingVertical: 10, alignItems: 'center' },
   deviceHeroTileEmoji: { fontSize: 13, marginBottom: 2 },
   deviceHeroTileNumber: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
   deviceHeroTileLabel: { color: '#8E8E93', fontSize: 9.5, fontWeight: '600', marginTop: 1 },
@@ -3258,14 +3258,14 @@ const styles = StyleSheet.create({
   deviceActiveCountText: { color: '#10B981', fontSize: 10, fontWeight: '700' },
 
   // Device Card Items
-  deviceEmptyBox: { paddingVertical: 20, alignItems: 'center', backgroundColor: '#18181B', borderRadius: 14, borderWidth: 1, borderColor: '#27272A', marginBottom: 8 },
+  deviceEmptyBox: { paddingVertical: 20, alignItems: 'center', backgroundColor: '#13181F', borderRadius: 14, borderWidth: 1, borderColor: '#242C37', marginBottom: 8 },
   deviceEmptyEmoji: { fontSize: 22, marginBottom: 6 },
   deviceEmptyText: { color: '#8E8E93', fontSize: 11, fontWeight: '600' },
-  deviceItemCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#18181B', borderRadius: 14, borderWidth: 1, borderColor: '#27272A', padding: 12, marginBottom: 8 },
+  deviceItemCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#13181F', borderRadius: 14, borderWidth: 1, borderColor: '#242C37', padding: 12, marginBottom: 8 },
   deviceAvatarContainer: { position: 'relative', width: 44, height: 44, marginRight: 12 },
-  deviceAvatarBox: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#27272A', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#333338' },
+  deviceAvatarBox: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#1E2632', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#283342' },
   deviceAvatarLetter: { color: '#FFB703', fontSize: 18, fontWeight: '900' },
-  deviceOnlineDot: { position: 'absolute', bottom: -1, right: -1, width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: '#18181B' },
+  deviceOnlineDot: { position: 'absolute', bottom: -1, right: -1, width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: '#13181F' },
   deviceInfoCol: { flex: 1, minWidth: 0 },
   deviceItemTitle: { color: '#FFFFFF', fontSize: 13.5, fontWeight: '800' },
   deviceMetaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 6 },
@@ -3277,20 +3277,20 @@ const styles = StyleSheet.create({
   // Footer Actions
   deviceViewAllLink: { alignItems: 'center', marginVertical: 12 },
   deviceViewAllText: { color: '#FFB703', fontSize: 12.5, fontWeight: '700' },
-  devicePrimaryBtn: { backgroundColor: '#222226', borderWidth: 1, borderColor: '#333338', borderRadius: 24, paddingVertical: 13, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', width: '100%' },
+  devicePrimaryBtn: { backgroundColor: '#1E2632', borderWidth: 1, borderColor: '#283342', borderRadius: 24, paddingVertical: 13, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', width: '100%' },
   devicePrimaryBtnIcon: { fontSize: 14, marginRight: 8 },
   devicePrimaryBtnText: { color: '#FFFFFF', fontSize: 13.5, fontWeight: '800' },
 
   // ── CLOUD SYNC & HEALTH (Redesigned with Real App Sync) ──
   syncCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   syncHeaderLeft: { flex: 1, minWidth: 0, marginRight: 8 },
-  syncSectionTitle: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  syncSectionTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
   syncSectionSubtitle: { color: '#8E8E93', fontSize: 10.5, marginTop: 2 },
   syncDiagLink: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 8 },
   syncDiagLinkText: { color: '#FFB703', fontSize: 13, fontWeight: '700' },
 
   // Hero Banner
-  syncHeroBanner: { backgroundColor: '#18181B', borderRadius: 18, borderWidth: 1, borderColor: '#27272A', padding: 16, overflow: 'hidden' },
+  syncHeroBanner: { backgroundColor: '#13181F', borderRadius: 18, borderWidth: 1, borderColor: '#242C37', padding: 16, overflow: 'hidden' },
   syncHeroTopRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
   syncHeroIconBox: { width: 42, height: 42, borderRadius: 12, backgroundColor: 'rgba(255, 183, 3, 0.1)', borderWidth: 1, borderColor: 'rgba(255, 183, 3, 0.2)', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
   syncHeroIconEmoji: { fontSize: 18 },
@@ -3299,7 +3299,7 @@ const styles = StyleSheet.create({
   syncHeroSubtitle: { color: '#8E8E93', fontSize: 11, fontWeight: '500', marginTop: 2 },
 
   // Hero Tiles (SQLite & Cloud Sync Queue)
-  syncTile: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#202024', borderRadius: 14, borderWidth: 1, borderColor: '#2C2C32', paddingHorizontal: 12, paddingVertical: 10, marginTop: 8 },
+  syncTile: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#18202A', borderRadius: 14, borderWidth: 1, borderColor: '#242C37', paddingHorizontal: 12, paddingVertical: 10, marginTop: 8 },
   syncTileIconWrap: { width: 34, height: 34, borderRadius: 10, backgroundColor: 'rgba(255, 255, 255, 0.05)', justifyContent: 'center', alignItems: 'center', marginRight: 10 },
   syncTileIconEmoji: { fontSize: 15 },
   syncTileMidCol: { flex: 1, minWidth: 0 },
@@ -3311,7 +3311,7 @@ const styles = StyleSheet.create({
   syncCheckMark: { color: '#000000', fontSize: 12, fontWeight: '900' },
 
   // Bottom Auto-Sync Timers Card
-  syncTimersCard: { backgroundColor: '#18181B', borderRadius: 16, borderWidth: 1, borderColor: '#27272A', padding: 14, marginTop: 12 },
+  syncTimersCard: { backgroundColor: '#13181F', borderRadius: 16, borderWidth: 1, borderColor: '#242C37', padding: 14, marginTop: 12 },
   syncTimersHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
   syncTimersHeaderIcon: { fontSize: 14, marginRight: 6 },
   syncTimersTitle: { color: '#FFFFFF', fontSize: 13, fontWeight: '800', flex: 1 },
@@ -3322,21 +3322,21 @@ const styles = StyleSheet.create({
   syncRingsRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', marginBottom: 12 },
   syncRingCol: { alignItems: 'center' },
   syncRingOuterWrap: { width: 72, height: 72, justifyContent: 'center', alignItems: 'center', position: 'relative' },
-  syncCircularRing: { position: 'absolute', width: 72, height: 72, borderRadius: 36, borderWidth: 5, backgroundColor: '#141416', borderColor: '#242424' },
-  syncRingCenter: { position: 'absolute', width: 62, height: 62, borderRadius: 31, backgroundColor: '#141414', justifyContent: 'center', alignItems: 'center' },
+  syncCircularRing: { position: 'absolute', width: 72, height: 72, borderRadius: 36, borderWidth: 5, backgroundColor: '#13181F', borderColor: '#242C37' },
+  syncRingCenter: { position: 'absolute', width: 62, height: 62, borderRadius: 31, backgroundColor: '#181E25', justifyContent: 'center', alignItems: 'center' },
   syncRingNumber: { color: '#FFFFFF', fontSize: 18, fontWeight: '900' },
   syncRingUnit: { color: '#8E8E93', fontSize: 9, marginTop: 1 },
   syncRingName: { color: '#FFFFFF', fontSize: 12, fontWeight: '700', marginTop: 8 },
   syncRingCycle: { color: '#8E8E93', fontSize: 10, marginTop: 2 },
-  syncMiniTrack: { width: 62, height: 4, borderRadius: 2, backgroundColor: '#242424', marginTop: 6, overflow: 'hidden' },
+  syncMiniTrack: { width: 62, height: 4, borderRadius: 2, backgroundColor: '#1E2632', marginTop: 6, overflow: 'hidden' },
   syncMiniFill: { height: '100%', borderRadius: 2 },
 
   // Sync Engine Background Strip
-  syncEngineStrip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#202024', borderRadius: 8, paddingVertical: 7, paddingHorizontal: 12, borderWidth: 1, borderColor: '#2C2C32', marginTop: 4 },
+  syncEngineStrip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#18202A', borderRadius: 8, paddingVertical: 7, paddingHorizontal: 12, borderWidth: 1, borderColor: '#242C37', marginTop: 4 },
   syncEngineItem: { flexDirection: 'row', alignItems: 'center' },
   syncEngineDot: { fontSize: 11, marginRight: 5 },
   syncEngineText: { color: '#8E8E93', fontSize: 10, fontWeight: '600' },
-  syncEngineDivider: { width: 1, height: 14, backgroundColor: '#2C2C32' },
+  syncEngineDivider: { width: 1, height: 14, backgroundColor: '#242C37' },
 
   // ── PAYMENT SEGMENTED BAR (Image 3) ──
   paymentSourceCard: {
@@ -3661,10 +3661,10 @@ const styles = StyleSheet.create({
 
   // ── VERSION CONTROL (User-friendly Slate & Royal Blue Palette) ──
   versionHeroCard: {
-    backgroundColor: '#18181B',
+    backgroundColor: '#13181F',
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#27272A',
+    borderColor: '#242C37',
     padding: 16,
     overflow: 'hidden',
   },
@@ -3745,7 +3745,7 @@ const styles = StyleSheet.create({
   },
   versionDashedDivider: {
     borderBottomWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: '#242C37',
     borderStyle: 'dashed',
     marginVertical: 14,
   },
@@ -3762,9 +3762,9 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: '#202024',
+    backgroundColor: '#18202A',
     borderWidth: 1,
-    borderColor: '#2C2C32',
+    borderColor: '#242C37',
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
@@ -3812,7 +3812,7 @@ const styles = StyleSheet.create({
   versionConnectorLine: {
     width: '100%',
     height: 2,
-    backgroundColor: '#2C2C32',
+    backgroundColor: '#242C37',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -3831,7 +3831,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: '#18181B',
+    borderColor: '#13181F',
   },
   versionCenterCheck: {
     color: '#FFFFFF',
@@ -3874,10 +3874,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   versionBigInputBox: {
-    backgroundColor: '#202024',
+    backgroundColor: '#13181F',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#2C2C32',
+    borderColor: '#242C37',
     height: 54,
     flexDirection: 'row',
     alignItems: 'center',
