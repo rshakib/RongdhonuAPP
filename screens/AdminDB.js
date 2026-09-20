@@ -48,7 +48,7 @@ const toBengaliNumber = (num) => {
 };
 
 // --- DYNAMIC CIRCULAR COUNTDOWN RING (Smooth 360 to 0 Progress) ---
-const CircularCountdownRing = ({ ratio, color, trackColor = '#242424', size = 72, strokeWidth = 5, children }) => {
+const CircularCountdownRing = ({ ratio, color, trackColor = 'rgba(255, 255, 255, 0.08)', size = 72, strokeWidth = 5, children }) => {
   const percent = Math.max(0, Math.min(1, ratio || 0));
   const halfSize = size / 2;
   const rightRatio = Math.min(percent, 0.5) / 0.5;
@@ -1548,7 +1548,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               <View style={[styles.deviceAlertCircle, { backgroundColor: '#10B981' }]}>
                 <Text style={styles.deviceAlertCircleIcon}>✓</Text>
               </View>
-              <Text style={[styles.deviceAlertText, { color: '#10B981' }]}>
+              <Text style={[styles.deviceAlertText, { color: '#34D399' }]}>
                 সব ঠিক আছে — কোনো নতুন ডিভাইস অনুমোদনের অপেক্ষায় নেই
               </Text>
             </View>
@@ -1733,10 +1733,6 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                 </CircularCountdownRing>
                 <Text style={styles.syncRingName}>ডেলিভারি</Text>
                 <Text style={styles.syncRingCycle}>প্রতি ৯০ সে.</Text>
-                {/* Dynamic Live Progress Bar */}
-                <View style={styles.syncMiniTrack}>
-                  <View style={[styles.syncMiniFill, { width: `${Math.round(delRatio * 100)}%`, backgroundColor: '#FFB703' }]} />
-                </View>
               </View>
 
               {/* Table Timer (Real App Interval: 15s) */}
@@ -1747,10 +1743,6 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                 </CircularCountdownRing>
                 <Text style={styles.syncRingName}>টেবিল</Text>
                 <Text style={styles.syncRingCycle}>প্রতি ১৫ সে.</Text>
-                {/* Dynamic Live Progress Bar */}
-                <View style={styles.syncMiniTrack}>
-                  <View style={[styles.syncMiniFill, { width: `${Math.round(tabRatio * 100)}%`, backgroundColor: '#10B981' }]} />
-                </View>
               </View>
 
               {/* Full Sync Timer (Real App Interval: 30s) */}
@@ -1761,10 +1753,6 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                 </CircularCountdownRing>
                 <Text style={styles.syncRingName}>ফুল সিঙ্ক</Text>
                 <Text style={styles.syncRingCycle}>প্রতি ৩০ সে.</Text>
-                {/* Dynamic Live Progress Bar */}
-                <View style={styles.syncMiniTrack}>
-                  <View style={[styles.syncMiniFill, { width: `${Math.round(fullRatio * 100)}%`, backgroundColor: '#3B82F6' }]} />
-                </View>
               </View>
             </View>
 
@@ -1787,7 +1775,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <View style={styles.cardHeaderLeft}>
-              <View style={[styles.cardIconPill, { backgroundColor: 'rgba(99,102,241,0.15)' }]}>
+              <View style={[styles.cardIconPill, { backgroundColor: 'rgba(255, 183, 3, 0.12)', borderWidth: 1, borderColor: 'rgba(255, 183, 3, 0.25)' }]}>
                 <Text style={styles.cardIconEmoji}>📱</Text>
               </View>
               <View style={styles.cardTitleCol}>
@@ -1866,7 +1854,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                     </View>
                     <Text style={styles.versionCompareLabel}>Firebase নিউনতম</Text>
                     {isLoadingVersion ? (
-                      <ActivityIndicator size="small" color="#A78BFA" style={{ marginTop: 2 }} />
+                      <ActivityIndicator size="small" color="#FFB703" style={{ marginTop: 2 }} />
                     ) : versionFetchError ? (
                       <TouchableOpacity onPress={loadFirebaseVersion} activeOpacity={0.7}>
                         <Text style={[styles.versionCompareVal, { color: '#F59E0B', fontSize: 11 }]}>⚠️ এরর</Text>
@@ -1935,7 +1923,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               activeOpacity={0.85}
             >
               {isSavingVersion ? (
-                <ActivityIndicator size="small" color="#FFF" />
+                <ActivityIndicator size="small" color="#0A0A0C" />
               ) : (
                 <View style={styles.versionUpdateBtnContent}>
                   <Text style={styles.versionUpdateBtnIcon}>⤓</Text>
@@ -2013,10 +2001,10 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={{ flex: 1, backgroundColor: '#6366F1', borderRadius: 8, paddingVertical: 10, alignItems: 'center' }}
+                  style={{ flex: 1, backgroundColor: '#FFB703', borderRadius: 8, paddingVertical: 10, alignItems: 'center' }}
                   onPress={handleConfirmVersionWithPin}
                 >
-                  <Text style={{ color: '#FFF', fontWeight: 'bold' }}>নিশ্চিত করুন</Text>
+                  <Text style={{ color: '#0A0A0C', fontWeight: 'bold' }}>নিশ্চিত করুন</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -3033,9 +3021,9 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                 const isDestructive = btn.style === 'destructive' || btn.text.includes('Delete') || btn.text.includes('ডিলিট') || btn.text.includes('মুছুন') || btn.text === 'হ্যাঁ';
                 const isSingle = (darkAlert?.buttons || []).length <= 1;
 
-                let btnBg = '#6366F1';
+                let btnBg = '#FFB703';
                 let btnBorder = 'transparent';
-                let textColor = '#FFFFFF';
+                let textColor = '#0A0A0C';
 
                 if (isCancel) {
                   btnBg = '#202630';
@@ -3043,14 +3031,18 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                   textColor = '#94A3B8';
                 } else if (isDestructive) {
                   btnBg = '#EF4444';
+                  textColor = '#FFFFFF';
                 } else if (isSingle) {
                   const title = darkAlert?.title || '';
                   if (title.includes('সফল') || title.includes('✅')) {
                     btnBg = '#10B981';
+                    textColor = '#FFFFFF';
                   } else if (title.includes('ত্রুটি') || title.includes('❌') || title.includes('ব্যর্থ') || title.includes('ভুল')) {
                     btnBg = '#EF4444';
+                    textColor = '#FFFFFF';
                   } else {
-                    btnBg = '#6366F1';
+                    btnBg = '#FFB703';
+                    textColor = '#0A0A0C';
                   }
                 }
 
@@ -3244,18 +3236,18 @@ const styles = StyleSheet.create({
 
   // Status Alert Strip
   deviceAlertBanner: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, paddingVertical: 9, paddingHorizontal: 12, borderWidth: 1, marginTop: 12 },
-  deviceAlertBannerGreen: { backgroundColor: 'rgba(16, 185, 129, 0.08)', borderColor: 'rgba(16, 185, 129, 0.2)' },
+  deviceAlertBannerGreen: { backgroundColor: 'rgba(16, 185, 129, 0.12)', borderColor: 'rgba(16, 185, 129, 0.3)' },
   deviceAlertBannerAmber: { backgroundColor: 'rgba(255, 183, 3, 0.08)', borderColor: 'rgba(255, 183, 3, 0.2)' },
   deviceAlertCircle: { width: 20, height: 20, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginRight: 9 },
-  deviceAlertCircleIcon: { color: '#0A0A0C', fontSize: 11, fontWeight: '900' },
+  deviceAlertCircleIcon: { color: '#FFFFFF', fontSize: 11, fontWeight: '900' },
   deviceAlertText: { fontSize: 11, fontWeight: '600', flex: 1 },
 
   // Active Device Header & Hint
   deviceActiveHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, marginBottom: 8 },
   deviceTapHint: { color: '#8E8E93', fontSize: 10.5, flex: 1, marginRight: 8 },
-  deviceActiveCountPill: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(16, 185, 129, 0.12)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(16, 185, 129, 0.25)' },
-  deviceActiveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981', marginRight: 5 },
-  deviceActiveCountText: { color: '#10B981', fontSize: 10, fontWeight: '700' },
+  deviceActiveCountPill: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(16, 185, 129, 0.12)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(16, 185, 129, 0.3)' },
+  deviceActiveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#34D399', marginRight: 5 },
+  deviceActiveCountText: { color: '#34D399', fontSize: 10, fontWeight: '700' },
 
   // Device Card Items
   deviceEmptyBox: { paddingVertical: 20, alignItems: 'center', backgroundColor: '#13181F', borderRadius: 14, borderWidth: 1, borderColor: '#242C37', marginBottom: 8 },
@@ -3277,9 +3269,9 @@ const styles = StyleSheet.create({
   // Footer Actions
   deviceViewAllLink: { alignItems: 'center', marginVertical: 12 },
   deviceViewAllText: { color: '#FFB703', fontSize: 12.5, fontWeight: '700' },
-  devicePrimaryBtn: { backgroundColor: '#1E2632', borderWidth: 1, borderColor: '#283342', borderRadius: 24, paddingVertical: 13, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', width: '100%' },
+  devicePrimaryBtn: { backgroundColor: 'rgba(255, 183, 3, 0.1)', borderWidth: 1.2, borderColor: 'rgba(255, 183, 3, 0.35)', borderRadius: 24, paddingVertical: 13, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', width: '100%' },
   devicePrimaryBtnIcon: { fontSize: 14, marginRight: 8 },
-  devicePrimaryBtnText: { color: '#FFFFFF', fontSize: 13.5, fontWeight: '800' },
+  devicePrimaryBtnText: { color: '#FFB703', fontSize: 13.5, fontWeight: '800' },
 
   // ── CLOUD SYNC & HEALTH (Redesigned with Real App Sync) ──
   syncCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
@@ -3292,7 +3284,7 @@ const styles = StyleSheet.create({
   // Hero Banner
   syncHeroBanner: { backgroundColor: '#13181F', borderRadius: 18, borderWidth: 1, borderColor: '#242C37', padding: 16, overflow: 'hidden' },
   syncHeroTopRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
-  syncHeroIconBox: { width: 42, height: 42, borderRadius: 12, backgroundColor: 'rgba(255, 183, 3, 0.1)', borderWidth: 1, borderColor: 'rgba(255, 183, 3, 0.2)', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  syncHeroIconBox: { width: 42, height: 42, borderRadius: 12, backgroundColor: 'rgba(56, 189, 248, 0.12)', borderWidth: 1, borderColor: 'rgba(56, 189, 248, 0.25)', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
   syncHeroIconEmoji: { fontSize: 18 },
   syncHeroTitleCol: { flex: 1, minWidth: 0 },
   syncHeroTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
@@ -3776,10 +3768,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: -4,
     right: -4,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#FFFFFF',
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#1E2632',
+    borderWidth: 1.2,
+    borderColor: '#38BDF8',
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 2,
@@ -3857,9 +3851,9 @@ const styles = StyleSheet.create({
   versionAutoPickPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(99, 102, 241, 0.15)',
+    backgroundColor: 'rgba(255, 183, 3, 0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(99, 102, 241, 0.4)',
+    borderColor: 'rgba(255, 183, 3, 0.3)',
     borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 5,
@@ -3869,7 +3863,7 @@ const styles = StyleSheet.create({
     marginRight: 4,
   },
   versionAutoPickPillText: {
-    color: '#A5B4FC',
+    color: '#FFB703',
     fontSize: 11.5,
     fontWeight: '700',
   },
@@ -3884,7 +3878,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   versionInputPrefixV: {
-    color: '#8E8E93',
+    color: '#FFB703',
     fontSize: 18,
     fontWeight: '800',
     marginRight: 10,
@@ -3919,12 +3913,12 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   versionFullUpdateBtn: {
-    backgroundColor: '#6366F1',
+    backgroundColor: '#FFB703',
     borderRadius: 16,
     paddingVertical: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#6366F1',
+    shadowColor: '#FFB703',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 10,
@@ -3936,13 +3930,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   versionUpdateBtnIcon: {
-    color: '#FFFFFF',
+    color: '#0A0A0C',
     fontSize: 18,
     fontWeight: '900',
     marginRight: 8,
   },
   versionUpdateBtnText: {
-    color: '#FFFFFF',
+    color: '#0A0A0C',
     fontSize: 16,
     fontWeight: '800',
     letterSpacing: 0.3,
