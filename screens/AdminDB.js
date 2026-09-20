@@ -48,6 +48,100 @@ const toBengaliNumber = (num) => {
   return String(num).replace(/\d/g, d => bengaliDigits[parseInt(d, 10)]);
 };
 
+// --- DYNAMIC CIRCULAR COUNTDOWN RING (Smooth 360 to 0 Progress) ---
+const CircularCountdownRing = ({ ratio, color, trackColor = '#1A1D2B', size = 72, strokeWidth = 5, children }) => {
+  const percent = Math.max(0, Math.min(1, ratio || 0));
+  const halfSize = size / 2;
+  const rightRatio = Math.min(percent, 0.5) / 0.5;
+  const rightAngle = -135 + rightRatio * 180;
+  const leftRatio = Math.max(0, percent - 0.5) / 0.5;
+  const leftAngle = -135 + leftRatio * 180;
+
+  return (
+    <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
+      {/* Background Track Circle */}
+      <View
+        style={{
+          position: 'absolute',
+          width: size,
+          height: size,
+          borderRadius: halfSize,
+          borderWidth: strokeWidth,
+          borderColor: trackColor,
+        }}
+      />
+      {/* Right Half Container (0 to 180 deg) */}
+      <View
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          width: halfSize,
+          height: size,
+          overflow: 'hidden',
+        }}
+      >
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            width: size,
+            height: size,
+            borderRadius: halfSize,
+            borderWidth: strokeWidth,
+            borderColor: color,
+            borderBottomColor: 'transparent',
+            borderLeftColor: 'transparent',
+            transform: [{ rotate: `${rightAngle}deg` }],
+          }}
+        />
+      </View>
+      {/* Left Half Container (180 to 360 deg) */}
+      <View
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: halfSize,
+          height: size,
+          overflow: 'hidden',
+        }}
+      >
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: size,
+            height: size,
+            borderRadius: halfSize,
+            borderWidth: strokeWidth,
+            borderColor: color,
+            borderTopColor: 'transparent',
+            borderRightColor: 'transparent',
+            transform: [{ rotate: `${leftAngle}deg` }],
+          }}
+        />
+      </View>
+      {/* Center Upright Content (Number and Unit) */}
+      <View
+        style={{
+          position: 'absolute',
+          width: size - strokeWidth * 2 - 2,
+          height: size - strokeWidth * 2 - 2,
+          borderRadius: (size - strokeWidth * 2 - 2) / 2,
+          backgroundColor: '#0E1019',
+          justifyContent: 'center',
+          alignItems: 'center',
+        }}
+      >
+        {children}
+      </View>
+    </View>
+  );
+};
+
 // --- CUSTOM CALENDAR PICKER COMPONENT ---
 const CalendarPicker = ({ visible, onClose, onSelectDate }) => {
   const [viewDate, setViewDate] = useState(new Date());
@@ -889,24 +983,10 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     pendingSyncCount = row?.count || 0;
   } catch (err) {}
 
-  // Dynamic Real-time Sync Timer Ratios (0.0 to 1.0) for live progress bars & rings
+  // Dynamic Real-time Sync Timer Ratios (0.0 to 1.0) for live countdown rings & bars
   const delRatio = Math.max(0, Math.min(1, (delCountdown || 0) / 90));
   const tabRatio = Math.max(0, Math.min(1, (tabCountdown || 0) / 15));
   const fullRatio = Math.max(0, Math.min(1, (fullCountdown || 0) / 30));
-
-  const getDynamicRingStyle = (ratio, activeColor, trackColor = '#1A1D2B') => {
-    if (ratio <= 0) {
-      return {
-        borderColor: trackColor,
-      };
-    }
-    return {
-      borderTopColor: ratio > 0 ? activeColor : trackColor,
-      borderRightColor: ratio >= 0.25 ? activeColor : trackColor,
-      borderBottomColor: ratio >= 0.50 ? activeColor : trackColor,
-      borderLeftColor: ratio >= 0.75 ? activeColor : trackColor,
-    };
-  };
 
   const occupancyPercentage = tables.length > 0 ? Math.round((activeTablesCount / tables.length) * 100) : 0;
   
@@ -1680,25 +1760,14 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               </View>
             </View>
 
-            {/* 3 Circular Countdown Gauge Rings (Real system timers with live dynamic bars) */}
+            {/* 3 Circular Countdown Gauge Rings (Real system timers with live dynamic rings) */}
             <View style={styles.syncRingsRow}>
               {/* Delivery Timer (Real App Interval: 90s) */}
               <View style={styles.syncRingCol}>
-                <View style={styles.syncRingOuterWrap}>
-                  {/* Rotating Dynamic Border Ring */}
-                  <View
-                    style={[
-                      styles.syncCircularRing,
-                      getDynamicRingStyle(delRatio, '#F97316'),
-                      { transform: [{ rotate: `${Math.round((1 - delRatio) * 360)}deg` }] }
-                    ]}
-                  />
-                  {/* Upright Center Content */}
-                  <View style={styles.syncRingCenter}>
-                    <Text style={styles.syncRingNumber}>{toBengaliNumber(delCountdown)}</Text>
-                    <Text style={styles.syncRingUnit}>সেকেন্ড</Text>
-                  </View>
-                </View>
+                <CircularCountdownRing ratio={delRatio} color="#F97316" size={72} strokeWidth={5}>
+                  <Text style={styles.syncRingNumber}>{toBengaliNumber(delCountdown)}</Text>
+                  <Text style={styles.syncRingUnit}>সেকেন্ড</Text>
+                </CircularCountdownRing>
                 <Text style={styles.syncRingName}>ডেলিভারি</Text>
                 <Text style={styles.syncRingCycle}>প্রতি ৯০ সে.</Text>
                 {/* Dynamic Live Progress Bar */}
@@ -1709,21 +1778,10 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
 
               {/* Table Timer (Real App Interval: 15s) */}
               <View style={styles.syncRingCol}>
-                <View style={styles.syncRingOuterWrap}>
-                  {/* Rotating Dynamic Border Ring */}
-                  <View
-                    style={[
-                      styles.syncCircularRing,
-                      getDynamicRingStyle(tabRatio, '#2DD4BF'),
-                      { transform: [{ rotate: `${Math.round((1 - tabRatio) * 360)}deg` }] }
-                    ]}
-                  />
-                  {/* Upright Center Content */}
-                  <View style={styles.syncRingCenter}>
-                    <Text style={styles.syncRingNumber}>{toBengaliNumber(tabCountdown)}</Text>
-                    <Text style={styles.syncRingUnit}>সেকেন্ড</Text>
-                  </View>
-                </View>
+                <CircularCountdownRing ratio={tabRatio} color="#2DD4BF" size={72} strokeWidth={5}>
+                  <Text style={styles.syncRingNumber}>{toBengaliNumber(tabCountdown)}</Text>
+                  <Text style={styles.syncRingUnit}>সেকেন্ড</Text>
+                </CircularCountdownRing>
                 <Text style={styles.syncRingName}>টেবিল</Text>
                 <Text style={styles.syncRingCycle}>প্রতি ১৫ সে.</Text>
                 {/* Dynamic Live Progress Bar */}
@@ -1734,21 +1792,10 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
 
               {/* Full Sync Timer (Real App Interval: 30s) */}
               <View style={styles.syncRingCol}>
-                <View style={styles.syncRingOuterWrap}>
-                  {/* Rotating Dynamic Border Ring */}
-                  <View
-                    style={[
-                      styles.syncCircularRing,
-                      getDynamicRingStyle(fullRatio, '#8B5CF6'),
-                      { transform: [{ rotate: `${Math.round((1 - fullRatio) * 360)}deg` }] }
-                    ]}
-                  />
-                  {/* Upright Center Content */}
-                  <View style={styles.syncRingCenter}>
-                    <Text style={styles.syncRingNumber}>{toBengaliNumber(fullCountdown)}</Text>
-                    <Text style={styles.syncRingUnit}>সেকেন্ড</Text>
-                  </View>
-                </View>
+                <CircularCountdownRing ratio={fullRatio} color="#8B5CF6" size={72} strokeWidth={5}>
+                  <Text style={styles.syncRingNumber}>{toBengaliNumber(fullCountdown)}</Text>
+                  <Text style={styles.syncRingUnit}>সেকেন্ড</Text>
+                </CircularCountdownRing>
                 <Text style={styles.syncRingName}>ফুল সিঙ্ক</Text>
                 <Text style={styles.syncRingCycle}>প্রতি ৩০ সে.</Text>
                 {/* Dynamic Live Progress Bar */}
