@@ -889,6 +889,20 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     pendingSyncCount = row?.count || 0;
   } catch (err) {}
 
+  // Dynamic Real-time Sync Timer Ratios (0.0 to 1.0) for live progress bars & rings
+  const delRatio = Math.max(0, Math.min(1, (delCountdown || 0) / 90));
+  const tabRatio = Math.max(0, Math.min(1, (tabCountdown || 0) / 15));
+  const fullRatio = Math.max(0, Math.min(1, (fullCountdown || 0) / 30));
+
+  const getDynamicRingStyle = (ratio, activeColor, trackColor = '#1A1D2B') => {
+    return {
+      borderTopColor: ratio > 0 ? activeColor : trackColor,
+      borderRightColor: ratio >= 0.25 ? activeColor : trackColor,
+      borderBottomColor: ratio >= 0.50 ? activeColor : trackColor,
+      borderLeftColor: ratio >= 0.75 ? activeColor : trackColor,
+    };
+  };
+
   const occupancyPercentage = tables.length > 0 ? Math.round((activeTablesCount / tables.length) * 100) : 0;
   
   const availableMonthsRaw = Array.from(new Set(submissionHistory.map(item => getMonthName(item.date)).filter(Boolean)));
@@ -1661,36 +1675,81 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               </View>
             </View>
 
-            {/* 3 Circular Countdown Gauge Rings (Real system timers) */}
+            {/* 3 Circular Countdown Gauge Rings (Real system timers with live dynamic bars) */}
             <View style={styles.syncRingsRow}>
               {/* Delivery Timer (Real App Interval: 90s) */}
               <View style={styles.syncRingCol}>
-                <View style={[styles.syncCircularRing, styles.syncRingOrange]}>
-                  <Text style={styles.syncRingNumber}>{toBengaliNumber(delCountdown)}</Text>
-                  <Text style={styles.syncRingUnit}>সেকেন্ড</Text>
+                <View style={styles.syncRingOuterWrap}>
+                  {/* Rotating Dynamic Border Ring */}
+                  <View
+                    style={[
+                      styles.syncCircularRing,
+                      getDynamicRingStyle(delRatio, '#F97316'),
+                      { transform: [{ rotate: `${Math.round((1 - delRatio) * 360)}deg` }] }
+                    ]}
+                  />
+                  {/* Upright Center Content */}
+                  <View style={styles.syncRingCenter}>
+                    <Text style={styles.syncRingNumber}>{toBengaliNumber(delCountdown)}</Text>
+                    <Text style={styles.syncRingUnit}>সেকেন্ড</Text>
+                  </View>
                 </View>
                 <Text style={styles.syncRingName}>ডেলিভারি</Text>
                 <Text style={styles.syncRingCycle}>প্রতি ৯০ সে.</Text>
+                {/* Dynamic Live Progress Bar */}
+                <View style={styles.syncMiniTrack}>
+                  <View style={[styles.syncMiniFill, { width: `${Math.round(delRatio * 100)}%`, backgroundColor: '#F97316' }]} />
+                </View>
               </View>
 
               {/* Table Timer (Real App Interval: 15s) */}
               <View style={styles.syncRingCol}>
-                <View style={[styles.syncCircularRing, styles.syncRingTeal]}>
-                  <Text style={styles.syncRingNumber}>{toBengaliNumber(tabCountdown)}</Text>
-                  <Text style={styles.syncRingUnit}>সেকেন্ড</Text>
+                <View style={styles.syncRingOuterWrap}>
+                  {/* Rotating Dynamic Border Ring */}
+                  <View
+                    style={[
+                      styles.syncCircularRing,
+                      getDynamicRingStyle(tabRatio, '#2DD4BF'),
+                      { transform: [{ rotate: `${Math.round((1 - tabRatio) * 360)}deg` }] }
+                    ]}
+                  />
+                  {/* Upright Center Content */}
+                  <View style={styles.syncRingCenter}>
+                    <Text style={styles.syncRingNumber}>{toBengaliNumber(tabCountdown)}</Text>
+                    <Text style={styles.syncRingUnit}>সেকেন্ড</Text>
+                  </View>
                 </View>
                 <Text style={styles.syncRingName}>টেবিল</Text>
                 <Text style={styles.syncRingCycle}>প্রতি ১৫ সে.</Text>
+                {/* Dynamic Live Progress Bar */}
+                <View style={styles.syncMiniTrack}>
+                  <View style={[styles.syncMiniFill, { width: `${Math.round(tabRatio * 100)}%`, backgroundColor: '#2DD4BF' }]} />
+                </View>
               </View>
 
               {/* Full Sync Timer (Real App Interval: 30s) */}
               <View style={styles.syncRingCol}>
-                <View style={[styles.syncCircularRing, styles.syncRingPurple]}>
-                  <Text style={styles.syncRingNumber}>{toBengaliNumber(fullCountdown)}</Text>
-                  <Text style={styles.syncRingUnit}>সেকেন্ড</Text>
+                <View style={styles.syncRingOuterWrap}>
+                  {/* Rotating Dynamic Border Ring */}
+                  <View
+                    style={[
+                      styles.syncCircularRing,
+                      getDynamicRingStyle(fullRatio, '#8B5CF6'),
+                      { transform: [{ rotate: `${Math.round((1 - fullRatio) * 360)}deg` }] }
+                    ]}
+                  />
+                  {/* Upright Center Content */}
+                  <View style={styles.syncRingCenter}>
+                    <Text style={styles.syncRingNumber}>{toBengaliNumber(fullCountdown)}</Text>
+                    <Text style={styles.syncRingUnit}>সেকেন্ড</Text>
+                  </View>
                 </View>
                 <Text style={styles.syncRingName}>ফুল সিঙ্ক</Text>
                 <Text style={styles.syncRingCycle}>প্রতি ৩০ সে.</Text>
+                {/* Dynamic Live Progress Bar */}
+                <View style={styles.syncMiniTrack}>
+                  <View style={[styles.syncMiniFill, { width: `${Math.round(fullRatio * 100)}%`, backgroundColor: '#8B5CF6' }]} />
+                </View>
               </View>
             </View>
 
@@ -2792,14 +2851,15 @@ const styles = StyleSheet.create({
   // 3 Circular Countdown Gauge Rings
   syncRingsRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', marginBottom: 12 },
   syncRingCol: { alignItems: 'center' },
-  syncCircularRing: { width: 72, height: 72, borderRadius: 36, borderWidth: 5, backgroundColor: '#0C0E17', justifyContent: 'center', alignItems: 'center' },
-  syncRingOrange: { borderColor: '#2A2020', borderTopColor: '#F97316', borderRightColor: '#F97316' },
-  syncRingTeal: { borderColor: '#152525', borderTopColor: '#2DD4BF', borderRightColor: '#2DD4BF', borderBottomColor: '#2DD4BF' },
-  syncRingPurple: { borderColor: '#201C2E', borderTopColor: '#8B5CF6', borderRightColor: '#8B5CF6' },
+  syncRingOuterWrap: { width: 72, height: 72, justifyContent: 'center', alignItems: 'center', position: 'relative' },
+  syncCircularRing: { position: 'absolute', width: 72, height: 72, borderRadius: 36, borderWidth: 5, backgroundColor: '#0C0E17', borderColor: '#1A1D2B' },
+  syncRingCenter: { position: 'absolute', width: 62, height: 62, borderRadius: 31, backgroundColor: '#0C0E17', justifyContent: 'center', alignItems: 'center' },
   syncRingNumber: { color: '#FFFFFF', fontSize: 18, fontWeight: '900' },
   syncRingUnit: { color: '#6B6F85', fontSize: 9, marginTop: 1 },
   syncRingName: { color: '#FFFFFF', fontSize: 12, fontWeight: '700', marginTop: 8 },
   syncRingCycle: { color: '#6B6F85', fontSize: 10, marginTop: 2 },
+  syncMiniTrack: { width: 48, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255, 255, 255, 0.08)', marginTop: 6, overflow: 'hidden' },
+  syncMiniFill: { height: '100%', borderRadius: 1.5 },
 
   // Sync Engine Background Strip
   syncEngineStrip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#090B10', borderRadius: 8, paddingVertical: 7, paddingHorizontal: 12, borderWidth: 1, borderColor: '#181A24', marginTop: 4 },
