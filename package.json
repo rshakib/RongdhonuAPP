@@ -39,7 +39,8 @@
     "test:firebase-auth": "node tests/firebaseAuth.test.js",
     "test:same-day-resync": "node tests/sameDayResync.test.js",
     "test:admin-merge": "node tests/adminDashboardMerge.test.js",
-    "test:all": "node tests/builder.test.js && node tests/validator.test.js && node tests/mapper.test.js && node tests/queue.test.js && node tests/transport.test.js && node tests/e2ePipeline.test.js && node tests/activityLogger.test.js && node tests/supabaseDeviceControl.test.js && node tests/appUsageTracker.test.js && node tests/firebaseAuth.test.js && node tests/sameDayResync.test.js && node tests/adminDashboardMerge.test.js"
+    "test:force-logout": "node tests/forceLogoutAndMetadataSync.test.js",
+    "test:all": "node tests/builder.test.js && node tests/validator.test.js && node tests/mapper.test.js && node tests/queue.test.js && node tests/transport.test.js && node tests/e2ePipeline.test.js && node tests/activityLogger.test.js && node tests/supabaseDeviceControl.test.js && node tests/appUsageTracker.test.js && node tests/firebaseAuth.test.js && node tests/sameDayResync.test.js && node tests/adminDashboardMerge.test.js && node tests/forceLogoutAndMetadataSync.test.js"
   },
   "private": true,
   "devDependencies": {

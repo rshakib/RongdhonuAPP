@@ -36,14 +36,26 @@ export default function LoginScreen({ onLoginSuccess, forceReauth = false }) {
   // Fetch remembered user and mode on mount
   useEffect(() => {
     try {
-      const savedUser = getAppConfig('remembered_username');
-      if (savedUser && savedUser.trim() !== '') {
-        setUsername(savedUser);
-        setIsFirstLogin(false);
-        setRequiresOnlineCheck(false);
-      } else {
+      const isForceReauth = forceReauth || getAppConfig('force_reauth_required') === '1';
+      if (isForceReauth) {
+        try {
+          setAppConfig('remembered_username', '');
+          setAppConfig('login_session_user', '');
+        } catch (_) {}
+        setUsername('');
+        setPin('');
         setIsFirstLogin(true);
         setRequiresOnlineCheck(true);
+      } else {
+        const savedUser = getAppConfig('remembered_username');
+        if (savedUser && savedUser.trim() !== '') {
+          setUsername(savedUser);
+          setIsFirstLogin(false);
+          setRequiresOnlineCheck(false);
+        } else {
+          setIsFirstLogin(true);
+          setRequiresOnlineCheck(true);
+        }
       }
     } catch (err) {
       console.error("Failed to load remembered user from SQLite:", err);
@@ -62,6 +74,20 @@ export default function LoginScreen({ onLoginSuccess, forceReauth = false }) {
       console.error("Failed to load sync_mode:", e);
     }
   }, []);
+
+  // React to forceReauth prop changes dynamically
+  useEffect(() => {
+    if (forceReauth) {
+      try {
+        setAppConfig('remembered_username', '');
+        setAppConfig('login_session_user', '');
+      } catch (_) {}
+      setUsername('');
+      setPin('');
+      setIsFirstLogin(true);
+      setRequiresOnlineCheck(true);
+    }
+  }, [forceReauth]);
 
   const handleModeChange = (newMode) => {
     if (newMode === syncMode) return;
@@ -162,12 +188,15 @@ export default function LoginScreen({ onLoginSuccess, forceReauth = false }) {
   };
 
   const handlePinSubmit = async (enteredPin) => {
+    const isForceReauth = forceReauth || getAppConfig('force_reauth_required') === '1';
     const cleanUsername = username.trim().toLowerCase();
     const cleanPin = enteredPin.trim();
 
-    if (!cleanUsername) {
-      setError('ইউজারনেম প্রয়োজন!');
+    if (!cleanUsername || (isForceReauth && isFirstLogin)) {
+      setError('ইউজারনেম প্রয়োজন! অনুগ্রহ করে ইউজারনেম লিখুন।');
+      setUsername('');
       setPin('');
+      setIsFirstLogin(true);
       return;
     }
 
@@ -185,7 +214,7 @@ export default function LoginScreen({ onLoginSuccess, forceReauth = false }) {
     }
 
     // ── ONLINE & VERSION CHECK PATH (New Install, First Login, or Force Reauth) ──
-    const isOnlineVersionCheckRequired = forceReauth || requiresOnlineCheck;
+    const isOnlineVersionCheckRequired = forceReauth || requiresOnlineCheck || isForceReauth;
     if (isOnlineVersionCheckRequired) {
       setIsVerifying(true);
       try {
@@ -591,7 +620,7 @@ export default function LoginScreen({ onLoginSuccess, forceReauth = false }) {
 
             {/* Footer / Created By */}
             <View style={styles.footerBlock}>
-              <Text style={styles.createdText}>Created by <Text style={styles.createdName}>রিয়াজুল হাসান সাকিব</Text></Text>
+              <Text style={styles.createdText}>Powering <Text style={styles.createdName}>রংধনু সিস্টেম</Text></Text>
             </View>
           </ScrollView>
         </KeyboardAvoidingView>

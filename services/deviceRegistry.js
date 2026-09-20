@@ -23,16 +23,39 @@ export function checkAndFlushLastSeen() {
 
     // Update last_seen to current time locally
     const now = new Date().toISOString();
-    const currentVer = APP_VERSION || '1.0.3';
+    const isExpoGo = Application.applicationId === 'host.exp.exponent' || Application.nativeApplicationVersion?.startsWith('56.');
+    const currentVer = isExpoGo ? APP_VERSION : (Application.nativeApplicationVersion || APP_VERSION || '1.0.3');
     const hasVersionChanged = record.app_version !== currentVer;
 
-    if (hasVersionChanged) {
+    const deviceName = Device.deviceName || Device.modelName || record.device_name || 'Android Device';
+    const manufacturer = Device.manufacturer || record.manufacturer || 'Android';
+    const brand = Device.brand || manufacturer || record.brand || 'Android';
+    const model = Device.modelName || Device.designName || record.model || Platform.OS;
+    const androidVersion = Device.osVersion || String(Platform.Version || '') || record.android_version || '';
+
+    const hasMetadataChanged = (
+      record.android_version !== androidVersion ||
+      record.device_name !== deviceName ||
+      record.manufacturer !== manufacturer ||
+      record.brand !== brand ||
+      record.model !== model
+    );
+
+    if (hasVersionChanged || hasMetadataChanged) {
       db.runSync(
-        "UPDATE device_registry SET last_seen = ?, app_version = ?, updated_at = ? WHERE id = ?",
-        [now, currentVer, now, record.id]
+        "UPDATE device_registry SET last_seen = ?, app_version = ?, android_version = ?, device_name = ?, manufacturer = ?, brand = ?, model = ?, updated_at = ? WHERE id = ?",
+        [now, currentVer, androidVersion, deviceName, manufacturer, brand, model, now, record.id]
       );
-      updateSupabaseDevice(record.device_id, { last_seen_at: now, app_version: currentVer });
-      console.log(`[DeviceRegistry] Updated last_seen to ${now} and app_version to ${currentVer} for device '${record.device_id}'`);
+      updateSupabaseDevice(record.device_id, {
+        last_seen_at: now,
+        app_version: currentVer,
+        android_version: androidVersion,
+        device_name: deviceName,
+        manufacturer: manufacturer,
+        brand: brand,
+        model: model
+      });
+      console.log(`[DeviceRegistry] Overwrote SQLite and updated Supabase for device '${record.device_id}' (app_version: ${currentVer})`);
     } else {
       db.runSync(
         "UPDATE device_registry SET last_seen = ?, updated_at = ? WHERE id = ?",
@@ -46,6 +69,83 @@ export function checkAndFlushLastSeen() {
     console.error("[DeviceRegistry] Error in checkAndFlushLastSeen:", err);
   }
   return false;
+}
+
+/**
+ * Authoritative check and sync of phone hardware data and app version.
+ * Overwrites local SQLite if SQLite has old/different version or phone data,
+ * and pushes updated metadata to Supabase.
+ */
+export async function syncDeviceHardwareAndVersion() {
+  try {
+    const db = getDb();
+    const record = getCurrentDeviceRecord();
+    if (!record || !record.device_id) return false;
+
+    const now = new Date().toISOString();
+    const isExpoGo = Application.applicationId === 'host.exp.exponent' || Application.nativeApplicationVersion?.startsWith('56.');
+    const currentVer = isExpoGo ? APP_VERSION : (Application.nativeApplicationVersion || APP_VERSION || '1.0.3');
+    const deviceName = Device.deviceName || Device.modelName || record.device_name || 'Android Device';
+    const manufacturer = Device.manufacturer || record.manufacturer || 'Android';
+    const brand = Device.brand || manufacturer || record.brand || 'Android';
+    const model = Device.modelName || Device.designName || record.model || Platform.OS;
+    const androidVersion = Device.osVersion || String(Platform.Version || '') || record.android_version || '';
+
+    const hasAppVerChanged = record.app_version !== currentVer;
+    const hasAndroidVerChanged = record.android_version !== androidVersion;
+    const hasDeviceNameChanged = record.device_name !== deviceName;
+    const hasManufacturerChanged = record.manufacturer !== manufacturer;
+    const hasBrandChanged = record.brand !== brand;
+    const hasModelChanged = record.model !== model;
+
+    const hasAnyChange = hasAppVerChanged || hasAndroidVerChanged || hasDeviceNameChanged || hasManufacturerChanged || hasBrandChanged || hasModelChanged;
+
+    if (hasAnyChange) {
+      db.runSync(`
+        UPDATE device_registry
+        SET app_version = ?,
+            android_version = ?,
+            device_name = ?,
+            manufacturer = ?,
+            brand = ?,
+            model = ?,
+            last_seen = ?,
+            updated_at = ?
+        WHERE device_id = ?
+      `, [
+        currentVer,
+        androidVersion,
+        deviceName,
+        manufacturer,
+        brand,
+        model,
+        now,
+        now,
+        record.device_id
+      ]);
+      console.log(`[DeviceRegistry] Overwrote local SQLite with actual device data & app version (${currentVer}) for device: ${record.device_id}`);
+    }
+
+    // Push updated metadata to Supabase
+    const payload = {
+      app_version: currentVer,
+      android_version: androidVersion,
+      device_name: deviceName,
+      manufacturer: manufacturer,
+      brand: brand,
+      model: model,
+      last_seen_at: now
+    };
+
+    const pushRes = await updateSupabaseDevice(record.device_id, payload);
+    if (pushRes) {
+      console.log(`[DeviceRegistry] Pushed fresh phone data and app version (${currentVer}) to Supabase for: ${record.device_id}`);
+    }
+    return true;
+  } catch (err) {
+    console.error("[DeviceRegistry] Error in syncDeviceHardwareAndVersion:", err);
+    return false;
+  }
 }
 
 /**
@@ -906,6 +1006,24 @@ export async function checkAndExecuteForceLogout(remoteRecord = null) {
     const lastHandledAt = getAppConfig('last_handled_force_logout_at') || '';
     const lastHandledToken = getAppConfig('last_handled_force_logout_token') || '';
 
+    // If no remoteRecord is passed, check if we are online and fetch our authoritative row from Supabase
+    // to instantly catch any Force Logout commands issued while this device was offline.
+    if (!remoteRecord) {
+      try {
+        const NetInfo = require('@react-native-community/netinfo').default || require('@react-native-community/netinfo');
+        const netState = await NetInfo.fetch();
+        if (netState && netState.isConnected && netState.isInternetReachable !== false) {
+          const fetchRes = await fetchSingleSupabaseDevice(deviceRecord.device_id);
+          if (fetchRes && fetchRes.success && fetchRes.record) {
+            remoteRecord = fetchRes.record;
+            syncRemoteDeviceToLocal(remoteRecord);
+          }
+        }
+      } catch (netErr) {
+        // Fall back to local SQLite record if network check fails
+      }
+    }
+
     let shouldTrigger = false;
     let commandTimestamp = '';
     let commandToken = '';
@@ -973,7 +1091,7 @@ export async function checkAndExecuteForceLogout(remoteRecord = null) {
     console.log(`[ForceLogout] stage=supabase_acked deviceId=${deviceRecord.device_id} commandId=${commandToken || 'legacy'} elapsed=${Date.now()-t0}ms`);
     return {
       triggered: true,
-      message: 'প্রশাসক আপনার সেশন বন্ধ করেছেন। অনুগ্রহ করে আবার লগইন করুন।'
+      message: 'প্রশাসক আপনার সেশন বন্ধ করেছেন। অনুগ্রহ করে পুনরায় ইউজারনেম ও PIN দিয়ে লগইন করুন।'
     };
   } catch (err) {
     console.error(`[ForceLogout] stage=check_error elapsed=${Date.now()-t0}ms error=`, err);

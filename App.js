@@ -865,17 +865,22 @@ export default function App() {
   useEffect(() => {
     if (!isLoggedIn) return;
 
-    const executeForceLogoutCheck = () => {
+    const executeForceLogoutCheck = async () => {
       try {
         const { checkAndExecuteForceLogout } = require('./services/deviceRegistry');
-        const result = checkAndExecuteForceLogout();
+        const result = await checkAndExecuteForceLogout();
         if (result && result.triggered) {
+          isLoggedInRef.current = false;
           setIsLoggedIn(false);
           setUserRole('');
           setUserDisplayName('');
           setPendingLoginInfo(null);
           setCurrentScreen('LOGIN');
           setForceReauthRequired(true);
+          Alert.alert(
+            'সেশন বাতিল',
+            result.message || 'প্রশাসক আপনার সেশন বন্ধ করেছেন। অনুগ্রহ করে পুনরায় ইউজারনেম ও PIN দিয়ে লগইন করুন।'
+          );
         }
       } catch (e) {
         console.error('[ForceLogout Polling] Error:', e);
@@ -886,9 +891,9 @@ export default function App() {
     const pollInterval = setInterval(executeForceLogoutCheck, 60000);
 
     // Also check on every app foreground resume
-    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+    const appStateSubscription = AppState.addEventListener('change', async (nextState) => {
       if (nextState === 'active') {
-        executeForceLogoutCheck();
+        await executeForceLogoutCheck();
       }
     });
 
@@ -898,11 +903,10 @@ export default function App() {
     };
   }, [isLoggedIn]);
 
-  // --- NETWORK RECOVERY SYNC ---
-  // Instantly process queue and pull delta sync when internet returns
+  // --- NETWORK RECOVERY & DEVICE HARDWARE / APP VERSION SYNC ---
+  // Instantly syncs device hardware & app version to Supabase (overwriting SQLite if different),
+  // catches force logout issued while offline, processes queue, and pulls delta sync when internet returns
   useEffect(() => {
-    if (!isLoggedIn) return;
-
     let wasOffline = !isOnline;
     
     const unsubscribe = NetInfo.addEventListener(async state => {
@@ -918,43 +922,69 @@ export default function App() {
         return;
       }
 
-      if (wasOffline && isOnline) {
+      if (wasOffline && isOnlineState) {
         wasOffline = false; // Reset to prevent duplicate recovery loops
-        console.log("[Network Recovery] Internet RECONNECTED. Starting instant recovery cycle...");
-        const { incrementNetInfoRecoveryCount } = require('./database');
-        incrementNetInfoRecoveryCount();
-        
+        console.log("[Network Recovery] Internet RECONNECTED. Starting device and data recovery...");
+
+        // 1. Hardware & App Version check & push to Supabase (overwrites SQLite if different)
         try {
-          // 1. Process Upload Queue First (Clear local changes to Firestore)
-          console.log("[Network Recovery] 1/4: Processing pending upload queue...");
-          const uploadResult = await processSyncQueue();
-          console.log(`[Network Recovery] Upload finished. Writes: ${uploadResult.successfulWrites}, Failed: ${uploadResult.failedWrites}`);
+          const { syncDeviceHardwareAndVersion, checkAndExecuteForceLogout } = require('./services/deviceRegistry');
+          await syncDeviceHardwareAndVersion();
 
-          // 2. High Frequency Pull (Orders, Order Items, Payments, Deliveries)
-          console.log("[Network Recovery] 2/4: Running High Frequency pull sync...");
-          await syncHighFrequencyCollections();
+          // 2. Authoritative check: Was this device force-logged out while offline?
+          const forceRes = await checkAndExecuteForceLogout();
+          if (forceRes && forceRes.triggered) {
+            console.log("[Network Recovery] Force logout detected upon reconnecting! Triggering full logout...");
+            isLoggedInRef.current = false;
+            setIsLoggedIn(false);
+            setUserRole('');
+            setUserDisplayName('');
+            setPendingLoginInfo(null);
+            setCurrentScreen('LOGIN');
+            setForceReauthRequired(true);
+            Alert.alert(
+              'সেশন বাতিল',
+              forceRes.message || 'প্রশাসক আপনার সেশন বন্ধ করেছেন। অনুগ্রহ করে পুনরায় ইউজারনেম ও PIN দিয়ে লগইন করুন।'
+            );
+            return;
+          }
+        } catch (devRecoveryErr) {
+          console.warn("[Network Recovery] Device check warning on reconnect:", devRecoveryErr.message);
+        }
 
-          // 3. Low Frequency Pull (Expenses, Ijara, Users, Summaries)
-          console.log("[Network Recovery] 3/4: Running Low Frequency pull sync...");
-          await syncLowFrequencyCollections();
+        // 3. Only run database delta pulls and upload queue if user is logged in
+        if (isLoggedInRef.current) {
+          try {
+            console.log("[Network Recovery] 1/4: Processing pending upload queue...");
+            const { incrementNetInfoRecoveryCount } = require('./database');
+            incrementNetInfoRecoveryCount();
+            const uploadResult = await processSyncQueue();
+            console.log(`[Network Recovery] Upload finished. Writes: ${uploadResult.successfulWrites}, Failed: ${uploadResult.failedWrites}`);
 
-          // 4. Tables & Deletions
-          console.log("[Network Recovery] 4/4: Running Tables and Deletions sync...");
-          await syncTablesOnly();
-          await syncDeletionsOnly();
+            // 2. High Frequency Pull (Orders, Order Items, Payments, Deliveries)
+            console.log("[Network Recovery] 2/4: Running High Frequency pull sync...");
+            await syncHighFrequencyCollections();
 
-          console.log("[Network Recovery] Instant recovery cycle COMPLETED successfully.");
-          
-          // 5. Final UI Refresh to reflect all changes
-          refreshData();
-        } catch (err) {
-          console.error("[Network Recovery] Critical error during instant recovery:", err.message);
+            // 3. Low Frequency Pull (Expenses, Ijara, Users, Summaries)
+            console.log("[Network Recovery] 3/4: Running Low Frequency pull sync...");
+            await syncLowFrequencyCollections();
+
+            // 4. Tables & Deletions
+            console.log("[Network Recovery] 4/4: Running Tables and Deletions sync...");
+            await syncTablesOnly();
+            await syncDeletionsOnly();
+
+            console.log("[Network Recovery] Instant recovery cycle COMPLETED successfully.");
+            refreshData();
+          } catch (err) {
+            console.error("[Network Recovery] Critical error during instant recovery:", err.message);
+          }
         }
       }
     });
 
     return () => unsubscribe();
-  }, [isLoggedIn]);
+  }, []);
 
   // Pull low-frequency collections when the menu management screens are opened
   useEffect(() => {
