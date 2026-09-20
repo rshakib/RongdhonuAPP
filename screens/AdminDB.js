@@ -790,9 +790,8 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
 
   const totalDoneCount = todaysOrders.length;
   
-  // Executive Dashboard Insights: Top Selling Items & Category Breakdown for Today
+  // Executive Dashboard Insights: Top Selling Items for Today
   let topSellingItems = [];
-  let categoryBreakdown = [];
   let topItemPct = 0;
   try {
     const rawReport = getItemSalesReport(todayStr, todayStr) || [];
@@ -805,23 +804,6 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     topItemPct = totalFoodSalesToday > 0 && topSellingItems[0]
       ? Math.round(((topSellingItems[0].totalSales || 0) / totalFoodSalesToday) * 100)
       : 0;
-
-    // Group sales by category for Donut Ring Chart & Legend (Image 2)
-    const catMap = {};
-    validItems.forEach(it => {
-      const cat = (it.category || 'অন্যান্য').trim();
-      catMap[cat] = (catMap[cat] || 0) + (it.totalSales || 0);
-    });
-
-    const catColors = ['#F59E0B', '#F97316', '#8B5CF6', '#2DD4BF', '#EC4899', '#3B82F6', '#10B981'];
-    categoryBreakdown = Object.entries(catMap)
-      .map(([name, total], idx) => ({
-        name,
-        total,
-        percentage: totalFoodSalesToday > 0 ? Math.round((total / totalFoodSalesToday) * 100) : 0,
-        color: catColors[idx % catColors.length]
-      }))
-      .sort((a, b) => b.total - a.total);
   } catch (err) {
     console.error("[AdminDB] Error fetching top selling items:", err);
   }
@@ -1419,42 +1401,6 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                       </View>
                     );
                   })}
-                </View>
-              )}
-
-              {/* Category Breakdown Donut / Ring & Legend (Image 2) */}
-              {categoryBreakdown.length > 0 && (
-                <View style={styles.catBreakdownCard}>
-                  {/* Left: Donut Ring Chart */}
-                  <View style={styles.donutContainer}>
-                    <View style={[
-                      styles.donutRing,
-                      {
-                        borderTopColor: categoryBreakdown[0]?.color || '#F59E0B',
-                        borderRightColor: categoryBreakdown[1]?.color || categoryBreakdown[0]?.color || '#F97316',
-                        borderBottomColor: categoryBreakdown[2]?.color || categoryBreakdown[1]?.color || '#8B5CF6',
-                        borderLeftColor: categoryBreakdown[3]?.color || categoryBreakdown[2]?.color || '#2DD4BF',
-                      }
-                    ]}>
-                      <View style={styles.donutCenter}>
-                        <Text style={styles.donutCount}>
-                          {toBengaliNumber(categoryBreakdown.length)}
-                        </Text>
-                        <Text style={styles.donutLabel}>ক্যাটাগরি</Text>
-                      </View>
-                    </View>
-                  </View>
-
-                  {/* Right: Category Legend */}
-                  <View style={styles.catLegendList}>
-                    {categoryBreakdown.slice(0, 4).map(cat => (
-                      <View key={cat.name} style={styles.catLegendRow}>
-                        <View style={[styles.catLegendDot, { backgroundColor: cat.color }]} />
-                        <Text style={styles.catLegendName} numberOfLines={1}>{cat.name}</Text>
-                        <Text style={styles.catLegendPct}>{toBengaliNumber(cat.percentage)}%</Text>
-                      </View>
-                    ))}
-                  </View>
                 </View>
               )}
             </>
@@ -2585,7 +2531,7 @@ const styles = StyleSheet.create({
   topHeroPrice: { color: '#1F1300', fontSize: 20, fontWeight: '900' },
 
   // Ranked List (#2 to #5 Items)
-  rankedListCard: { backgroundColor: '#0F1118', borderRadius: 14, borderWidth: 1, borderColor: '#1A1C29', marginBottom: 12, overflow: 'hidden' },
+  rankedListCard: { backgroundColor: '#0F1118', borderRadius: 14, borderWidth: 1, borderColor: '#1A1C29', marginBottom: 0, overflow: 'hidden' },
   rankedItemRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 12 },
   rankedItemBorderBottom: { borderBottomWidth: 1, borderColor: '#161824' },
   rankedBadge: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#E2E8F0', justifyContent: 'center', alignItems: 'center', marginRight: 10, flexShrink: 0 },
@@ -2599,19 +2545,6 @@ const styles = StyleSheet.create({
   rankedItemRightCol: { alignItems: 'flex-end', flexShrink: 0 },
   rankedItemAmount: { color: '#E8E9EF', fontSize: 13, fontWeight: '800' },
   rankedItemQty: { color: '#2DD4BF', fontSize: 11, fontWeight: '600', marginTop: 2 },
-
-  // Category Breakdown Card (Donut + Legend)
-  catBreakdownCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#0F1118', borderRadius: 14, borderWidth: 1, borderColor: '#1A1C29', padding: 14 },
-  donutContainer: { marginRight: 16, justifyContent: 'center', alignItems: 'center' },
-  donutRing: { width: 82, height: 82, borderRadius: 41, borderWidth: 9, justifyContent: 'center', alignItems: 'center' },
-  donutCenter: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#0F1118', justifyContent: 'center', alignItems: 'center' },
-  donutCount: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
-  donutLabel: { color: '#6B6F85', fontSize: 9, marginTop: 1 },
-  catLegendList: { flex: 1, justifyContent: 'center' },
-  catLegendRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 3.5 },
-  catLegendDot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
-  catLegendName: { color: '#E8E9EF', fontSize: 12, fontWeight: '600', flex: 1 },
-  catLegendPct: { color: '#E8E9EF', fontSize: 12, fontWeight: '700' },
 
   // ── DEVICE CONTROL ──
   deviceChipsRow: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 8 },
