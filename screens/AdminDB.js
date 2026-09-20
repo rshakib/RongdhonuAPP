@@ -20,7 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { exportSalesReportPDF, exportDepositReportPDF } from '../pdfHelper';
 import { formatDisplayDate, getBusinessDate, inspectDatabaseStats, executeInspectorQuery, getFirebaseUsageStats, verifyPinCode, deleteDataByDate, getItemSalesReport, getDb, getOwnerEmployees } from '../database';
 import { getAllRegisteredDevices } from '../services/deviceRegistry';
-import { fetchMinimumVersion, setMinimumVersion, APP_VERSION } from '../services/firebaseAppConfig';
+import { fetchMinimumVersion, setMinimumVersion, APP_VERSION, compareSemver } from '../services/firebaseAppConfig';
 import * as Application from 'expo-application';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { TodaySalesCard, TotalCashCard, ActiveTablesCard, MonthlyTotalCard } from '../components/StatCard';
@@ -121,7 +121,7 @@ const formatStartTime = (timeStr) => {
   return timeStr;
 };
 
-export default function AdminDB({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onUpdateTableName, onNavigateToExpenses, onNavigateToSubmit, onNavigateToEditMenu, onNavigateToSupplierDue, onNavigateToItemSalesReport, onNavigateToSyncDiagnostics, onNavigateToDeleteHistory, onNavigateToSystemTools, onNavigateToDeviceManagement, onNavigateToAIDatasetMonitor, onNavigateToAIDatasetAuditCenter, onNavigateToAnalytics, onNavigateToEmployees, onNavigateToActivityLog, onCloudRestore, onMenuRecovery, onResetHistoryLimits, onHistoricalMonthDownload, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, onResetDailySubmit, onResetIjara, delCountdown, tabCountdown, fullCountdown }) {
+export default function AdminDB({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onUpdateTableName, onNavigateToExpenses, onNavigateToSubmit, onNavigateToEditMenu, onNavigateToSupplierDue, onNavigateToItemSalesReport, onNavigateToSyncDiagnostics, onNavigateToDeleteHistory, onNavigateToSystemTools, onNavigateToDeviceManagement, onNavigateToAIDatasetMonitor, onNavigateToAIDatasetAuditCenter, onNavigateToAnalytics, onNavigateToEmployees, onNavigateToActivityLog, onCloudRestore, onSameDayResync, onMenuRecovery, onResetHistoryLimits, onHistoricalMonthDownload, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, onResetDailySubmit, onResetIjara, delCountdown, tabCountdown, fullCountdown }) {
   const [renameModalVisible, setRenameModalVisible] = useState(false);
   const [selectedTableForRename, setSelectedTableForRename] = useState(null);
   const [newTableName, setNewTableName] = useState('');
@@ -307,7 +307,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
   const handleInitiateVersionUpdate = async () => {
     const cleanVer = (versionInput || '').trim();
     if (!cleanVer || !/^\d+(\.\d+)+$/.test(cleanVer)) {
-      Alert.alert('ভুল ভার্সন নম্বর', 'সঠিক ভার্সন নম্বর লিখুন (যেমন: 1.0.2)');
+      Alert.alert('ভুল ভার্সন নম্বর', 'সঠিক ভার্সন নম্বর লিখুন (যেমন: 1.0.3)');
       return;
     }
 
@@ -1298,6 +1298,18 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
 
             <TouchableOpacity 
               style={styles.adminGridCard} 
+              onPress={onNavigateToActivityLog}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.adminGridIconWrap, { backgroundColor: 'rgba(99, 102, 241, 0.15)' }]}>
+                <Text style={styles.adminGridIcon}>📜</Text>
+              </View>
+              <Text style={styles.adminGridTitle}>অ্যাক্টিভিটি ও অডিট লগ</Text>
+              <Text style={styles.adminGridDesc}>ডিভাইস ও খরচের লাইভ অডিট হিস্ট্রি</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.adminGridCard} 
               onPress={onNavigateToDeleteHistory}
               activeOpacity={0.7}
             >
@@ -1322,14 +1334,14 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
 
             <TouchableOpacity 
               style={styles.adminGridCard} 
-              onPress={onNavigateToAIDatasetAuditCenter}
+              onPress={() => { if (onSameDayResync) onSameDayResync(); }}
               activeOpacity={0.7}
             >
-              <View style={[styles.adminGridIconWrap, { backgroundColor: 'rgba(168, 85, 247, 0.15)' }]}>
-                <Text style={styles.adminGridIcon}>🤖</Text>
+              <View style={[styles.adminGridIconWrap, { backgroundColor: 'rgba(56, 189, 248, 0.15)' }]}>
+                <Text style={styles.adminGridIcon}>🔄</Text>
               </View>
-              <Text style={styles.adminGridTitle}>এআই অডিট ও ডেটাসেট</Text>
-              <Text style={styles.adminGridDesc}>স্মার্ট ইনসাইটস ও ট্রেনিং ডেটাসেট</Text>
+              <Text style={styles.adminGridTitle}>আজকের ডেটা রিসিন্ক</Text>
+              <Text style={styles.adminGridDesc}>ক্লাউড থেকে আজকের ফ্রেশ ডাটা নামান (দিনে ২ বার)</Text>
             </TouchableOpacity>
 
             <TouchableOpacity 
@@ -1344,17 +1356,19 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               <Text style={styles.adminGridDesc}>ডাটাবেজ এক্সপ্লোরার ও সিস্টেম ইনফো</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={styles.adminGridCard} 
-              onPress={onNavigateToActivityLog}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.adminGridIconWrap, { backgroundColor: 'rgba(99, 102, 241, 0.15)' }]}>
-                <Text style={styles.adminGridIcon}>📜</Text>
-              </View>
-              <Text style={styles.adminGridTitle}>অ্যাক্টিভিটি ও অডিট লগ</Text>
-              <Text style={styles.adminGridDesc}>ডিভাইস ও অ্যাপের লাইভ কার্যক্রম ও হিস্ট্রি</Text>
-            </TouchableOpacity>
+            {String(process.env.EXPO_PUBLIC_AI_DATASET_ENABLED || 'false').toLowerCase().trim() === 'true' && (
+              <TouchableOpacity 
+                style={styles.adminGridCard} 
+                onPress={onNavigateToAIDatasetAuditCenter}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.adminGridIconWrap, { backgroundColor: 'rgba(168, 85, 247, 0.15)' }]}>
+                  <Text style={styles.adminGridIcon}>🤖</Text>
+                </View>
+                <Text style={styles.adminGridTitle}>এআই অডিট ও ডেটাসেট</Text>
+                <Text style={styles.adminGridDesc}>স্মার্ট ইনসাইটস ও ট্রেনিং ডেটাসেট</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -1408,16 +1422,18 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                 ) : (
                   <ActivityIndicator size="small" color="#6366F1" />
                 )}
-                {firebaseMinVersion !== null && !isLoadingVersion && (
-                  <Text style={[
-                    styles.versionInfoSub,
-                    ((Application.applicationId === 'host.exp.exponent' || Application.nativeApplicationVersion?.startsWith('56.')) ? APP_VERSION : (Application.nativeApplicationVersion || APP_VERSION)) >= firebaseMinVersion
-                      ? { color: '#10B981' }
-                      : { color: '#EF4444' }
-                  ]}>
-                    {((Application.applicationId === 'host.exp.exponent' || Application.nativeApplicationVersion?.startsWith('56.')) ? APP_VERSION : (Application.nativeApplicationVersion || APP_VERSION)) >= firebaseMinVersion ? '✅ আপ-টু-ডেট' : '❌ পুরনো'}
-                  </Text>
-                )}
+                {firebaseMinVersion !== null && !isLoadingVersion && (() => {
+                  const liveVer = (Application.applicationId === 'host.exp.exponent' || Application.nativeApplicationVersion?.startsWith('56.')) ? APP_VERSION : (Application.nativeApplicationVersion || APP_VERSION);
+                  const isUpToDate = compareSemver(liveVer, firebaseMinVersion) >= 0;
+                  return (
+                    <Text style={[
+                      styles.versionInfoSub,
+                      isUpToDate ? { color: '#10B981' } : { color: '#EF4444' }
+                    ]}>
+                      {isUpToDate ? '✅ আপ-টু-ডেট' : '❌ পুরনো'}
+                    </Text>
+                  );
+                })()}
               </View>
             </View>
 
@@ -1436,7 +1452,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                     mainScrollRef.current?.scrollToEnd({ animated: true });
                   }, 200);
                 }}
-                placeholder="যেমন: 1.0.2"
+                placeholder="যেমন: 1.0.3"
                 placeholderTextColor="#555"
                 keyboardType="decimal-pad"
                 autoCapitalize="none"
@@ -1714,6 +1730,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onResetDailySubmit(); }}><Text style={[styles.menuOptionText, { color: '#FFB703' }]}>🔓 রিসেট ডেইলি লক</Text></TouchableOpacity>
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onResetIjara(); }}><Text style={[styles.menuOptionText, { color: '#FFB703' }]}>🔓 রিসেট ইজা খরচ</Text></TouchableOpacity>
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onResetHistoryLimits(); }}><Text style={[styles.menuOptionText, { color: '#FFB703' }]}>🔓 Reset History Limits</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); if (onSameDayResync) onSameDayResync(); }}><Text style={[styles.menuOptionText, { color: '#38BDF8' }]}>🔄 আজকের ডেটা রিসিন্ক (Same-Day Resync)</Text></TouchableOpacity>
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onCloudRestore(); }}><Text style={[styles.menuOptionText, { color: '#34D399' }]}>☁️ Cloud Restore</Text></TouchableOpacity>
             <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onMenuRecovery(); }}><Text style={[styles.menuOptionText, { color: '#34D399' }]}>🍴 Recover Menu Items</Text></TouchableOpacity>
 
