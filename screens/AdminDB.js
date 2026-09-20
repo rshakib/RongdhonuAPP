@@ -1165,6 +1165,81 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
           </View>
         </View>
 
+        {/* ── গত ৭ দিনের বিক্রয় (Last 7 Days Sales — Vertical Bar Chart) ── */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={styles.cardHeaderLeft}>
+              <View style={[styles.cardIconPill, { backgroundColor: 'rgba(99,102,241,0.15)' }]}>
+                <Text style={styles.cardIconEmoji}>📊</Text>
+              </View>
+              <View style={styles.cardTitleCol}>
+                <Text style={styles.cardTitle}>গত ৭ দিনের বিক্রয়</Text>
+                <Text style={styles.cardSubtitle}>দৈনিক বিক্রয় গ্রাফ (Last 7 Days)</Text>
+              </View>
+            </View>
+            <View style={[styles.statusPill, { backgroundColor: 'rgba(99,102,241,0.12)', borderColor: 'rgba(99,102,241,0.3)' }]}>
+              <Text style={[styles.statusPillText, { color: '#818CF8' }]}>সর্বোচ্চ ৳{highest7DaySale > 1000 ? (highest7DaySale/1000).toFixed(1)+'k' : highest7DaySale}</Text>
+            </View>
+          </View>
+
+          {/* Vertical Bar Chart Container */}
+          <View style={styles.chartContainer}>
+            {/* Guide lines */}
+            <View style={styles.chartGridLineTop} />
+            <View style={styles.chartGridLineMid} />
+            <View style={styles.chartGridLineBase} />
+
+            <View style={styles.chartBarsRow}>
+              {last7DaysData.map(item => {
+                const pct = Math.max(6, Math.min(100, Math.round((item.sales / (max7DaySale || 1)) * 100)));
+                const isBest = item.dateKey === bestDayKey && item.sales > 0;
+                const kVal = (item.sales >= 1000) ? (item.sales / 1000).toFixed(1) + 'k' : (item.sales > 0 ? item.sales.toString() : '0');
+
+                const barColor = item.isToday ? '#10B981' : (isBest ? '#F59E0B' : '#6366F1');
+
+                return (
+                  <View key={item.dateKey} style={styles.chartCol}>
+                    {/* Top value badge */}
+                    <View style={styles.chartTopLabelWrap}>
+                      {isBest && <Text style={styles.chartBestBadge}>⭐</Text>}
+                      <Text style={[styles.chartBarValueText, item.isToday ? { color: '#10B981', fontWeight: '800' } : null]}>
+                        {kVal}
+                      </Text>
+                    </View>
+
+                    {/* Vertical track and bar */}
+                    <View style={styles.chartBarTrack}>
+                      <View style={[styles.chartBarFill, { height: `${pct}%`, backgroundColor: barColor }]} />
+                    </View>
+
+                    {/* Day name & date */}
+                    <Text style={[styles.chartDayText, item.isToday ? styles.chartDayTextToday : null]}>
+                      {item.dayName}
+                    </Text>
+                    <Text style={[styles.chartDateSubText, item.isToday ? styles.chartDateSubTextToday : null]}>
+                      {item.isToday ? 'আজ' : item.shortDate}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Peak Hour & Weather Info Strip */}
+          <View style={styles.chartFooterStrip}>
+            <View style={styles.chartFooterItem}>
+              <Text style={styles.chartFooterEmoji}>🕒</Text>
+              <Text style={styles.chartFooterLabel}>পিক সময়:</Text>
+              <Text style={styles.chartFooterVal}>{calculatedPeakHour}</Text>
+            </View>
+            <View style={[styles.chartFooterItem, { borderLeftWidth: 1, borderColor: '#1F202E', paddingLeft: 10 }]}>
+              <Text style={styles.chartFooterEmoji}>☀️</Text>
+              <Text style={styles.chartFooterLabel}>আবহাওয়া:</Text>
+              <Text style={styles.chartFooterVal}>{weatherTemp}</Text>
+            </View>
+          </View>
+        </View>
+
         {/* ── টেবিল ও সক্রিয় ডেলিভারি (Combined Table & Active Delivery Section) ── */}
         <View style={styles.card}>
           <View style={styles.combinedHeader}>
@@ -1279,81 +1354,6 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               <Text style={styles.emptyDeliveryText}>বর্তমানে কোনো সক্রিয় ডেলিভারি নেই</Text>
             </View>
           )}
-        </View>
-
-        {/* ── গত ৭ দিনের বিক্রয় (Last 7 Days Sales — Vertical Bar Chart) ── */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <View style={styles.cardHeaderLeft}>
-              <View style={[styles.cardIconPill, { backgroundColor: 'rgba(99,102,241,0.15)' }]}>
-                <Text style={styles.cardIconEmoji}>📊</Text>
-              </View>
-              <View style={styles.cardTitleCol}>
-                <Text style={styles.cardTitle}>গত ৭ দিনের বিক্রয়</Text>
-                <Text style={styles.cardSubtitle}>দৈনিক বিক্রয় গ্রাফ (Last 7 Days)</Text>
-              </View>
-            </View>
-            <View style={[styles.statusPill, { backgroundColor: 'rgba(99,102,241,0.12)', borderColor: 'rgba(99,102,241,0.3)' }]}>
-              <Text style={[styles.statusPillText, { color: '#818CF8' }]}>সর্বোচ্চ ৳{highest7DaySale > 1000 ? (highest7DaySale/1000).toFixed(1)+'k' : highest7DaySale}</Text>
-            </View>
-          </View>
-
-          {/* Vertical Bar Chart Container */}
-          <View style={styles.chartContainer}>
-            {/* Guide lines */}
-            <View style={styles.chartGridLineTop} />
-            <View style={styles.chartGridLineMid} />
-            <View style={styles.chartGridLineBase} />
-
-            <View style={styles.chartBarsRow}>
-              {last7DaysData.map(item => {
-                const pct = Math.max(6, Math.min(100, Math.round((item.sales / (max7DaySale || 1)) * 100)));
-                const isBest = item.dateKey === bestDayKey && item.sales > 0;
-                const kVal = (item.sales >= 1000) ? (item.sales / 1000).toFixed(1) + 'k' : (item.sales > 0 ? item.sales.toString() : '0');
-
-                const barColor = item.isToday ? '#10B981' : (isBest ? '#F59E0B' : '#6366F1');
-
-                return (
-                  <View key={item.dateKey} style={styles.chartCol}>
-                    {/* Top value badge */}
-                    <View style={styles.chartTopLabelWrap}>
-                      {isBest && <Text style={styles.chartBestBadge}>⭐</Text>}
-                      <Text style={[styles.chartBarValueText, item.isToday ? { color: '#10B981', fontWeight: '800' } : null]}>
-                        {kVal}
-                      </Text>
-                    </View>
-
-                    {/* Vertical track and bar */}
-                    <View style={styles.chartBarTrack}>
-                      <View style={[styles.chartBarFill, { height: `${pct}%`, backgroundColor: barColor }]} />
-                    </View>
-
-                    {/* Day name & date */}
-                    <Text style={[styles.chartDayText, item.isToday ? styles.chartDayTextToday : null]}>
-                      {item.dayName}
-                    </Text>
-                    <Text style={[styles.chartDateSubText, item.isToday ? styles.chartDateSubTextToday : null]}>
-                      {item.isToday ? 'আজ' : item.shortDate}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-
-          {/* Peak Hour & Weather Info Strip */}
-          <View style={styles.chartFooterStrip}>
-            <View style={styles.chartFooterItem}>
-              <Text style={styles.chartFooterEmoji}>🕒</Text>
-              <Text style={styles.chartFooterLabel}>পিক সময়:</Text>
-              <Text style={styles.chartFooterVal}>{calculatedPeakHour}</Text>
-            </View>
-            <View style={[styles.chartFooterItem, { borderLeftWidth: 1, borderColor: '#1F202E', paddingLeft: 10 }]}>
-              <Text style={styles.chartFooterEmoji}>☀️</Text>
-              <Text style={styles.chartFooterLabel}>আবহাওয়া:</Text>
-              <Text style={styles.chartFooterVal}>{weatherTemp}</Text>
-            </View>
-          </View>
         </View>
 
         {/* ── SECTION 1: দৈনিক হিসাব ও ক্লোজিং ── */}
@@ -3049,12 +3049,12 @@ const styles = StyleSheet.create({
   chartFooterLabel: { color: '#6B6F85', fontSize: 10, marginRight: 4 },
   chartFooterVal: { color: '#E8E9EF', fontSize: 10.5, fontWeight: '700' },
 
-  // ── VERSION CONTROL (Redesign per media_1789917355855.png) ──
+  // ── VERSION CONTROL (User-friendly Slate & Royal Blue Palette) ──
   versionHeroCard: {
-    backgroundColor: '#352163',
+    backgroundColor: '#0F172A',
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#4A3387',
+    borderColor: '#1E293B',
     padding: 16,
     overflow: 'hidden',
   },
@@ -3073,7 +3073,7 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   versionHeroLabel: {
-    color: '#DDD6FE',
+    color: '#94A3B8',
     fontSize: 12,
     fontWeight: '600',
   },
@@ -3084,22 +3084,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   versionPillGreen: {
-    backgroundColor: 'rgba(16, 185, 129, 0.2)',
-    borderColor: 'rgba(16, 185, 129, 0.4)',
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderColor: 'rgba(16, 185, 129, 0.3)',
   },
   versionPillRed: {
-    backgroundColor: 'rgba(239, 68, 68, 0.2)',
-    borderColor: 'rgba(239, 68, 68, 0.4)',
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    borderColor: 'rgba(239, 68, 68, 0.3)',
   },
   versionStatusPillText: {
     fontSize: 11,
     fontWeight: '700',
   },
   versionPillTextGreen: {
-    color: '#34D399',
+    color: '#10B981',
   },
   versionPillTextRed: {
-    color: '#F87171',
+    color: '#EF4444',
   },
   versionBigRow: {
     flexDirection: 'row',
@@ -3107,7 +3107,7 @@ const styles = StyleSheet.create({
     marginVertical: 4,
   },
   versionPrefixV: {
-    color: '#A78BFA',
+    color: '#38BDF8',
     fontSize: 22,
     fontWeight: '700',
     marginRight: 4,
@@ -3120,20 +3120,22 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   versionBuildBadge: {
-    backgroundColor: 'rgba(255, 255, 255, 0.16)',
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.25)',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 10,
     marginLeft: 12,
   },
   versionBuildText: {
-    color: '#EDE9FE',
+    color: '#38BDF8',
     fontSize: 11.5,
     fontWeight: '700',
   },
   versionDashedDivider: {
     borderBottomWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.16)',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
     borderStyle: 'dashed',
     marginVertical: 14,
   },
@@ -3150,7 +3152,9 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#334155',
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
@@ -3177,7 +3181,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
   },
   versionCompareLabel: {
-    color: '#C4B5FD',
+    color: '#94A3B8',
     fontSize: 10,
     fontWeight: '600',
     marginTop: 6,
@@ -3198,14 +3202,14 @@ const styles = StyleSheet.create({
   versionConnectorLine: {
     width: '100%',
     height: 2,
-    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    backgroundColor: '#334155',
     justifyContent: 'center',
     alignItems: 'center',
   },
   versionConnectorGlow: {
     width: '50%',
     height: 3,
-    backgroundColor: '#2DD4BF',
+    backgroundColor: '#10B981',
     borderRadius: 1.5,
     opacity: 0.8,
   },
@@ -3217,7 +3221,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: '#352163',
+    borderColor: '#0F172A',
   },
   versionCenterCheck: {
     color: '#FFFFFF',
@@ -3243,9 +3247,9 @@ const styles = StyleSheet.create({
   versionAutoPickPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(99, 102, 241, 0.15)',
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(99, 102, 241, 0.4)',
+    borderColor: 'rgba(56, 189, 248, 0.3)',
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 5,
@@ -3255,22 +3259,22 @@ const styles = StyleSheet.create({
     marginRight: 4,
   },
   versionAutoPickPillText: {
-    color: '#818CF8',
+    color: '#38BDF8',
     fontSize: 11.5,
     fontWeight: '700',
   },
   versionBigInputBox: {
-    backgroundColor: '#12141D',
+    backgroundColor: '#0F172A',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#202434',
+    borderColor: '#1E293B',
     height: 54,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
   },
   versionInputPrefixV: {
-    color: '#6B7280',
+    color: '#38BDF8',
     fontSize: 18,
     fontWeight: '800',
     marginRight: 10,
@@ -3305,12 +3309,12 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   versionFullUpdateBtn: {
-    backgroundColor: '#5046E5',
+    backgroundColor: '#2563EB',
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#5046E5',
+    shadowColor: '#2563EB',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.35,
     shadowRadius: 8,
