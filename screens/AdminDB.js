@@ -639,6 +639,128 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
   const bkashSale = todaysOrders.reduce((sum, o) => sum + (o.bkash_amount || (o.method === 'বিকাশ' ? o.paidAmount : 0) || 0), 0);
   const nagadSale = todaysOrders.reduce((sum, o) => sum + (o.nagad_amount || (o.method === 'নগদ' ? o.paidAmount : 0) || 0), 0);
   const rocketSale = todaysOrders.reduce((sum, o) => sum + (o.rocket_amount || (o.method === 'রকেট' ? o.paidAmount : 0) || 0), 0);
+  const cashSale = todaysOrders.reduce((sum, o) => sum + (o.cash_amount || (o.method === 'ক্যাশ' ? o.paidAmount : 0) || 0), 0);
+  const dueSale = todaysOrders.reduce((sum, o) => sum + (o.due_amount || (o.method === 'বাকি' ? (o.dueAmount || o.totalAmount || 0) : 0) || 0), 0);
+
+  // Today Discount & Delivery Sales
+  const todayDiscount = todaysOrders.reduce((sum, o) => sum + (o.discount || 0), 0);
+  const todayDeliverySales = todaysOrders.reduce((sum, o) => {
+    const isDeliv = (o.deliveryCharge > 0) || (o.tableId && String(o.tableId).toLowerCase().includes('deliv'));
+    return isDeliv ? sum + (o.paidAmount || o.grandTotal || 0) : sum;
+  }, 0);
+
+  // Peak Hour Calculation
+  let calculatedPeakHour = '৮–৯ PM';
+  try {
+    const hourCounts = {};
+    todaysOrders.forEach(o => {
+      let hour = null;
+      if (o.time) {
+        const match = o.time.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+        if (match) {
+          let h = parseInt(match[1], 10);
+          const isPM = match[3]?.toUpperCase() === 'PM';
+          const isAM = match[3]?.toUpperCase() === 'AM';
+          if (isPM && h < 12) h += 12;
+          if (isAM && h === 12) h = 0;
+          hour = h;
+        }
+      }
+      if (hour !== null) {
+        hourCounts[hour] = (hourCounts[hour] || 0) + 1;
+      }
+    });
+    let maxHour = null;
+    let maxCount = 0;
+    for (const [h, count] of Object.entries(hourCounts)) {
+      if (count > maxCount) {
+        maxCount = count;
+        maxHour = parseInt(h, 10);
+      }
+    }
+    if (maxHour !== null) {
+      const startHour12 = maxHour % 12 || 12;
+      const endHour12 = (maxHour + 1) % 12 || 12;
+      const ampm = maxHour >= 12 ? 'PM' : 'AM';
+      calculatedPeakHour = `${startHour12}–${endHour12} ${ampm}`;
+    }
+  } catch (e) {}
+
+  // Last 7 Days History
+  const dayNamesShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const last7DaysData = [];
+  let max7DaySale = 1;
+
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const dateKey = `${yyyy}-${mm}-${dd}`;
+    const dayName = dayNamesShort[d.getDay()];
+    const isToday = (i === 0);
+
+    let sales = 0;
+    if (isToday) {
+      sales = todaySale;
+    } else {
+      const sub = submissionHistory?.find(s => s.date === dateKey);
+      if (sub && sub.sell) {
+        sales = sub.sell;
+      } else {
+        try {
+          const db = getDb();
+          const row = db?.getFirstSync("SELECT total_sell FROM daily_submit WHERE date = ?", [dateKey]);
+          if (row && row.total_sell) sales = row.total_sell;
+        } catch (e) {}
+      }
+    }
+    if (sales > max7DaySale) max7DaySale = sales;
+    last7DaysData.push({ dayName, dateKey, sales, isToday });
+  }
+
+  let bestDayKey = '';
+  let highest7DaySale = 0;
+  last7DaysData.forEach(item => {
+    if (item.sales > highest7DaySale) {
+      highest7DaySale = item.sales;
+      bestDayKey = item.dateKey;
+    }
+  });
+
+  // Weather Info
+  let weatherTemp = '31°C';
+  try {
+    const db = getDb();
+    const wRow = db?.getFirstSync("SELECT * FROM weather_data ORDER BY date DESC LIMIT 1");
+    if (wRow && wRow.temperature) {
+      weatherTemp = `${Math.round(wRow.temperature)}°C`;
+    }
+  } catch (e) {}
+
+  // Table status helpers
+  const getTableElapsedMinutes = (t) => {
+    if (t.status !== 'BUSY' || !t.startTime) return null;
+    try {
+      const start = new Date(t.startTime).getTime();
+      if (isNaN(start)) return null;
+      return Math.max(0, Math.floor((Date.now() - start) / 60000));
+    } catch (e) {
+      return null;
+    }
+  };
+  const freeTablesCount = tables.filter(t => t.status !== 'BUSY').length;
+  const busyTablesCount = tables.filter(t => t.status === 'BUSY').length;
+
+  // Segmented payment percentages
+  const totalPaymentCalculated = (cashSale + bkashSale + nagadSale + rocketSale + dueSale) || todaySale || 1;
+  const cashPct = Math.max(cashSale > 0 ? 5 : 0, Math.round((cashSale / totalPaymentCalculated) * 100));
+  const bkashPct = Math.max(bkashSale > 0 ? 5 : 0, Math.round((bkashSale / totalPaymentCalculated) * 100));
+  const nagadPct = Math.max(nagadSale > 0 ? 5 : 0, Math.round((nagadSale / totalPaymentCalculated) * 100));
+  const rocketPct = Math.max(rocketSale > 0 ? 5 : 0, Math.round((rocketSale / totalPaymentCalculated) * 100));
+  const duePct = Math.max(dueSale > 0 ? 5 : 0, Math.max(0, 100 - (cashPct + bkashPct + nagadPct + rocketPct)));
+
   const currentMonthPrefix = todayStr.substring(0, 7);
   const thisMonthSubmissions = submissionHistory?.filter(item => item.date && item.date.startsWith(currentMonthPrefix)) || [];
   const monthlyTotalSell = thisMonthSubmissions.reduce((sum, item) => sum + (item.sell || 0), 0) + todaySale;
@@ -873,6 +995,141 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
           </View>
         </View>
 
+        {/* ── 3-METRIC EXECUTIVE ROW (Image 4) ── */}
+        <View style={styles.metricsRowCard}>
+          <View style={styles.metricRowCol}>
+            <Text style={styles.metricRowLabel}>ডিসকাউন্ট</Text>
+            <Text style={styles.metricRowValue}>৳{todayDiscount.toLocaleString()}</Text>
+          </View>
+          <View style={styles.metricRowCol}>
+            <Text style={styles.metricRowLabel}>ডেলিভারি</Text>
+            <Text style={styles.metricRowValue}>৳{todayDeliverySales.toLocaleString()}</Text>
+          </View>
+          <View style={styles.metricRowCol}>
+            <Text style={styles.metricRowLabel}>পিক টাইম</Text>
+            <Text style={styles.metricRowValue}>{calculatedPeakHour}</Text>
+          </View>
+        </View>
+
+        {/* ── টাকা কোন পথে এল (Image 3) ── */}
+        <View style={styles.card}>
+          <Text style={styles.sectionHeaderTitle}>টাকা কোন পথে এল</Text>
+          {/* Segmented multi-color horizontal bar */}
+          <View style={styles.segmentedBarTrack}>
+            {cashPct > 0 && <View style={[styles.segmentBar, { width: `${cashPct}%`, backgroundColor: '#2DD4BF' }]} />}
+            {bkashPct > 0 && <View style={[styles.segmentBar, { width: `${bkashPct}%`, backgroundColor: '#E11D48' }]} />}
+            {nagadPct > 0 && <View style={[styles.segmentBar, { width: `${nagadPct}%`, backgroundColor: '#F97316' }]} />}
+            {rocketPct > 0 && <View style={[styles.segmentBar, { width: `${rocketPct}%`, backgroundColor: '#8B5CF6' }]} />}
+            {duePct > 0 && <View style={[styles.segmentBar, { width: `${duePct}%`, backgroundColor: '#71717A' }]} />}
+          </View>
+          {/* Breakdown legend */}
+          <View style={styles.paymentLegendGrid}>
+            <View style={styles.paymentLegendItem}>
+              <View style={[styles.legendDot, { backgroundColor: '#2DD4BF' }]} />
+              <Text style={styles.legendLabel}>ক্যাশ</Text>
+              <Text style={styles.legendVal}>৳{cashSale.toLocaleString()}</Text>
+            </View>
+            <View style={styles.paymentLegendItem}>
+              <View style={[styles.legendDot, { backgroundColor: '#E11D48' }]} />
+              <Text style={styles.legendLabel}>বিকাশ</Text>
+              <Text style={styles.legendVal}>৳{bkashSale.toLocaleString()}</Text>
+            </View>
+            <View style={styles.paymentLegendItem}>
+              <View style={[styles.legendDot, { backgroundColor: '#F97316' }]} />
+              <Text style={styles.legendLabel}>নগদ</Text>
+              <Text style={styles.legendVal}>৳{nagadSale.toLocaleString()}</Text>
+            </View>
+            <View style={styles.paymentLegendItem}>
+              <View style={[styles.legendDot, { backgroundColor: '#8B5CF6' }]} />
+              <Text style={styles.legendLabel}>রকেট</Text>
+              <Text style={styles.legendVal}>৳{rocketSale.toLocaleString()}</Text>
+            </View>
+            {dueSale > 0 && (
+              <View style={styles.paymentLegendItem}>
+                <View style={[styles.legendDot, { backgroundColor: '#71717A' }]} />
+                <Text style={styles.legendLabel}>বাকি</Text>
+                <Text style={styles.legendVal}>৳{dueSale.toLocaleString()}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+        {/* ── টেবিলের অবস্থা (Image 1) ── */}
+        <View style={styles.card}>
+          <View style={styles.tableHeaderRow}>
+            <Text style={styles.sectionHeaderTitle}>টেবিলের অবস্থা</Text>
+            <Text style={styles.tableSummaryBadge}>
+              {freeTablesCount} ফাঁকা · {busyTablesCount} চলছে{activeDeliveriesCount > 0 ? ` · ${activeDeliveriesCount} ডেলিভারি` : ''}
+            </Text>
+          </View>
+
+          <View style={styles.tableVisualGrid}>
+            {tables.map(t => {
+              const isBusy = t.status === 'BUSY';
+              const m = getTableElapsedMinutes(t);
+              const isLong = m && m >= 15;
+
+              const cardBg = !isBusy ? '#0E231C' : isLong ? '#2D1518' : '#2A1F12';
+              const cardBorder = !isBusy ? '#065F46' : isLong ? '#991B1B' : '#92400E';
+              const textCol = !isBusy ? '#34D399' : isLong ? '#F87171' : '#FBBF24';
+
+              return (
+                <TouchableOpacity
+                  key={t.id}
+                  activeOpacity={0.7}
+                  onPress={() => onTableSelect(t.id)}
+                  style={[styles.tableVisualCard, { backgroundColor: cardBg, borderColor: cardBorder }]}
+                >
+                  <Text style={[styles.tableVisualId, { color: textCol }]}>{t.name || t.id.replace('table_', 'T')}</Text>
+                  <Text style={[styles.tableVisualSub, { color: textCol }]}>
+                    {isBusy ? (m !== null ? `${m} মিনিট` : 'চলছে') : 'ফাঁকা'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <Text style={styles.tableBottomHint}>যেকোনো টেবিলে চাপ দিন</Text>
+        </View>
+
+        {/* ── LAST 7 DAYS (Image 2) ── */}
+        <View style={styles.terminalCard}>
+          <Text style={styles.terminalTitle}>┌── LAST  7  DAYS ──────────────────────────────────┐</Text>
+          <View style={styles.terminalBody}>
+            {last7DaysData.map(item => {
+              const pct = Math.max(10, Math.min(100, Math.round((item.sales / (max7DaySale || 1)) * 100)));
+              const isBest = item.dateKey === bestDayKey && item.sales > 0;
+              const kVal = (item.sales >= 1000) ? (item.sales / 1000).toFixed(1) + 'k' : item.sales.toString();
+
+              return (
+                <View key={item.dateKey} style={styles.terminalRow}>
+                  <Text style={styles.terminalDayName}>│  {item.dayName}</Text>
+                  <View style={styles.terminalBarTrack}>
+                    <View style={[styles.terminalBarFill, { width: `${pct}%` }]} />
+                    <View style={[styles.terminalBarHatch, { width: `${100 - pct}%` }]} />
+                  </View>
+                  <Text style={styles.terminalVal}>{kVal}</Text>
+                  {isBest ? (
+                    <Text style={styles.terminalBadgeBest}>⭐ best</Text>
+                  ) : item.isToday ? (
+                    <Text style={styles.terminalBadgeToday}>(today)</Text>
+                  ) : (
+                    <View style={{ width: 55 }} />
+                  )}
+                  <Text style={styles.terminalRightPipe}>│</Text>
+                </View>
+              );
+            })}
+            <View style={styles.terminalRowSpace}><Text style={styles.terminalBorderSide}>│</Text><Text style={styles.terminalBorderSide}>│</Text></View>
+            <View style={styles.terminalFooterRow}>
+              <Text style={styles.terminalBorderSide}>│  </Text>
+              <Text style={styles.terminalFooterText}>Peak hour: {calculatedPeakHour}</Text>
+              <Text style={styles.terminalFooterText}>Weather: ☀️ {weatherTemp}</Text>
+              <Text style={styles.terminalBorderSide}>  │</Text>
+            </View>
+          </View>
+          <Text style={styles.terminalTitle}>└───────────────────────────────────────────────────┘</Text>
+        </View>
+
         {/* ── SECTION 1: দৈনিক হিসাব ও ক্লোজিং ── */}
         <View style={styles.card}>
           <View style={styles.cardHeader}>
@@ -923,81 +1180,6 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               <Text style={styles.cardInfoVal}>৳ {ongoingChangeMoney || 0}</Text>
             </View>
           </View>
-
-          {/* Payment breakdown row */}
-          <View style={styles.paymentBreakdownRow}>
-            <View style={styles.payBreakItem}>
-              <Text style={styles.payBreakLabel}>🐦 bKash</Text>
-              <Text style={[styles.payBreakVal, { color: '#F43F8B' }]}>৳ {bkashSale.toLocaleString()}</Text>
-            </View>
-            <View style={styles.payBreakItem}>
-              <Text style={styles.payBreakLabel}>💰 Nagad</Text>
-              <Text style={[styles.payBreakVal, { color: '#F59E0B' }]}>৳ {nagadSale.toLocaleString()}</Text>
-            </View>
-            <View style={styles.payBreakItem}>
-              <Text style={styles.payBreakLabel}>🚀 Rocket</Text>
-              <Text style={[styles.payBreakVal, { color: '#8B5CF6' }]}>৳ {rocketSale.toLocaleString()}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* ── SECTION 2: লাইভ ফ্লোর মনিটর ── */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <View style={styles.cardHeaderLeft}>
-              <View style={[styles.cardIconPill, { backgroundColor: 'rgba(59,130,246,0.15)' }]}>
-                <Text style={styles.cardIconEmoji}>🏢</Text>
-              </View>
-              <View style={styles.cardTitleCol}>
-                <Text style={styles.cardTitle}>লাইভ ফ্লোর মনিটর</Text>
-                <Text style={styles.cardSubtitle}>টেবিল ও ডেলিভারি স্থিতি</Text>
-              </View>
-            </View>
-            <TouchableOpacity style={styles.cardOutlineBtn} onPress={() => setFloorModalVisible(true)} activeOpacity={0.7}>
-              <Text style={styles.cardOutlineBtnText}>ফ্লোর ম্যাপ 🗺️</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Occupancy bar */}
-          <View style={styles.occupancyWrap}>
-            <View style={styles.occupancyRow}>
-              <View>
-                <Text style={styles.occupancyCountText}><Text style={styles.occupancyCountBig}>{activeTablesCount}</Text>/{tables.length} টেবিল ব্যস্ত</Text>
-              </View>
-              <View style={styles.occupancyPct}>
-                <Text style={styles.occupancyPctText}>{occupancyPercentage}% পূর্ণ</Text>
-              </View>
-            </View>
-            <View style={styles.occupancyTrack}>
-              <View style={[styles.occupancyFill, { width: `${Math.min(100, Math.max(0, occupancyPercentage))}%` }]} />
-            </View>
-          </View>
-
-          {/* Delivery indicator */}
-          <View style={styles.deliveryIndicatorRow}>
-            <View style={[styles.dotLive, activeDeliveriesCount > 0 ? styles.dotOrange : styles.dotGreen]} />
-            <Text style={styles.deliveryIndicatorText}>
-              {activeDeliveriesCount > 0
-                ? `${activeDeliveriesCount} টি ডেলিভারি চলমান রয়েছে`
-                : 'কোনো চলমান ডেলিভারি নেই'}
-            </Text>
-            <TouchableOpacity onPress={() => setFloorModalVisible(true)}>
-              <Text style={styles.floorMapLink}>বিস্তারিত →</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Active table mini list */}
-          {tables.filter(t => t.status === 'BUSY').length > 0 && (
-            <View style={styles.activeTblList}>
-              {tables.filter(t => t.status === 'BUSY').slice(0, 4).map(t => (
-                <TouchableOpacity key={t.id} style={styles.activeTblChip} onPress={() => { setFloorModalVisible(false); onTableSelect(t.id); }}>
-                  <View style={styles.dotOrangeSm} />
-                  <Text style={styles.activeTblChipText}>{t.name || t.id}</Text>
-                  <Text style={styles.activeTblChipAmt}>৳ {(t.items?.reduce((s,i) => s+(i.price*i.qty),0)||0)}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
         </View>
 
         {/* ── SECTION 3: শীর্ষ বিক্রিত খাবার ── */}
@@ -1207,52 +1389,6 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
             </View>
             <Text style={styles.reportTileArrow}>→</Text>
           </TouchableOpacity>
-        </View>
-
-        {/* ── SECTION 7: অ্যাডমিন কন্ট্রোল গ্রিড ── */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <View style={styles.cardHeaderLeft}>
-              <View style={[styles.cardIconPill, { backgroundColor: 'rgba(168,85,247,0.15)' }]}>
-                <Text style={styles.cardIconEmoji}>⚙️</Text>
-              </View>
-              <View style={styles.cardTitleCol}>
-                <Text style={styles.cardTitle}>জরুরি অ্যাডমিন কন্ট্রোল</Text>
-                <Text style={styles.cardSubtitle}>সিস্টেম টুলস ও ম্যানেজমেন্ট</Text>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.adminGrid}>
-            {[
-              { icon: '📊', color: 'rgba(59,130,246,0.15)', title: 'বিজনেস অ্যানালিটিক্স', desc: 'দৈনিক, সাপ্তাহিক ও মাসিক গ্রাফ', onPress: onNavigateToAnalytics },
-              { icon: '🔒', color: 'rgba(16,185,129,0.15)', title: 'ডিভাইস কন্ট্রোল', desc: 'টার্মিনাল অনুমোদন ও ব্লক', onPress: onNavigateToDeviceManagement },
-              { icon: '🍽️', color: 'rgba(245,158,11,0.15)', title: 'মেনু ও প্রাইসিং', desc: 'খাবার তালিকা ও মূল্য এডিট', onPress: onNavigateToEditMenu },
-              { icon: '📋', color: 'rgba(236,72,153,0.15)', title: 'আইটেম বিক্রয়', desc: 'খাবার ভিত্তিক বিক্রয় রিপোর্ট', onPress: onNavigateToItemSalesReport },
-              { icon: '📜', color: 'rgba(99,102,241,0.15)', title: 'অ্যাক্টিভিটি লগ', desc: 'ডিভাইস ও অডিট হিস্ট্রি', onPress: onNavigateToActivityLog },
-              { icon: '🗑️', color: 'rgba(239,68,68,0.15)', title: 'ডিলিট হিস্ট্রি', desc: 'মুছে ফেলা অর্ডার অডিট লগ', onPress: onNavigateToDeleteHistory },
-              { icon: '🔄', color: 'rgba(6,182,212,0.15)', title: 'সিঙ্ক ডায়াগনস্টিকস', desc: 'ফায়ারবেস ক্লাউড হেলথ চেক', onPress: onNavigateToSyncDiagnostics },
-              { icon: '🔄', color: 'rgba(56,189,248,0.15)', title: 'আজকের ডেটা রিসিন্ক', desc: 'ক্লাউড থেকে ফ্রেশ ডাটা নামান', onPress: () => { if (onSameDayResync) onSameDayResync(); } },
-              { icon: '🛠️', color: 'rgba(255,183,3,0.15)', title: 'সিস্টেম টুলস', desc: 'ডাটাবেজ এক্সপ্লোরার ও ইনফো', onPress: onNavigateToSystemTools },
-            ].map((item, idx) => (
-              <TouchableOpacity key={idx} style={styles.adminGridCard} onPress={item.onPress} activeOpacity={0.7}>
-                <View style={[styles.adminGridIconWrap, { backgroundColor: item.color }]}>
-                  <Text style={styles.adminGridIcon}>{item.icon}</Text>
-                </View>
-                <Text style={styles.adminGridTitle}>{item.title}</Text>
-                <Text style={styles.adminGridDesc}>{item.desc}</Text>
-              </TouchableOpacity>
-            ))}
-            {String(process.env.EXPO_PUBLIC_AI_DATASET_ENABLED || 'false').toLowerCase().trim() === 'true' && (
-              <TouchableOpacity style={styles.adminGridCard} onPress={onNavigateToAIDatasetAuditCenter} activeOpacity={0.7}>
-                <View style={[styles.adminGridIconWrap, { backgroundColor: 'rgba(168,85,247,0.15)' }]}>
-                  <Text style={styles.adminGridIcon}>🤖</Text>
-                </View>
-                <Text style={styles.adminGridTitle}>এআই অডিট</Text>
-                <Text style={styles.adminGridDesc}>স্মার্ট ইনসাইটস ও ডেটাসেট</Text>
-              </TouchableOpacity>
-            )}
-          </View>
         </View>
 
         {/* ── SECTION 8: অ্যাপ ভার্সন কন্ট্রোল ── */}
@@ -2244,20 +2380,55 @@ const styles = StyleSheet.create({
   employeeRowText: { flex: 1, color: '#8B8FA8', fontSize: 11 },
   employeeRowArrow: { color: '#6366F1', fontSize: 13, fontWeight: '700' },
 
+  // ── 3-METRIC EXECUTIVE ROW (Image 4) ──
+  metricsRowCard: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#0E0F14', borderRadius: 14, borderWidth: 1, borderColor: '#1A1B24', marginHorizontal: 12, marginBottom: 12, paddingVertical: 14, paddingHorizontal: 16 },
+  metricRowCol: { flex: 1, alignItems: 'center' },
+  metricRowLabel: { color: '#6B6F85', fontSize: 11, fontWeight: '600', marginBottom: 4 },
+  metricRowValue: { color: '#E8E9EF', fontSize: 16, fontWeight: '800' },
+
+  // ── PAYMENT SEGMENTED BAR (Image 3) ──
+  sectionHeaderTitle: { color: '#E8E9EF', fontSize: 14, fontWeight: '700', marginBottom: 12 },
+  segmentedBarTrack: { height: 16, borderRadius: 8, flexDirection: 'row', overflow: 'hidden', backgroundColor: '#141520', marginBottom: 14 },
+  segmentBar: { height: '100%' },
+  paymentLegendGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 8 },
+  paymentLegendItem: { width: '48%', flexDirection: 'row', alignItems: 'center' },
+  legendDot: { width: 10, height: 10, borderRadius: 3, marginRight: 8 },
+  legendLabel: { color: '#E8E9EF', fontSize: 12, fontWeight: '600', flex: 1 },
+  legendVal: { color: '#E8E9EF', fontSize: 12, fontWeight: '700' },
+
+  // ── TABLE VISUAL GRID (Image 1) ──
+  tableHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  tableSummaryBadge: { color: '#8B8FA8', fontSize: 11, fontWeight: '600' },
+  tableVisualGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 8 },
+  tableVisualCard: { width: '18.5%', aspectRatio: 0.9, borderRadius: 10, borderWidth: 1.2, justifyContent: 'center', alignItems: 'center', padding: 4 },
+  tableVisualId: { fontSize: 13, fontWeight: '800', marginBottom: 2 },
+  tableVisualSub: { fontSize: 9, fontWeight: '700' },
+  tableBottomHint: { color: '#6B6F85', fontSize: 11, textAlign: 'center', marginTop: 12 },
+
+  // ── TERMINAL LAST 7 DAYS (Image 2) ──
+  terminalCard: { backgroundColor: '#0A0A0A', borderRadius: 12, borderWidth: 1, borderColor: '#2A2A2A', marginHorizontal: 12, marginBottom: 12, padding: 12 },
+  terminalTitle: { color: '#E4E4E7', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 11, letterSpacing: -0.5 },
+  terminalBody: { paddingVertical: 4 },
+  terminalRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 2 },
+  terminalDayName: { color: '#E4E4E7', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 11, width: 62 },
+  terminalBarTrack: { flex: 1, height: 12, flexDirection: 'row', marginHorizontal: 6 },
+  terminalBarFill: { height: '100%', backgroundColor: '#E4E4E7' },
+  terminalBarHatch: { height: '100%', backgroundColor: '#27272A' },
+  terminalVal: { color: '#E4E4E7', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 11, width: 46, textAlign: 'right' },
+  terminalBadgeBest: { color: '#FBBF24', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 10, fontWeight: 'bold', width: 58, textAlign: 'center' },
+  terminalBadgeToday: { color: '#A1A1AA', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 9, width: 58, textAlign: 'center' },
+  terminalRightPipe: { color: '#E4E4E7', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 11 },
+  terminalRowSpace: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: 2 },
+  terminalBorderSide: { color: '#E4E4E7', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 11 },
+  terminalFooterRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 },
+  terminalFooterText: { color: '#E4E4E7', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 10.5 },
+
   // ── REPORTS ──
   reportTile: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#141520', borderRadius: 10, padding: 11, borderWidth: 1, borderColor: '#1E2030', marginBottom: 8 },
   reportTileIcon: { width: 36, height: 36, borderRadius: 9, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
   reportTileTitle: { color: '#E8E9EF', fontSize: 12, fontWeight: '700' },
   reportTileSub: { color: '#6B6F85', fontSize: 9.5, marginTop: 2 },
   reportTileArrow: { color: '#FFB703', fontSize: 14, fontWeight: 'bold', marginLeft: 8 },
-
-  // ── ADMIN GRID ──
-  adminGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  adminGridCard: { width: '48.5%', backgroundColor: '#141520', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#1E2030', marginBottom: 10 },
-  adminGridIconWrap: { width: 34, height: 34, borderRadius: 9, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
-  adminGridIcon: { fontSize: 16 },
-  adminGridTitle: { color: '#E8E9EF', fontSize: 11, fontWeight: '700', marginBottom: 3 },
-  adminGridDesc: { color: '#6B6F85', fontSize: 9, lineHeight: 13 },
 
   // ── VERSION CONTROL ──
   versionControlCard: { backgroundColor: '#141520', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#1E2030' },
