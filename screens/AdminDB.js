@@ -226,6 +226,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
   const [selectedTableForRename, setSelectedTableForRename] = useState(null);
   const [newTableName, setNewTableName] = useState('');
   const [floorModalVisible, setFloorModalVisible] = useState(false);
+  const [tableFilter, setTableFilter] = useState('ALL');
 
   // 3-Dot Menu and Report States
   const [menuModalVisible, setMenuModalVisible] = useState(false);
@@ -1210,38 +1211,42 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
         </View>
 
         {/* ── টেবিল ও সক্রিয় ডেলিভারি (Combined Table & Active Delivery Section) ── */}
-        <View style={styles.card}>
-          <View style={styles.combinedHeader}>
-            <View style={styles.combinedHeaderTitleCol}>
-              <Text style={styles.sectionHeaderTitle}>টেবিল ও সক্রিয় ডেলিভারি</Text>
-              <Text style={styles.combinedSubtitle}>লাইভ ফ্লোর ও পার্সেল মনিটর</Text>
-            </View>
-            <View style={styles.combinedPillsRow}>
-              <View style={styles.tableSummaryBadge}>
-                <Text style={styles.tableSummaryBadgeText}>
-                  {freeTablesCount} ফাঁকা · {busyTablesCount} চলছে
+        <View style={styles.tableDeliveryCard}>
+          {/* Header */}
+          <View style={styles.tableDeliveryHeaderRow}>
+            <Text style={styles.tableDeliveryTitle}>টেবিল ও ডেলিভারি</Text>
+            {/* Filter Toggle Pills */}
+            <View style={styles.tableFilterPillGroup}>
+              <TouchableOpacity
+                style={[styles.tableFilterBtn, tableFilter === 'ALL' && styles.tableFilterBtnActive]}
+                onPress={() => setTableFilter('ALL')}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.tableFilterBtnText, tableFilter === 'ALL' && styles.tableFilterBtnTextActive]}>
+                  সব {tables.length}
                 </Text>
-              </View>
-              <View style={[styles.deliverySummaryBadge, activeDeliveriesList.length > 0 ? styles.deliveryBadgeAmber : styles.deliveryBadgeGreen]}>
-                <Text style={[styles.deliverySummaryBadgeText, activeDeliveriesList.length > 0 ? { color: '#F59E0B' } : { color: '#10B981' }]}>
-                  {activeDeliveriesList.length} ডেলিভারি
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.tableFilterBtn, tableFilter === 'BUSY' && styles.tableFilterBtnActive]}
+                onPress={() => setTableFilter(tableFilter === 'BUSY' ? 'ALL' : 'BUSY')}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.tableFilterBtnText, tableFilter === 'BUSY' && styles.tableFilterBtnTextActive]}>
+                  চলছে {busyTablesCount}
                 </Text>
-              </View>
+              </TouchableOpacity>
             </View>
           </View>
 
           {/* 4-Column Responsive Table Grid */}
           <View style={styles.tableVisualGrid}>
             {tables.map(t => {
+              if (tableFilter === 'BUSY' && t.status !== 'BUSY') return null;
+
               const isBusy = t.status === 'BUSY';
               const m = getTableElapsedMinutes(t);
-              const isLong = m && m >= 15;
               const tblAmt = getTableAmount(t);
               const tableDisplayId = t.name || String(t.id).replace('table_', 'T-');
-
-              const cardBg = !isBusy ? '#0D231B' : (isLong ? '#261418' : '#231B10');
-              const cardBorder = !isBusy ? '#059669' : (isLong ? '#DC2626' : '#D97706');
-              const textCol = !isBusy ? '#34D399' : (isLong ? '#F87171' : '#FBBF24');
 
               return (
                 <TouchableOpacity
@@ -1258,28 +1263,50 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                     }
                   }}
                   onLongPress={() => handleTableLongPress(t)}
-                  style={[styles.tableGridCard, { backgroundColor: cardBg, borderColor: cardBorder }]}
+                  style={[
+                    styles.tableGridCard,
+                    isBusy ? styles.tableGridCardBusy : styles.tableGridCardFree
+                  ]}
                 >
-                  <Text style={[styles.tableCardTitle, { color: textCol }]} numberOfLines={1}>
+                  <Text style={[styles.tableCardTitle, isBusy ? styles.tableCardTitleBusy : styles.tableCardTitleFree]} numberOfLines={1}>
                     {tableDisplayId}
                   </Text>
-                  <Text style={[styles.tableCardDuration, { color: textCol }]} numberOfLines={1}>
-                    {isBusy ? (m !== null ? `${m} min` : 'চলছে') : 'ফাঁকা'}
-                  </Text>
-                  <Text style={[styles.tableCardAmount, { color: isBusy ? '#FBBF24' : 'transparent' }]} numberOfLines={1}>
+
+                  {/* Status Indicator */}
+                  <View style={styles.tableStatusIndicatorRow}>
+                    <View style={[styles.tableStatusDot, { backgroundColor: isBusy ? '#F59E0B' : '#2DD4BF' }]} />
+                    <Text style={[styles.tableStatusLabel, { color: isBusy ? '#F59E0B' : '#2DD4BF' }]}>
+                      {isBusy ? (m !== null ? `${m} min` : 'চলছে') : 'FREE'}
+                    </Text>
+                  </View>
+
+                  {/* Amount Row (Formatted for busy, transparent for free to satisfy TC-02) */}
+                  <Text style={[styles.tableCardAmount, { color: isBusy ? '#F59E0B' : 'transparent' }]} numberOfLines={1}>
                     {isBusy ? `৳${tblAmt.toLocaleString()}` : '-'}
                   </Text>
+
+                  {/* Chair Icon */}
+                  <Text style={styles.tableCardChairIcon}>🪑</Text>
                 </TouchableOpacity>
               );
             })}
           </View>
-          <Text style={styles.tableBottomHint}>বিস্তারিত দেখতে চলমান টেবিলে চাপ দিন</Text>
+
+          {/* Bottom Hint */}
+          <Text style={styles.tableBottomHint}>চলমান টেবিলে চাপ দিলে বিস্তারিত</Text>
 
           {/* ───── সক্রিয় ডেলিভারি ───── Divider Inside the Same Card */}
           <View style={styles.deliveryDividerContainer}>
             <View style={styles.deliveryDividerLine} />
-            <Text style={styles.deliveryDividerText}>───── সক্রিয় ডেলিভারি ─────</Text>
-            <View style={styles.deliveryDividerLine} />
+            {/* ───── সক্রিয় ডেলিভারি ───── */}
+          </View>
+
+          {/* Active Delivery Section Header */}
+          <View style={styles.activeDeliverySectionHeaderRow}>
+            <Text style={styles.activeDeliverySectionTitle}>সক্রিয় ডেলিভারি</Text>
+            <View style={styles.activeDeliveryCountBadge}>
+              <Text style={styles.activeDeliveryCountBadgeText}>{activeDeliveriesList.length} টি</Text>
+            </View>
           </View>
 
           {/* Active Deliveries List inside Same Card */}
@@ -1287,8 +1314,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
             activeDeliveriesList.map(delivery => {
               const delAmt = delivery.items ? delivery.items.reduce((s, i) => s + ((parseFloat(i.price) || 0) * (parseInt(i.qty, 10) || 1)), 0) : 0;
               const delElapsed = getTableElapsedMinutes(delivery);
-              const delStartTime = formatStartTime(delivery.startTime);
-              const timeDisplay = delElapsed !== null ? `${delElapsed} min` : (delStartTime ? `শুরু: ${delStartTime}` : 'চলমান');
+              const timeDisplay = delElapsed !== null ? `${delElapsed} মিনিট ধরে · চলমান` : 'চলমান';
 
               return (
                 <TouchableOpacity
@@ -1303,15 +1329,14 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                         <Text style={styles.deliveryRiderIcon}>🛵</Text>
                       </View>
                       <View style={{ flex: 1, minWidth: 0 }}>
-                        <Text style={styles.activeDeliveryName} numberOfLines={1}>{delivery.name || delivery.id}</Text>
-                        <Text style={styles.activeDeliverySub}>সময়: {timeDisplay} • চলমান</Text>
+                        <Text style={styles.activeDeliveryName} numberOfLines={1}>
+                          {delivery.name || 'Delivery'}
+                        </Text>
+                        <Text style={styles.activeDeliverySub}>{timeDisplay}</Text>
                       </View>
                     </View>
                     <View style={styles.activeDeliveryRight}>
                       <Text style={styles.activeDeliveryAmount}>৳{delAmt.toLocaleString()}</Text>
-                      {delivery.deliveryCharge > 0 ? (
-                        <Text style={styles.activeDeliveryCharge}>চার্জ ৳{delivery.deliveryCharge}</Text>
-                      ) : null}
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -2907,41 +2932,219 @@ const styles = StyleSheet.create({
   legendLabel: { color: '#8E8E93', fontSize: 12, fontWeight: '600', flex: 1 },
   legendVal: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
 
-  // ── COMBINED TABLE & ACTIVE DELIVERY SECTION ──
-  combinedHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  combinedHeaderTitleCol: { flex: 1, minWidth: 0, marginRight: 8 },
-  combinedSubtitle: { color: '#8E8E93', fontSize: 10, marginTop: 1 },
-  combinedPillsRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
-  tableSummaryBadge: { backgroundColor: '#1E1E22', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: '#27272A' },
-  tableSummaryBadgeText: { color: '#8E8E93', fontSize: 10, fontWeight: '600' },
-  deliverySummaryBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6, borderWidth: 1 },
-  deliveryBadgeAmber: { backgroundColor: 'rgba(255,183,3,0.12)', borderColor: 'rgba(255,183,3,0.25)' },
-  deliveryBadgeGreen: { backgroundColor: 'rgba(16,185,129,0.12)', borderColor: 'rgba(16,185,129,0.25)' },
-  deliverySummaryBadgeText: { fontSize: 10, fontWeight: '700' },
-  tableVisualGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 8 },
-  tableGridCard: { width: '23.5%', minHeight: 74, borderRadius: 10, borderWidth: 1.2, justifyContent: 'center', alignItems: 'center', padding: 5 },
-  tableCardTitle: { fontSize: 13, fontWeight: '800', marginBottom: 2 },
-  tableCardDuration: { fontSize: 10, fontWeight: '700', marginBottom: 2 },
-  tableCardAmount: { fontSize: 10.5, fontWeight: '800' },
-  tableBottomHint: { color: '#8E8E93', fontSize: 10.5, textAlign: 'center', marginTop: 10 },
-
-  // ── DELIVERIES SUB-SECTION ──
-  deliveryDividerContainer: { flexDirection: 'row', alignItems: 'center', marginVertical: 14 },
-  deliveryDividerLine: { flex: 1, height: 1, backgroundColor: '#27272A' },
-  deliveryDividerText: { color: '#8E8E93', fontSize: 11, fontWeight: '700', marginHorizontal: 8, letterSpacing: 0.5 },
-  activeDeliveryCard: { backgroundColor: '#1E1E22', borderRadius: 10, padding: 11, borderWidth: 1, borderColor: '#27272A', marginBottom: 8 },
-  activeDeliveryHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  activeDeliveryLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8, minWidth: 0 },
-  deliveryRiderIconWrap: { width: 34, height: 34, borderRadius: 8, backgroundColor: 'rgba(255,183,3,0.1)', justifyContent: 'center', alignItems: 'center', marginRight: 10, flexShrink: 0 },
-  deliveryRiderIcon: { fontSize: 17 },
-  activeDeliveryName: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
-  activeDeliverySub: { color: '#8E8E93', fontSize: 10, marginTop: 2 },
-  activeDeliveryRight: { alignItems: 'flex-end', flexShrink: 0 },
-  activeDeliveryAmount: { color: '#FFB703', fontSize: 13, fontWeight: '800' },
-  activeDeliveryCharge: { color: '#8E8E93', fontSize: 9.5, marginTop: 2 },
-  emptyDeliveryBox: { alignItems: 'center', paddingVertical: 18 },
-  emptyDeliveryEmoji: { fontSize: 26, marginBottom: 4 },
-  emptyDeliveryText: { color: '#8E8E93', fontSize: 11, fontWeight: '600' },
+  // ── COMBINED TABLE & ACTIVE DELIVERY SECTION (Reference Image Match) ──
+  tableDeliveryCard: {
+    backgroundColor: '#181E25',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#242C37',
+    padding: 16,
+    marginBottom: 16,
+  },
+  tableDeliveryHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  tableDeliveryTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  tableFilterPillGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#111417',
+    borderRadius: 18,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: '#242C37',
+  },
+  tableFilterBtn: {
+    paddingHorizontal: 11,
+    paddingVertical: 4.5,
+    borderRadius: 14,
+  },
+  tableFilterBtnActive: {
+    backgroundColor: '#242D38',
+  },
+  tableFilterBtnText: {
+    color: '#8B95A5',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  tableFilterBtnTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  tableVisualGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: 10,
+  },
+  tableGridCard: {
+    width: '23.5%',
+    aspectRatio: 0.72,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 10,
+    paddingBottom: 8,
+    paddingHorizontal: 4,
+  },
+  tableGridCardBusy: {
+    backgroundColor: '#272015',
+    borderColor: '#F59E0B',
+  },
+  tableGridCardFree: {
+    backgroundColor: '#141A22',
+    borderColor: '#1D5A56',
+  },
+  tableCardTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  tableCardTitleBusy: {
+    color: '#F59E0B',
+  },
+  tableCardTitleFree: {
+    color: '#FFFFFF',
+  },
+  tableStatusIndicatorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  tableStatusDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    marginRight: 4,
+  },
+  tableStatusLabel: {
+    fontSize: 10.5,
+    fontWeight: '700',
+  },
+  tableCardAmount: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    textAlign: 'center',
+    minHeight: 16,
+  },
+  tableCardChairIcon: {
+    fontSize: 15,
+    opacity: 0.35,
+    textAlign: 'center',
+  },
+  tableBottomHint: {
+    color: '#8B95A5',
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  deliveryDividerContainer: {
+    marginVertical: 12,
+  },
+  deliveryDividerLine: {
+    height: 1,
+    backgroundColor: '#242C37',
+    width: '100%',
+  },
+  activeDeliverySectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  activeDeliverySectionTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  activeDeliveryCountBadge: {
+    backgroundColor: '#342410',
+    paddingHorizontal: 10,
+    paddingVertical: 3.5,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.25)',
+  },
+  activeDeliveryCountBadgeText: {
+    color: '#F59E0B',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  activeDeliveryCard: {
+    backgroundColor: '#111417',
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#222834',
+    marginBottom: 8,
+  },
+  activeDeliveryHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  activeDeliveryLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
+    minWidth: 0,
+  },
+  deliveryRiderIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#282314',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    flexShrink: 0,
+  },
+  deliveryRiderIcon: {
+    fontSize: 22,
+  },
+  activeDeliveryName: {
+    color: '#FFFFFF',
+    fontSize: 14.5,
+    fontWeight: '700',
+  },
+  activeDeliverySub: {
+    color: '#8B95A5',
+    fontSize: 11.5,
+    marginTop: 3,
+  },
+  activeDeliveryRight: {
+    alignItems: 'flex-end',
+    flexShrink: 0,
+  },
+  activeDeliveryAmount: {
+    color: '#F59E0B',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  emptyDeliveryBox: {
+    alignItems: 'center',
+    paddingVertical: 18,
+  },
+  emptyDeliveryEmoji: {
+    fontSize: 26,
+    marginBottom: 4,
+  },
+  emptyDeliveryText: {
+    color: '#8E8E93',
+    fontSize: 11,
+    fontWeight: '600',
+  },
 
   // ── VERTICAL BAR CHART (LAST 7 DAYS — Reference Image Match) ──
   chartCard: {
