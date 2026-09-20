@@ -895,6 +895,11 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
   const fullRatio = Math.max(0, Math.min(1, (fullCountdown || 0) / 30));
 
   const getDynamicRingStyle = (ratio, activeColor, trackColor = '#1A1D2B') => {
+    if (ratio <= 0) {
+      return {
+        borderColor: trackColor,
+      };
+    }
     return {
       borderTopColor: ratio > 0 ? activeColor : trackColor,
       borderRightColor: ratio >= 0.25 ? activeColor : trackColor,
@@ -2858,8 +2863,8 @@ const styles = StyleSheet.create({
   syncRingUnit: { color: '#6B6F85', fontSize: 9, marginTop: 1 },
   syncRingName: { color: '#FFFFFF', fontSize: 12, fontWeight: '700', marginTop: 8 },
   syncRingCycle: { color: '#6B6F85', fontSize: 10, marginTop: 2 },
-  syncMiniTrack: { width: 48, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255, 255, 255, 0.08)', marginTop: 6, overflow: 'hidden' },
-  syncMiniFill: { height: '100%', borderRadius: 1.5 },
+  syncMiniTrack: { width: 62, height: 4, borderRadius: 2, backgroundColor: '#1A1D2B', marginTop: 6, overflow: 'hidden' },
+  syncMiniFill: { height: '100%', borderRadius: 2 },
 
   // Sync Engine Background Strip
   syncEngineStrip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#090B10', borderRadius: 8, paddingVertical: 7, paddingHorizontal: 12, borderWidth: 1, borderColor: '#181A24', marginTop: 4 },

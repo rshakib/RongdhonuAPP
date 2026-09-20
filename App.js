@@ -274,9 +274,9 @@ export default function App() {
 
   useEffect(() => {
     const t = setInterval(() => {
-      setDelCountdown(prev => (prev <= 1 ? 90 : prev - 1));
-      setTabCountdown(prev => (prev <= 1 ? 15 : prev - 1));
-      setFullCountdown(prev => (prev <= 1 ? 30 : prev - 1));
+      setDelCountdown(prev => (prev <= 0 ? 90 : prev - 1));
+      setTabCountdown(prev => (prev <= 0 ? 15 : prev - 1));
+      setFullCountdown(prev => (prev <= 0 ? 30 : prev - 1));
 
       // Periodic Device Force Logout Check (DEVICE BASED — ALL ROLES: ADMIN, OWNER, MANAGER)
       // GUARD 1: Only run when the user is currently logged in.
