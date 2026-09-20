@@ -1355,59 +1355,6 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
             </View>
           )}
         </View>
-
-        {/* ── SECTION 1: দৈনিক হিসাব ও ক্লোজিং ── */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <View style={styles.cardHeaderLeft}>
-              <View style={[styles.cardIconPill, { backgroundColor: isDailySubmitted ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)' }]}>
-                <Text style={styles.cardIconEmoji}>{isDailySubmitted ? '✅' : '⏳'}</Text>
-              </View>
-              <View style={styles.cardTitleCol}>
-                <Text style={styles.cardTitle}>দৈনিক হিসাব ও ক্লোজিং</Text>
-                <Text style={styles.cardSubtitle}>{isDailySubmitted ? 'আজকের ক্লোজিং সম্পন্ন' : 'চলমান ড্রাফট হিসাব'}</Text>
-              </View>
-            </View>
-            <View style={[styles.statusPill, isDailySubmitted ? styles.statusPillGreen : styles.statusPillAmber]}>
-              <Text style={[styles.statusPillText, isDailySubmitted ? { color: '#10B981' } : { color: '#F59E0B' }]}>
-                {isDailySubmitted ? 'সম্পন্ন ✅' : 'চলমান ⏳'}
-              </Text>
-            </View>
-          </View>
-
-          {/* 4-cell financial matrix */}
-          <View style={styles.financeGrid}>
-            <View style={styles.financeCell}>
-              <Text style={styles.financeCellLabel}>মোট বিক্রয়</Text>
-              <Text style={[styles.financeCellVal, { color: '#34D399' }]}>৳ {todaySale.toLocaleString()}</Text>
-            </View>
-            <View style={[styles.financeCell, styles.financeCellBorderLeft]}>
-              <Text style={styles.financeCellLabel}>মোট দৈনিক খরচ</Text>
-              <Text style={[styles.financeCellVal, { color: '#F87171' }]}>৳ {totalExpenses.toLocaleString()}</Text>
-            </View>
-            <View style={[styles.financeCell, styles.financeCellBorderTop]}>
-              <Text style={styles.financeCellLabel}>ক্যাশ ইন হ্যান্ড</Text>
-              <Text style={[styles.financeCellVal, { color: '#60A5FA' }]}>৳ {totalCash.toLocaleString()}</Text>
-            </View>
-            <View style={[styles.financeCell, styles.financeCellBorderLeft, styles.financeCellBorderTop]}>
-              <Text style={styles.financeCellLabel}>ডিজিটাল পেমেন্ট</Text>
-              <Text style={[styles.financeCellVal, { color: '#FBBF24' }]}>৳ {(bkashSale + nagadSale + rocketSale).toLocaleString()}</Text>
-            </View>
-          </View>
-
-          {/* Info row */}
-          <View style={styles.cardInfoRow}>
-            <View style={styles.cardInfoItem}>
-              <Text style={styles.cardInfoLabel}>শুরু ক্যাশ (ইজা)</Text>
-              <Text style={styles.cardInfoVal}>৳ {dailyExpenses.ijara || 0}</Text>
-            </View>
-            <View style={[styles.cardInfoItem, { borderLeftWidth: 1, borderColor: '#232331', paddingLeft: 12 }]}>
-              <Text style={styles.cardInfoLabel}>চলমান ডেলিভারি চেঞ্জ</Text>
-              <Text style={styles.cardInfoVal}>৳ {ongoingChangeMoney || 0}</Text>
-            </View>
-          </View>
-        </View>
-
         {/* ── SECTION 3: শীর্ষ বিক্রিত খাবার (Top Selling Food Redesign) ── */}
         <View style={styles.card}>
           <View style={styles.topSellerHeader}>
