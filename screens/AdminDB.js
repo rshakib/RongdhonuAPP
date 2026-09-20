@@ -49,7 +49,7 @@ const toBengaliNumber = (num) => {
 };
 
 // --- DYNAMIC CIRCULAR COUNTDOWN RING (Smooth 360 to 0 Progress) ---
-const CircularCountdownRing = ({ ratio, color, trackColor = '#1A1D2B', size = 72, strokeWidth = 5, children }) => {
+const CircularCountdownRing = ({ ratio, color, trackColor = '#1E2638', size = 72, strokeWidth = 5, children }) => {
   const percent = Math.max(0, Math.min(1, ratio || 0));
   const halfSize = size / 2;
   const rightRatio = Math.min(percent, 0.5) / 0.5;
@@ -131,7 +131,7 @@ const CircularCountdownRing = ({ ratio, color, trackColor = '#1A1D2B', size = 72
           width: size - strokeWidth * 2 - 2,
           height: size - strokeWidth * 2 - 2,
           borderRadius: (size - strokeWidth * 2 - 2) / 2,
-          backgroundColor: '#0E1019',
+          backgroundColor: '#0F141F',
           justifyContent: 'center',
           alignItems: 'center',
         }}
@@ -1127,16 +1127,16 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
           <Text style={styles.sectionHeaderTitle}>টাকা কোন পথে এল</Text>
           {/* Segmented multi-color horizontal bar */}
           <View style={styles.segmentedBarTrack}>
-            {cashPct > 0 && <View style={[styles.segmentBar, { width: `${cashPct}%`, backgroundColor: '#2DD4BF' }]} />}
+            {cashPct > 0 && <View style={[styles.segmentBar, { width: `${cashPct}%`, backgroundColor: '#10B981' }]} />}
             {bkashPct > 0 && <View style={[styles.segmentBar, { width: `${bkashPct}%`, backgroundColor: '#E11D48' }]} />}
             {nagadPct > 0 && <View style={[styles.segmentBar, { width: `${nagadPct}%`, backgroundColor: '#F97316' }]} />}
             {rocketPct > 0 && <View style={[styles.segmentBar, { width: `${rocketPct}%`, backgroundColor: '#8B5CF6' }]} />}
-            {duePct > 0 && <View style={[styles.segmentBar, { width: `${duePct}%`, backgroundColor: '#71717A' }]} />}
+            {duePct > 0 && <View style={[styles.segmentBar, { width: `${duePct}%`, backgroundColor: '#64748B' }]} />}
           </View>
           {/* Breakdown legend */}
           <View style={styles.paymentLegendGrid}>
             <View style={styles.paymentLegendItem}>
-              <View style={[styles.legendDot, { backgroundColor: '#2DD4BF' }]} />
+              <View style={[styles.legendDot, { backgroundColor: '#10B981' }]} />
               <Text style={styles.legendLabel}>ক্যাশ</Text>
               <Text style={styles.legendVal}>৳{cashSale.toLocaleString()}</Text>
             </View>
@@ -1157,7 +1157,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
             </View>
             {dueSale > 0 && (
               <View style={styles.paymentLegendItem}>
-                <View style={[styles.legendDot, { backgroundColor: '#71717A' }]} />
+                <View style={[styles.legendDot, { backgroundColor: '#64748B' }]} />
                 <Text style={styles.legendLabel}>বাকি</Text>
                 <Text style={styles.legendVal}>৳{dueSale.toLocaleString()}</Text>
               </View>
@@ -1169,7 +1169,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <View style={styles.cardHeaderLeft}>
-              <View style={[styles.cardIconPill, { backgroundColor: 'rgba(99,102,241,0.15)' }]}>
+              <View style={[styles.cardIconPill, { backgroundColor: 'rgba(59, 130, 246, 0.12)' }]}>
                 <Text style={styles.cardIconEmoji}>📊</Text>
               </View>
               <View style={styles.cardTitleCol}>
@@ -1177,8 +1177,8 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                 <Text style={styles.cardSubtitle}>দৈনিক বিক্রয় গ্রাফ (Last 7 Days)</Text>
               </View>
             </View>
-            <View style={[styles.statusPill, { backgroundColor: 'rgba(99,102,241,0.12)', borderColor: 'rgba(99,102,241,0.3)' }]}>
-              <Text style={[styles.statusPillText, { color: '#818CF8' }]}>সর্বোচ্চ ৳{highest7DaySale > 1000 ? (highest7DaySale/1000).toFixed(1)+'k' : highest7DaySale}</Text>
+            <View style={[styles.statusPill, { backgroundColor: 'rgba(59, 130, 246, 0.1)', borderColor: 'rgba(59, 130, 246, 0.25)' }]}>
+              <Text style={[styles.statusPillText, { color: '#60A5FA' }]}>সর্বোচ্চ ৳{highest7DaySale > 1000 ? (highest7DaySale/1000).toFixed(1)+'k' : highest7DaySale}</Text>
             </View>
           </View>
 
@@ -1195,7 +1195,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                 const isBest = item.dateKey === bestDayKey && item.sales > 0;
                 const kVal = (item.sales >= 1000) ? (item.sales / 1000).toFixed(1) + 'k' : (item.sales > 0 ? item.sales.toString() : '0');
 
-                const barColor = item.isToday ? '#10B981' : (isBest ? '#F59E0B' : '#6366F1');
+                const barColor = item.isToday ? '#10B981' : (isBest ? '#F59E0B' : '#3B82F6');
 
                 return (
                   <View key={item.dateKey} style={styles.chartCol}>
@@ -1270,8 +1270,8 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               const tblAmt = getTableAmount(t);
               const tableDisplayId = t.name || String(t.id).replace('table_', 'T-');
 
-              const cardBg = !isBusy ? '#0B2017' : (isLong ? '#2A1316' : '#271B0E');
-              const cardBorder = !isBusy ? '#065F46' : (isLong ? '#991B1B' : '#92400E');
+              const cardBg = !isBusy ? '#0D231B' : (isLong ? '#261418' : '#231B10');
+              const cardBorder = !isBusy ? '#059669' : (isLong ? '#DC2626' : '#D97706');
               const textCol = !isBusy ? '#34D399' : (isLong ? '#F87171' : '#FBBF24');
 
               return (
@@ -1297,7 +1297,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                   <Text style={[styles.tableCardDuration, { color: textCol }]} numberOfLines={1}>
                     {isBusy ? (m !== null ? `${m} min` : 'চলছে') : 'ফাঁকা'}
                   </Text>
-                  <Text style={[styles.tableCardAmount, { color: isBusy ? '#FFB703' : 'transparent' }]} numberOfLines={1}>
+                  <Text style={[styles.tableCardAmount, { color: isBusy ? '#FBBF24' : 'transparent' }]} numberOfLines={1}>
                     {isBusy ? `৳${tblAmt.toLocaleString()}` : '-'}
                   </Text>
                 </TouchableOpacity>
@@ -1711,7 +1711,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
             <View style={styles.syncRingsRow}>
               {/* Delivery Timer (Real App Interval: 90s) */}
               <View style={styles.syncRingCol}>
-                <CircularCountdownRing ratio={delRatio} color="#F97316" size={72} strokeWidth={5}>
+                <CircularCountdownRing ratio={delRatio} color="#F59E0B" size={72} strokeWidth={5}>
                   <Text style={styles.syncRingNumber}>{toBengaliNumber(delCountdown)}</Text>
                   <Text style={styles.syncRingUnit}>সেকেন্ড</Text>
                 </CircularCountdownRing>
@@ -1719,13 +1719,13 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                 <Text style={styles.syncRingCycle}>প্রতি ৯০ সে.</Text>
                 {/* Dynamic Live Progress Bar */}
                 <View style={styles.syncMiniTrack}>
-                  <View style={[styles.syncMiniFill, { width: `${Math.round(delRatio * 100)}%`, backgroundColor: '#F97316' }]} />
+                  <View style={[styles.syncMiniFill, { width: `${Math.round(delRatio * 100)}%`, backgroundColor: '#F59E0B' }]} />
                 </View>
               </View>
 
               {/* Table Timer (Real App Interval: 15s) */}
               <View style={styles.syncRingCol}>
-                <CircularCountdownRing ratio={tabRatio} color="#2DD4BF" size={72} strokeWidth={5}>
+                <CircularCountdownRing ratio={tabRatio} color="#10B981" size={72} strokeWidth={5}>
                   <Text style={styles.syncRingNumber}>{toBengaliNumber(tabCountdown)}</Text>
                   <Text style={styles.syncRingUnit}>সেকেন্ড</Text>
                 </CircularCountdownRing>
@@ -1733,13 +1733,13 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                 <Text style={styles.syncRingCycle}>প্রতি ১৫ সে.</Text>
                 {/* Dynamic Live Progress Bar */}
                 <View style={styles.syncMiniTrack}>
-                  <View style={[styles.syncMiniFill, { width: `${Math.round(tabRatio * 100)}%`, backgroundColor: '#2DD4BF' }]} />
+                  <View style={[styles.syncMiniFill, { width: `${Math.round(tabRatio * 100)}%`, backgroundColor: '#10B981' }]} />
                 </View>
               </View>
 
               {/* Full Sync Timer (Real App Interval: 30s) */}
               <View style={styles.syncRingCol}>
-                <CircularCountdownRing ratio={fullRatio} color="#8B5CF6" size={72} strokeWidth={5}>
+                <CircularCountdownRing ratio={fullRatio} color="#38BDF8" size={72} strokeWidth={5}>
                   <Text style={styles.syncRingNumber}>{toBengaliNumber(fullCountdown)}</Text>
                   <Text style={styles.syncRingUnit}>সেকেন্ড</Text>
                 </CircularCountdownRing>
@@ -1747,7 +1747,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                 <Text style={styles.syncRingCycle}>প্রতি ৩০ সে.</Text>
                 {/* Dynamic Live Progress Bar */}
                 <View style={styles.syncMiniTrack}>
-                  <View style={[styles.syncMiniFill, { width: `${Math.round(fullRatio * 100)}%`, backgroundColor: '#8B5CF6' }]} />
+                  <View style={[styles.syncMiniFill, { width: `${Math.round(fullRatio * 100)}%`, backgroundColor: '#38BDF8' }]} />
                 </View>
               </View>
             </View>
@@ -2687,26 +2687,26 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
 
 const styles = StyleSheet.create({
   // ── ROOT ──
-  container: { flex: 1, backgroundColor: '#060608' },
+  container: { flex: 1, backgroundColor: '#0B0F17' },
   scrollBody: { flex: 1 },
 
   // ── HEADER ──
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderColor: '#12131A', backgroundColor: '#0A0B10' },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderColor: '#1E2638', backgroundColor: '#0F141F' },
   headerCenter: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   titleBadgeRow: { flexDirection: 'row', alignItems: 'center' },
-  headerTitle: { fontSize: 17, fontWeight: '800', color: '#FFB703', letterSpacing: 0.4 },
-  adminBadge: { backgroundColor: 'rgba(255,183,3,0.15)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, marginLeft: 8, borderWidth: 1, borderColor: 'rgba(255,183,3,0.3)' },
-  adminBadgeText: { color: '#FFB703', fontSize: 9, fontWeight: 'bold' },
-  headerDate: { fontSize: 11, color: '#6B6F85', marginTop: 2 },
+  headerTitle: { fontSize: 17, fontWeight: '800', color: '#F8FAFC', letterSpacing: 0.4 },
+  adminBadge: { backgroundColor: 'rgba(245,158,11,0.12)', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, marginLeft: 8, borderWidth: 1, borderColor: 'rgba(245,158,11,0.28)' },
+  adminBadgeText: { color: '#F59E0B', fontSize: 9, fontWeight: 'bold' },
+  headerDate: { fontSize: 11, color: '#94A3B8', marginTop: 2 },
   menuDotsButton: { padding: 6 },
-  menuDotsIcon: { fontSize: 24, color: '#FFB703', fontWeight: 'bold' },
+  menuDotsIcon: { fontSize: 24, color: '#94A3B8', fontWeight: 'bold' },
 
   // ── STATS CARDS (Restored from Backup) ──
   statsScroll: { marginHorizontal: -12, marginBottom: 10 },
   statsContainer: { paddingHorizontal: 12, paddingVertical: 2 },
 
   // ── CARD (universal card container) ──
-  card: { backgroundColor: '#0E0F14', borderRadius: 14, borderWidth: 1, borderColor: '#1A1B24', marginBottom: 12, padding: 14, width: '100%' },
+  card: { backgroundColor: '#121824', borderRadius: 16, borderWidth: 1, borderColor: '#1E2638', marginBottom: 12, padding: 14, width: '100%' },
 
   // ── CARD HEADER ──
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
@@ -2714,197 +2714,197 @@ const styles = StyleSheet.create({
   cardIconPill: { width: 34, height: 34, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginRight: 10, flexShrink: 0 },
   cardIconEmoji: { fontSize: 17 },
   cardTitleCol: { flex: 1, minWidth: 0 },
-  cardTitle: { color: '#E8E9EF', fontSize: 13, fontWeight: '700', letterSpacing: 0.2 },
-  cardSubtitle: { color: '#6B6F85', fontSize: 10, marginTop: 1 },
-  cardOutlineBtn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,183,3,0.35)', backgroundColor: 'rgba(255,183,3,0.07)', flexShrink: 0 },
-  cardOutlineBtnText: { color: '#FFB703', fontSize: 10, fontWeight: '600' },
+  cardTitle: { color: '#F8FAFC', fontSize: 13, fontWeight: '700', letterSpacing: 0.2 },
+  cardSubtitle: { color: '#94A3B8', fontSize: 10, marginTop: 1 },
+  cardOutlineBtn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(245,158,11,0.3)', backgroundColor: 'rgba(245,158,11,0.08)', flexShrink: 0 },
+  cardOutlineBtnText: { color: '#F59E0B', fontSize: 10, fontWeight: '600' },
 
   // ── STATUS PILL ──
   statusPill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 1, flexShrink: 0 },
-  statusPillGreen: { backgroundColor: 'rgba(16,185,129,0.1)', borderColor: 'rgba(16,185,129,0.3)' },
-  statusPillAmber: { backgroundColor: 'rgba(245,158,11,0.1)', borderColor: 'rgba(245,158,11,0.3)' },
-  statusPillRed:   { backgroundColor: 'rgba(239,68,68,0.1)',  borderColor: 'rgba(239,68,68,0.3)' },
+  statusPillGreen: { backgroundColor: 'rgba(16,185,129,0.1)', borderColor: 'rgba(16,185,129,0.25)' },
+  statusPillAmber: { backgroundColor: 'rgba(245,158,11,0.1)', borderColor: 'rgba(245,158,11,0.25)' },
+  statusPillRed:   { backgroundColor: 'rgba(239,68,68,0.1)',  borderColor: 'rgba(239,68,68,0.25)' },
   statusPillText: { fontSize: 10, fontWeight: '700' },
 
   // ── FINANCE GRID (2×2) ──
-  financeGrid: { flexDirection: 'row', flexWrap: 'wrap', backgroundColor: '#141520', borderRadius: 12, overflow: 'hidden', marginBottom: 10, borderWidth: 1, borderColor: '#1E2030' },
+  financeGrid: { flexDirection: 'row', flexWrap: 'wrap', backgroundColor: '#161F30', borderRadius: 12, overflow: 'hidden', marginBottom: 10, borderWidth: 1, borderColor: '#1E2638' },
   financeCell: { width: '50%', paddingVertical: 12, paddingHorizontal: 14 },
-  financeCellBorderLeft: { borderLeftWidth: 1, borderColor: '#1E2030' },
-  financeCellBorderTop:  { borderTopWidth: 1, borderColor: '#1E2030' },
-  financeCellLabel: { color: '#6B6F85', fontSize: 10, marginBottom: 4, fontWeight: '500' },
+  financeCellBorderLeft: { borderLeftWidth: 1, borderColor: '#1E2638' },
+  financeCellBorderTop:  { borderTopWidth: 1, borderColor: '#1E2638' },
+  financeCellLabel: { color: '#94A3B8', fontSize: 10, marginBottom: 4, fontWeight: '500' },
   financeCellVal: { fontSize: 15, fontWeight: '800' },
 
   // ── CARD INFO ROW ──
   cardInfoRow: { flexDirection: 'row', marginBottom: 10 },
   cardInfoItem: { flex: 1 },
-  cardInfoLabel: { color: '#6B6F85', fontSize: 10 },
-  cardInfoVal: { color: '#C8CAD8', fontSize: 12, fontWeight: '700', marginTop: 1 },
+  cardInfoLabel: { color: '#94A3B8', fontSize: 10 },
+  cardInfoVal: { color: '#F8FAFC', fontSize: 12, fontWeight: '700', marginTop: 1 },
 
   // ── PAYMENT BREAKDOWN ROW ──
-  paymentBreakdownRow: { flexDirection: 'row', backgroundColor: '#141520', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#1E2030' },
+  paymentBreakdownRow: { flexDirection: 'row', backgroundColor: '#161F30', borderRadius: 10, padding: 10, borderWidth: 1, borderColor: '#1E2638' },
   payBreakItem: { flex: 1, alignItems: 'center' },
-  payBreakLabel: { color: '#6B6F85', fontSize: 9, marginBottom: 3 },
+  payBreakLabel: { color: '#94A3B8', fontSize: 9, marginBottom: 3 },
   payBreakVal: { fontSize: 12, fontWeight: '700' },
 
   // ── OCCUPANCY ──
   occupancyWrap: { marginBottom: 10 },
   occupancyRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  occupancyCountText: { color: '#8B8FA8', fontSize: 12 },
-  occupancyCountBig: { color: '#E8E9EF', fontSize: 20, fontWeight: '800' },
-  occupancyPct: { backgroundColor: 'rgba(16,185,129,0.15)', borderWidth: 1, borderColor: 'rgba(16,185,129,0.3)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  occupancyCountText: { color: '#94A3B8', fontSize: 12 },
+  occupancyCountBig: { color: '#F8FAFC', fontSize: 20, fontWeight: '800' },
+  occupancyPct: { backgroundColor: 'rgba(16,185,129,0.12)', borderWidth: 1, borderColor: 'rgba(16,185,129,0.25)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
   occupancyPctText: { color: '#10B981', fontSize: 11, fontWeight: '700' },
-  occupancyTrack: { height: 6, backgroundColor: '#1E2030', borderRadius: 3, overflow: 'hidden' },
+  occupancyTrack: { height: 6, backgroundColor: '#1E2638', borderRadius: 3, overflow: 'hidden' },
   occupancyFill: { height: '100%', backgroundColor: '#10B981', borderRadius: 3 },
 
   // ── DELIVERY INDICATOR ──
-  deliveryIndicatorRow: { flexDirection: 'row', alignItems: 'center', paddingTop: 8, borderTopWidth: 1, borderColor: '#1E2030', marginTop: 4 },
-  deliveryIndicatorText: { color: '#8B8FA8', fontSize: 11, flex: 1, marginLeft: 8 },
-  floorMapLink: { color: '#6366F1', fontSize: 11, fontWeight: '600' },
+  deliveryIndicatorRow: { flexDirection: 'row', alignItems: 'center', paddingTop: 8, borderTopWidth: 1, borderColor: '#1E2638', marginTop: 4 },
+  deliveryIndicatorText: { color: '#94A3B8', fontSize: 11, flex: 1, marginLeft: 8 },
+  floorMapLink: { color: '#60A5FA', fontSize: 11, fontWeight: '600' },
   dotLive: { width: 8, height: 8, borderRadius: 4, flexShrink: 0 },
   dotGreen: { backgroundColor: '#10B981' },
   dotOrange: { backgroundColor: '#F59E0B' },
 
   // ── ACTIVE TABLE CHIPS ──
   activeTblList: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 8, gap: 6 },
-  activeTblChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#141520', borderWidth: 1, borderColor: 'rgba(245,158,11,0.3)', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5 },
+  activeTblChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#161F30', borderWidth: 1, borderColor: 'rgba(245,158,11,0.25)', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5 },
   dotOrangeSm: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#F59E0B', marginRight: 6 },
-  activeTblChipText: { color: '#E8E9EF', fontSize: 11, fontWeight: '600', marginRight: 6 },
+  activeTblChipText: { color: '#F8FAFC', fontSize: 11, fontWeight: '600', marginRight: 6 },
   activeTblChipAmt: { color: '#F59E0B', fontSize: 10, fontWeight: '700' },
 
   // ── TOP SELLING FOOD REDESIGN ──
   topSellerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 },
-  topSellerSubtitle: { color: '#6B6F85', fontSize: 11, marginTop: 2 },
+  topSellerSubtitle: { color: '#94A3B8', fontSize: 11, marginTop: 2 },
   topSellerReportBtn: { paddingVertical: 4, paddingHorizontal: 6 },
-  topSellerReportBtnText: { color: '#FFB703', fontSize: 12, fontWeight: '700' },
+  topSellerReportBtnText: { color: '#F59E0B', fontSize: 12, fontWeight: '700' },
 
   // Hero Card (#1 Item)
-  topHeroCard: { backgroundColor: '#F59E0B', borderRadius: 16, padding: 16, marginBottom: 12, position: 'relative', overflow: 'hidden' },
-  topHeroDecorCircle: { position: 'absolute', right: -25, top: -25, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(255, 255, 255, 0.14)' },
-  topHeroBadge: { backgroundColor: 'rgba(0, 0, 0, 0.28)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, alignSelf: 'flex-start', marginBottom: 10 },
-  topHeroBadgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
+  topHeroCard: { backgroundColor: '#161F30', borderRadius: 16, borderWidth: 1.5, borderColor: 'rgba(245, 158, 11, 0.35)', padding: 16, marginBottom: 12, position: 'relative', overflow: 'hidden' },
+  topHeroDecorCircle: { position: 'absolute', right: -25, top: -25, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(245, 158, 11, 0.05)' },
+  topHeroBadge: { backgroundColor: 'rgba(245, 158, 11, 0.15)', borderWidth: 1, borderColor: 'rgba(245, 158, 11, 0.3)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, alignSelf: 'flex-start', marginBottom: 10 },
+  topHeroBadgeText: { color: '#F59E0B', fontSize: 11, fontWeight: '700' },
   topHeroContentRow: { flexDirection: 'row', alignItems: 'center' },
-  topHeroRankBox: { width: 50, height: 50, borderRadius: 14, backgroundColor: 'rgba(0, 0, 0, 0.12)', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  topHeroRankNum: { color: '#1F1300', fontSize: 24, fontWeight: '900' },
+  topHeroRankBox: { width: 50, height: 50, borderRadius: 14, backgroundColor: 'rgba(245, 158, 11, 0.12)', borderWidth: 1, borderColor: 'rgba(245, 158, 11, 0.25)', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  topHeroRankNum: { color: '#F59E0B', fontSize: 24, fontWeight: '900' },
   topHeroInfoCol: { flex: 1, minWidth: 0 },
-  topHeroTitle: { color: '#1F1300', fontSize: 18, fontWeight: '800' },
-  topHeroSub: { color: 'rgba(31, 19, 0, 0.75)', fontSize: 12, fontWeight: '600', marginTop: 2, marginBottom: 4 },
-  topHeroPrice: { color: '#1F1300', fontSize: 20, fontWeight: '900' },
+  topHeroTitle: { color: '#F8FAFC', fontSize: 18, fontWeight: '800' },
+  topHeroSub: { color: '#94A3B8', fontSize: 12, fontWeight: '600', marginTop: 2, marginBottom: 4 },
+  topHeroPrice: { color: '#FBBF24', fontSize: 20, fontWeight: '900' },
 
   // Ranked List (#2 to #5 Items)
-  rankedListCard: { backgroundColor: '#0F1118', borderRadius: 14, borderWidth: 1, borderColor: '#1A1C29', marginBottom: 0, overflow: 'hidden' },
+  rankedListCard: { backgroundColor: '#161F30', borderRadius: 14, borderWidth: 1, borderColor: '#1E2638', marginBottom: 0, overflow: 'hidden' },
   rankedItemRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 12 },
-  rankedItemBorderBottom: { borderBottomWidth: 1, borderColor: '#161824' },
-  rankedBadge: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#E2E8F0', justifyContent: 'center', alignItems: 'center', marginRight: 10, flexShrink: 0 },
-  rankedBadgeText: { color: '#0F172A', fontSize: 11, fontWeight: '800' },
+  rankedItemBorderBottom: { borderBottomWidth: 1, borderColor: '#1E2638' },
+  rankedBadge: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#1E2638', justifyContent: 'center', alignItems: 'center', marginRight: 10, flexShrink: 0 },
+  rankedBadgeText: { color: '#94A3B8', fontSize: 11, fontWeight: '800' },
   rankedItemMiddleCol: { flex: 1, marginRight: 12, minWidth: 0 },
-  rankedItemName: { color: '#E8E9EF', fontSize: 13, fontWeight: '700', marginBottom: 4 },
+  rankedItemName: { color: '#F8FAFC', fontSize: 13, fontWeight: '700', marginBottom: 4 },
   rankedItemSubRow: { flexDirection: 'row', alignItems: 'center' },
-  rankedItemCategory: { color: '#6B6F85', fontSize: 10, marginRight: 8, maxWidth: 65 },
-  rankedProgressBarTrack: { flex: 1, height: 5, borderRadius: 2.5, backgroundColor: '#1E2130', overflow: 'hidden' },
-  rankedProgressBarFill: { height: '100%', borderRadius: 2.5, backgroundColor: '#F97316' },
+  rankedItemCategory: { color: '#94A3B8', fontSize: 10, marginRight: 8, maxWidth: 65 },
+  rankedProgressBarTrack: { flex: 1, height: 5, borderRadius: 2.5, backgroundColor: '#1E2638', overflow: 'hidden' },
+  rankedProgressBarFill: { height: '100%', borderRadius: 2.5, backgroundColor: '#F59E0B' },
   rankedItemRightCol: { alignItems: 'flex-end', flexShrink: 0 },
-  rankedItemAmount: { color: '#E8E9EF', fontSize: 13, fontWeight: '800' },
-  rankedItemQty: { color: '#2DD4BF', fontSize: 11, fontWeight: '600', marginTop: 2 },
+  rankedItemAmount: { color: '#F8FAFC', fontSize: 13, fontWeight: '800' },
+  rankedItemQty: { color: '#10B981', fontSize: 11, fontWeight: '600', marginTop: 2 },
 
   // ── DEVICE CONTROL (Redesigned matching mockup) ──
   deviceCardHeader: { marginBottom: 14 },
-  deviceSectionTitle: { color: '#E8E9EF', fontSize: 15, fontWeight: '800' },
-  deviceSectionSubtitle: { color: '#6B6F85', fontSize: 10.5, marginTop: 2 },
+  deviceSectionTitle: { color: '#F8FAFC', fontSize: 15, fontWeight: '800' },
+  deviceSectionSubtitle: { color: '#94A3B8', fontSize: 10.5, marginTop: 2 },
 
   // Teal Hero Banner
-  deviceHeroBanner: { backgroundColor: '#093830', borderRadius: 18, borderWidth: 1, borderColor: '#115E52', padding: 16, overflow: 'hidden' },
+  deviceHeroBanner: { backgroundColor: '#161F30', borderRadius: 18, borderWidth: 1, borderColor: 'rgba(16, 185, 129, 0.3)', padding: 16, overflow: 'hidden' },
   deviceHeroTopRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
   deviceGaugeContainer: { marginRight: 16, justifyContent: 'center', alignItems: 'center' },
-  deviceGaugeRing: { width: 84, height: 84, borderRadius: 42, borderWidth: 7, borderColor: '#2DD4BF', justifyContent: 'center', alignItems: 'center', backgroundColor: '#062923' },
+  deviceGaugeRing: { width: 84, height: 84, borderRadius: 42, borderWidth: 6, borderColor: '#10B981', justifyContent: 'center', alignItems: 'center', backgroundColor: '#0F1824' },
   deviceGaugeNumber: { color: '#FFFFFF', fontSize: 24, fontWeight: '900' },
-  deviceGaugeLabel: { color: '#A7F3D0', fontSize: 9.5, fontWeight: '700', marginTop: 1 },
+  deviceGaugeLabel: { color: '#10B981', fontSize: 9.5, fontWeight: '700', marginTop: 1 },
   deviceHeroStatusCol: { flex: 1, justifyContent: 'center' },
-  deviceSecurityPill: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', backgroundColor: 'rgba(255, 255, 255, 0.12)', paddingHorizontal: 9, paddingVertical: 3.5, borderRadius: 12 },
-  deviceSecurityPillDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#34D399', marginRight: 6 },
-  deviceSecurityPillText: { color: '#E6FFFA', fontSize: 10.5, fontWeight: '700' },
-  deviceHeroHeadline: { color: '#FFFFFF', fontSize: 17, fontWeight: '800', marginTop: 6 },
-  deviceHeroSubhead: { color: '#A7F3D0', fontSize: 11, fontWeight: '500', marginTop: 3 },
+  deviceSecurityPill: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', backgroundColor: 'rgba(16, 185, 129, 0.12)', borderWidth: 1, borderColor: 'rgba(16, 185, 129, 0.25)', paddingHorizontal: 9, paddingVertical: 3.5, borderRadius: 12 },
+  deviceSecurityPillDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981', marginRight: 6 },
+  deviceSecurityPillText: { color: '#10B981', fontSize: 10.5, fontWeight: '700' },
+  deviceHeroHeadline: { color: '#F8FAFC', fontSize: 17, fontWeight: '800', marginTop: 6 },
+  deviceHeroSubhead: { color: '#94A3B8', fontSize: 11, fontWeight: '500', marginTop: 3 },
 
-  // 3 Metric Sub-Tiles inside Teal Banner
+  // 3 Metric Sub-Tiles inside Banner
   deviceHeroTilesRow: { flexDirection: 'row', gap: 8 },
-  deviceHeroTile: { flex: 1, backgroundColor: 'rgba(255, 255, 255, 0.08)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.12)', paddingVertical: 10, alignItems: 'center' },
+  deviceHeroTile: { flex: 1, backgroundColor: '#111726', borderRadius: 12, borderWidth: 1, borderColor: '#1E2638', paddingVertical: 10, alignItems: 'center' },
   deviceHeroTileEmoji: { fontSize: 13, marginBottom: 2 },
-  deviceHeroTileNumber: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
-  deviceHeroTileLabel: { color: '#A7F3D0', fontSize: 9.5, fontWeight: '600', marginTop: 1 },
+  deviceHeroTileNumber: { color: '#F8FAFC', fontSize: 16, fontWeight: '800' },
+  deviceHeroTileLabel: { color: '#94A3B8', fontSize: 9.5, fontWeight: '600', marginTop: 1 },
 
   // Status Alert Strip
   deviceAlertBanner: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, paddingVertical: 9, paddingHorizontal: 12, borderWidth: 1, marginTop: 12 },
-  deviceAlertBannerGreen: { backgroundColor: '#0A251E', borderColor: 'rgba(16, 185, 129, 0.25)' },
-  deviceAlertBannerAmber: { backgroundColor: 'rgba(245, 158, 11, 0.12)', borderColor: 'rgba(245, 158, 11, 0.3)' },
+  deviceAlertBannerGreen: { backgroundColor: 'rgba(16, 185, 129, 0.1)', borderColor: 'rgba(16, 185, 129, 0.25)' },
+  deviceAlertBannerAmber: { backgroundColor: 'rgba(245, 158, 11, 0.1)', borderColor: 'rgba(245, 158, 11, 0.25)' },
   deviceAlertCircle: { width: 20, height: 20, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginRight: 9 },
-  deviceAlertCircleIcon: { color: '#09332C', fontSize: 11, fontWeight: '900' },
+  deviceAlertCircleIcon: { color: '#0B0F17', fontSize: 11, fontWeight: '900' },
   deviceAlertText: { fontSize: 11, fontWeight: '600', flex: 1 },
 
   // Active Device Header & Hint
   deviceActiveHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, marginBottom: 8 },
-  deviceTapHint: { color: '#6B6F85', fontSize: 10.5, flex: 1, marginRight: 8 },
+  deviceTapHint: { color: '#94A3B8', fontSize: 10.5, flex: 1, marginRight: 8 },
   deviceActiveCountPill: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(16, 185, 129, 0.12)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(16, 185, 129, 0.25)' },
   deviceActiveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981', marginRight: 5 },
   deviceActiveCountText: { color: '#10B981', fontSize: 10, fontWeight: '700' },
 
   // Device Card Items
-  deviceEmptyBox: { paddingVertical: 20, alignItems: 'center', backgroundColor: '#12141C', borderRadius: 14, borderWidth: 1, borderColor: '#1D202D', marginBottom: 8 },
+  deviceEmptyBox: { paddingVertical: 20, alignItems: 'center', backgroundColor: '#161F30', borderRadius: 14, borderWidth: 1, borderColor: '#1E2638', marginBottom: 8 },
   deviceEmptyEmoji: { fontSize: 22, marginBottom: 6 },
-  deviceEmptyText: { color: '#6B6F85', fontSize: 11, fontWeight: '600' },
-  deviceItemCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#12141C', borderRadius: 14, borderWidth: 1, borderColor: '#1D202D', padding: 12, marginBottom: 8 },
+  deviceEmptyText: { color: '#94A3B8', fontSize: 11, fontWeight: '600' },
+  deviceItemCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#161F30', borderRadius: 14, borderWidth: 1, borderColor: '#1E2638', padding: 12, marginBottom: 8 },
   deviceAvatarContainer: { position: 'relative', width: 44, height: 44, marginRight: 12 },
-  deviceAvatarBox: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#2DD4BF', justifyContent: 'center', alignItems: 'center' },
-  deviceAvatarLetter: { color: '#042F2E', fontSize: 18, fontWeight: '900' },
-  deviceOnlineDot: { position: 'absolute', bottom: -1, right: -1, width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: '#12141C' },
+  deviceAvatarBox: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#1E2638', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#2E384D' },
+  deviceAvatarLetter: { color: '#10B981', fontSize: 18, fontWeight: '900' },
+  deviceOnlineDot: { position: 'absolute', bottom: -1, right: -1, width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: '#161F30' },
   deviceInfoCol: { flex: 1, minWidth: 0 },
-  deviceItemTitle: { color: '#FFFFFF', fontSize: 13.5, fontWeight: '800' },
+  deviceItemTitle: { color: '#F8FAFC', fontSize: 13.5, fontWeight: '800' },
   deviceMetaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4, gap: 6 },
-  deviceRoleBadge: { backgroundColor: 'rgba(245, 158, 11, 0.18)', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
+  deviceRoleBadge: { backgroundColor: 'rgba(245, 158, 11, 0.12)', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 },
   deviceRoleBadgeText: { color: '#F59E0B', fontSize: 10, fontWeight: '700' },
   deviceStatusText: { fontSize: 11, fontWeight: '600' },
-  deviceChevron: { color: '#6B6F85', fontSize: 18, fontWeight: 'bold', marginLeft: 8 },
+  deviceChevron: { color: '#94A3B8', fontSize: 18, fontWeight: 'bold', marginLeft: 8 },
 
   // Footer Actions
   deviceViewAllLink: { alignItems: 'center', marginVertical: 12 },
   deviceViewAllText: { color: '#F59E0B', fontSize: 12.5, fontWeight: '700' },
-  devicePrimaryBtn: { backgroundColor: '#2DD4BF', borderRadius: 24, paddingVertical: 13, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', width: '100%' },
+  devicePrimaryBtn: { backgroundColor: '#10B981', borderRadius: 24, paddingVertical: 13, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', width: '100%' },
   devicePrimaryBtnIcon: { fontSize: 14, marginRight: 8 },
-  devicePrimaryBtnText: { color: '#042F2E', fontSize: 13.5, fontWeight: '800' },
+  devicePrimaryBtnText: { color: '#FFFFFF', fontSize: 13.5, fontWeight: '800' },
 
   // ── CLOUD SYNC & HEALTH (Redesigned with Real App Sync) ──
   syncCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   syncHeaderLeft: { flex: 1, minWidth: 0, marginRight: 8 },
-  syncSectionTitle: { color: '#E8E9EF', fontSize: 15, fontWeight: '800' },
-  syncSectionSubtitle: { color: '#6B6F85', fontSize: 10.5, marginTop: 2 },
+  syncSectionTitle: { color: '#F8FAFC', fontSize: 15, fontWeight: '800' },
+  syncSectionSubtitle: { color: '#94A3B8', fontSize: 10.5, marginTop: 2 },
   syncDiagLink: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 8 },
-  syncDiagLinkText: { color: '#F59E0B', fontSize: 13, fontWeight: '700' },
+  syncDiagLinkText: { color: '#38BDF8', fontSize: 13, fontWeight: '700' },
 
   // Deep Indigo Hero Banner
-  syncHeroBanner: { backgroundColor: '#141D4E', borderRadius: 18, borderWidth: 1, borderColor: '#222E73', padding: 16, overflow: 'hidden' },
+  syncHeroBanner: { backgroundColor: '#161F30', borderRadius: 18, borderWidth: 1, borderColor: '#1E2638', padding: 16, overflow: 'hidden' },
   syncHeroTopRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
-  syncHeroIconBox: { width: 42, height: 42, borderRadius: 12, backgroundColor: 'rgba(255, 255, 255, 0.12)', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  syncHeroIconBox: { width: 42, height: 42, borderRadius: 12, backgroundColor: 'rgba(56, 189, 248, 0.12)', borderWidth: 1, borderColor: 'rgba(56, 189, 248, 0.25)', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
   syncHeroIconEmoji: { fontSize: 18 },
   syncHeroTitleCol: { flex: 1, minWidth: 0 },
-  syncHeroTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
-  syncHeroSubtitle: { color: '#A5B4FC', fontSize: 11, fontWeight: '500', marginTop: 2 },
+  syncHeroTitle: { color: '#F8FAFC', fontSize: 16, fontWeight: '800' },
+  syncHeroSubtitle: { color: '#94A3B8', fontSize: 11, fontWeight: '500', marginTop: 2 },
 
   // Hero Tiles (SQLite & Cloud Sync Queue)
-  syncTile: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255, 255, 255, 0.08)', borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.12)', paddingHorizontal: 12, paddingVertical: 10, marginTop: 8 },
-  syncTileIconWrap: { width: 34, height: 34, borderRadius: 10, backgroundColor: 'rgba(255, 255, 255, 0.1)', justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+  syncTile: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#111726', borderRadius: 14, borderWidth: 1, borderColor: '#1E2638', paddingHorizontal: 12, paddingVertical: 10, marginTop: 8 },
+  syncTileIconWrap: { width: 34, height: 34, borderRadius: 10, backgroundColor: 'rgba(255, 255, 255, 0.05)', justifyContent: 'center', alignItems: 'center', marginRight: 10 },
   syncTileIconEmoji: { fontSize: 15 },
   syncTileMidCol: { flex: 1, minWidth: 0 },
   syncTileLabel: { color: '#94A3B8', fontSize: 10, fontWeight: '500' },
   syncTileStatusRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
   syncStatusDot: { width: 6, height: 6, borderRadius: 3, marginRight: 6 },
-  syncTileStatusText: { color: '#FFFFFF', fontSize: 12.5, fontWeight: '700' },
+  syncTileStatusText: { color: '#F8FAFC', fontSize: 12.5, fontWeight: '700' },
   syncCheckCircle: { width: 22, height: 22, borderRadius: 11, justifyContent: 'center', alignItems: 'center', marginLeft: 8 },
-  syncCheckMark: { color: '#0A2016', fontSize: 12, fontWeight: '900' },
+  syncCheckMark: { color: '#0B0F17', fontSize: 12, fontWeight: '900' },
 
   // Bottom Auto-Sync Timers Card
-  syncTimersCard: { backgroundColor: '#12141C', borderRadius: 16, borderWidth: 1, borderColor: '#1D202D', padding: 14, marginTop: 12 },
+  syncTimersCard: { backgroundColor: '#161F30', borderRadius: 16, borderWidth: 1, borderColor: '#1E2638', padding: 14, marginTop: 12 },
   syncTimersHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
   syncTimersHeaderIcon: { fontSize: 14, marginRight: 6 },
-  syncTimersTitle: { color: '#FFFFFF', fontSize: 13, fontWeight: '800', flex: 1 },
+  syncTimersTitle: { color: '#F8FAFC', fontSize: 13, fontWeight: '800', flex: 1 },
   syncActivePill: { backgroundColor: 'rgba(16, 185, 129, 0.15)', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, borderWidth: 1, borderColor: 'rgba(16, 185, 129, 0.3)' },
   syncActivePillText: { color: '#10B981', fontSize: 9.5, fontWeight: '700' },
 
@@ -2912,67 +2912,67 @@ const styles = StyleSheet.create({
   syncRingsRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', marginBottom: 12 },
   syncRingCol: { alignItems: 'center' },
   syncRingOuterWrap: { width: 72, height: 72, justifyContent: 'center', alignItems: 'center', position: 'relative' },
-  syncCircularRing: { position: 'absolute', width: 72, height: 72, borderRadius: 36, borderWidth: 5, backgroundColor: '#0C0E17', borderColor: '#1A1D2B' },
-  syncRingCenter: { position: 'absolute', width: 62, height: 62, borderRadius: 31, backgroundColor: '#0C0E17', justifyContent: 'center', alignItems: 'center' },
-  syncRingNumber: { color: '#FFFFFF', fontSize: 18, fontWeight: '900' },
-  syncRingUnit: { color: '#6B6F85', fontSize: 9, marginTop: 1 },
-  syncRingName: { color: '#FFFFFF', fontSize: 12, fontWeight: '700', marginTop: 8 },
-  syncRingCycle: { color: '#6B6F85', fontSize: 10, marginTop: 2 },
-  syncMiniTrack: { width: 62, height: 4, borderRadius: 2, backgroundColor: '#1A1D2B', marginTop: 6, overflow: 'hidden' },
+  syncCircularRing: { position: 'absolute', width: 72, height: 72, borderRadius: 36, borderWidth: 5, backgroundColor: '#0F141F', borderColor: '#1E2638' },
+  syncRingCenter: { position: 'absolute', width: 62, height: 62, borderRadius: 31, backgroundColor: '#0F141F', justifyContent: 'center', alignItems: 'center' },
+  syncRingNumber: { color: '#F8FAFC', fontSize: 18, fontWeight: '900' },
+  syncRingUnit: { color: '#94A3B8', fontSize: 9, marginTop: 1 },
+  syncRingName: { color: '#F8FAFC', fontSize: 12, fontWeight: '700', marginTop: 8 },
+  syncRingCycle: { color: '#94A3B8', fontSize: 10, marginTop: 2 },
+  syncMiniTrack: { width: 62, height: 4, borderRadius: 2, backgroundColor: '#1E2638', marginTop: 6, overflow: 'hidden' },
   syncMiniFill: { height: '100%', borderRadius: 2 },
 
   // Sync Engine Background Strip
-  syncEngineStrip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#090B10', borderRadius: 8, paddingVertical: 7, paddingHorizontal: 12, borderWidth: 1, borderColor: '#181A24', marginTop: 4 },
+  syncEngineStrip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#111726', borderRadius: 8, paddingVertical: 7, paddingHorizontal: 12, borderWidth: 1, borderColor: '#1E2638', marginTop: 4 },
   syncEngineItem: { flexDirection: 'row', alignItems: 'center' },
   syncEngineDot: { fontSize: 11, marginRight: 5 },
-  syncEngineText: { color: '#8B8FA8', fontSize: 10, fontWeight: '600' },
-  syncEngineDivider: { width: 1, height: 14, backgroundColor: '#1E2030' },
+  syncEngineText: { color: '#94A3B8', fontSize: 10, fontWeight: '600' },
+  syncEngineDivider: { width: 1, height: 14, backgroundColor: '#1E2638' },
 
   // ── PAYMENT SEGMENTED BAR (Image 3) ──
-  sectionHeaderTitle: { color: '#E8E9EF', fontSize: 14, fontWeight: '700', marginBottom: 12 },
-  segmentedBarTrack: { height: 16, borderRadius: 8, flexDirection: 'row', overflow: 'hidden', backgroundColor: '#141520', marginBottom: 14 },
+  sectionHeaderTitle: { color: '#F8FAFC', fontSize: 14, fontWeight: '700', marginBottom: 12 },
+  segmentedBarTrack: { height: 16, borderRadius: 8, flexDirection: 'row', overflow: 'hidden', backgroundColor: '#1E2638', marginBottom: 14 },
   segmentBar: { height: '100%' },
   paymentLegendGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 8 },
   paymentLegendItem: { width: '48%', flexDirection: 'row', alignItems: 'center' },
   legendDot: { width: 10, height: 10, borderRadius: 3, marginRight: 8 },
-  legendLabel: { color: '#E8E9EF', fontSize: 12, fontWeight: '600', flex: 1 },
-  legendVal: { color: '#E8E9EF', fontSize: 12, fontWeight: '700' },
+  legendLabel: { color: '#94A3B8', fontSize: 12, fontWeight: '600', flex: 1 },
+  legendVal: { color: '#F8FAFC', fontSize: 12, fontWeight: '700' },
 
   // ── COMBINED TABLE & ACTIVE DELIVERY SECTION ──
   combinedHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   combinedHeaderTitleCol: { flex: 1, minWidth: 0, marginRight: 8 },
-  combinedSubtitle: { color: '#6B6F85', fontSize: 10, marginTop: 1 },
+  combinedSubtitle: { color: '#94A3B8', fontSize: 10, marginTop: 1 },
   combinedPillsRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
-  tableSummaryBadge: { backgroundColor: '#141520', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: '#1E2030' },
-  tableSummaryBadgeText: { color: '#8B8FA8', fontSize: 10, fontWeight: '600' },
+  tableSummaryBadge: { backgroundColor: '#161F30', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6, borderWidth: 1, borderColor: '#1E2638' },
+  tableSummaryBadgeText: { color: '#94A3B8', fontSize: 10, fontWeight: '600' },
   deliverySummaryBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6, borderWidth: 1 },
-  deliveryBadgeAmber: { backgroundColor: 'rgba(245,158,11,0.12)', borderColor: 'rgba(245,158,11,0.3)' },
-  deliveryBadgeGreen: { backgroundColor: 'rgba(16,185,129,0.12)', borderColor: 'rgba(16,185,129,0.3)' },
+  deliveryBadgeAmber: { backgroundColor: 'rgba(245,158,11,0.12)', borderColor: 'rgba(245,158,11,0.25)' },
+  deliveryBadgeGreen: { backgroundColor: 'rgba(16,185,129,0.12)', borderColor: 'rgba(16,185,129,0.25)' },
   deliverySummaryBadgeText: { fontSize: 10, fontWeight: '700' },
   tableVisualGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 8 },
   tableGridCard: { width: '23.5%', minHeight: 74, borderRadius: 10, borderWidth: 1.2, justifyContent: 'center', alignItems: 'center', padding: 5 },
   tableCardTitle: { fontSize: 13, fontWeight: '800', marginBottom: 2 },
   tableCardDuration: { fontSize: 10, fontWeight: '700', marginBottom: 2 },
   tableCardAmount: { fontSize: 10.5, fontWeight: '800' },
-  tableBottomHint: { color: '#6B6F85', fontSize: 10.5, textAlign: 'center', marginTop: 10 },
+  tableBottomHint: { color: '#94A3B8', fontSize: 10.5, textAlign: 'center', marginTop: 10 },
 
   // ── DELIVERIES SUB-SECTION ──
   deliveryDividerContainer: { flexDirection: 'row', alignItems: 'center', marginVertical: 14 },
-  deliveryDividerLine: { flex: 1, height: 1, backgroundColor: '#1E2030' },
-  deliveryDividerText: { color: '#8B8FA8', fontSize: 11, fontWeight: '700', marginHorizontal: 8, letterSpacing: 0.5 },
-  activeDeliveryCard: { backgroundColor: '#141520', borderRadius: 10, padding: 11, borderWidth: 1, borderColor: '#1E2030', marginBottom: 8 },
+  deliveryDividerLine: { flex: 1, height: 1, backgroundColor: '#1E2638' },
+  deliveryDividerText: { color: '#94A3B8', fontSize: 11, fontWeight: '700', marginHorizontal: 8, letterSpacing: 0.5 },
+  activeDeliveryCard: { backgroundColor: '#161F30', borderRadius: 10, padding: 11, borderWidth: 1, borderColor: '#1E2638', marginBottom: 8 },
   activeDeliveryHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   activeDeliveryLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8, minWidth: 0 },
-  deliveryRiderIconWrap: { width: 34, height: 34, borderRadius: 8, backgroundColor: 'rgba(59,130,246,0.15)', justifyContent: 'center', alignItems: 'center', marginRight: 10, flexShrink: 0 },
+  deliveryRiderIconWrap: { width: 34, height: 34, borderRadius: 8, backgroundColor: 'rgba(59,130,246,0.12)', justifyContent: 'center', alignItems: 'center', marginRight: 10, flexShrink: 0 },
   deliveryRiderIcon: { fontSize: 17 },
-  activeDeliveryName: { color: '#E8E9EF', fontSize: 12, fontWeight: '700' },
-  activeDeliverySub: { color: '#6B6F85', fontSize: 10, marginTop: 2 },
+  activeDeliveryName: { color: '#F8FAFC', fontSize: 12, fontWeight: '700' },
+  activeDeliverySub: { color: '#94A3B8', fontSize: 10, marginTop: 2 },
   activeDeliveryRight: { alignItems: 'flex-end', flexShrink: 0 },
-  activeDeliveryAmount: { color: '#FFB703', fontSize: 13, fontWeight: '800' },
-  activeDeliveryCharge: { color: '#6B6F85', fontSize: 9.5, marginTop: 2 },
+  activeDeliveryAmount: { color: '#F59E0B', fontSize: 13, fontWeight: '800' },
+  activeDeliveryCharge: { color: '#94A3B8', fontSize: 9.5, marginTop: 2 },
   emptyDeliveryBox: { alignItems: 'center', paddingVertical: 18 },
   emptyDeliveryEmoji: { fontSize: 26, marginBottom: 4 },
-  emptyDeliveryText: { color: '#6B6F85', fontSize: 11, fontWeight: '600' },
+  emptyDeliveryText: { color: '#94A3B8', fontSize: 11, fontWeight: '600' },
 
   // ── VERTICAL BAR CHART (LAST 7 DAYS) ──
   chartContainer: { height: 160, position: 'relative', justifyContent: 'flex-end', marginBottom: 8, paddingTop: 18 },
@@ -2983,25 +2983,25 @@ const styles = StyleSheet.create({
   chartCol: { flex: 1, alignItems: 'center' },
   chartTopLabelWrap: { height: 22, justifyContent: 'flex-end', alignItems: 'center', marginBottom: 4 },
   chartBestBadge: { fontSize: 9, lineHeight: 10 },
-  chartBarValueText: { color: '#8B8FA8', fontSize: 9, fontWeight: '700' },
-  chartBarTrack: { height: 75, width: 14, justifyContent: 'flex-end', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 4, overflow: 'hidden' },
+  chartBarValueText: { color: '#94A3B8', fontSize: 9, fontWeight: '700' },
+  chartBarTrack: { height: 75, width: 14, justifyContent: 'flex-end', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 4, overflow: 'hidden' },
   chartBarFill: { width: '100%', borderRadius: 4 },
-  chartDayText: { color: '#8B8FA8', fontSize: 10, fontWeight: '600', marginTop: 6 },
+  chartDayText: { color: '#94A3B8', fontSize: 10, fontWeight: '600', marginTop: 6 },
   chartDayTextToday: { color: '#10B981', fontWeight: '800' },
-  chartDateSubText: { color: '#5A5E73', fontSize: 8.5, marginTop: 1 },
+  chartDateSubText: { color: '#64748B', fontSize: 8.5, marginTop: 1 },
   chartDateSubTextToday: { color: '#10B981', fontWeight: '700' },
-  chartFooterStrip: { flexDirection: 'row', backgroundColor: '#141520', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12, borderWidth: 1, borderColor: '#1E2030', marginTop: 6 },
+  chartFooterStrip: { flexDirection: 'row', backgroundColor: '#161F30', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12, borderWidth: 1, borderColor: '#1E2638', marginTop: 6 },
   chartFooterItem: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   chartFooterEmoji: { fontSize: 12, marginRight: 6 },
-  chartFooterLabel: { color: '#6B6F85', fontSize: 10, marginRight: 4 },
-  chartFooterVal: { color: '#E8E9EF', fontSize: 10.5, fontWeight: '700' },
+  chartFooterLabel: { color: '#94A3B8', fontSize: 10, marginRight: 4 },
+  chartFooterVal: { color: '#F8FAFC', fontSize: 10.5, fontWeight: '700' },
 
   // ── VERSION CONTROL (User-friendly Slate & Royal Blue Palette) ──
   versionHeroCard: {
-    backgroundColor: '#0F172A',
+    backgroundColor: '#161F30',
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#1E293B',
+    borderColor: '#1E2638',
     padding: 16,
     overflow: 'hidden',
   },
@@ -3061,7 +3061,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   versionBigNumber: {
-    color: '#FFFFFF',
+    color: '#F8FAFC',
     fontSize: 40,
     fontWeight: '900',
     letterSpacing: 0.5,
@@ -3082,7 +3082,7 @@ const styles = StyleSheet.create({
   },
   versionDashedDivider: {
     borderBottomWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: 'rgba(255, 255, 255, 0.08)',
     borderStyle: 'dashed',
     marginVertical: 14,
   },
@@ -3099,9 +3099,9 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: '#1E293B',
+    backgroundColor: '#111726',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#1E2638',
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
@@ -3134,7 +3134,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   versionCompareVal: {
-    color: '#FFFFFF',
+    color: '#F8FAFC',
     fontSize: 13,
     fontWeight: '800',
     marginTop: 2,
@@ -3149,7 +3149,7 @@ const styles = StyleSheet.create({
   versionConnectorLine: {
     width: '100%',
     height: 2,
-    backgroundColor: '#334155',
+    backgroundColor: '#1E2638',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -3168,7 +3168,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
-    borderColor: '#0F172A',
+    borderColor: '#161F30',
   },
   versionCenterCheck: {
     color: '#FFFFFF',
@@ -3187,7 +3187,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   versionInputSectionTitle: {
-    color: '#FFFFFF',
+    color: '#F8FAFC',
     fontSize: 14,
     fontWeight: '800',
   },
@@ -3211,10 +3211,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   versionBigInputBox: {
-    backgroundColor: '#0F172A',
+    backgroundColor: '#111726',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#1E293B',
+    borderColor: '#1E2638',
     height: 54,
     flexDirection: 'row',
     alignItems: 'center',
@@ -3228,7 +3228,7 @@ const styles = StyleSheet.create({
   },
   versionBigTextInput: {
     flex: 1,
-    color: '#FFFFFF',
+    color: '#F8FAFC',
     fontSize: 22,
     fontWeight: '900',
     textAlign: 'center',
@@ -3246,7 +3246,7 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   versionWarningText: {
-    color: '#9CA3AF',
+    color: '#94A3B8',
     fontSize: 10.5,
     lineHeight: 16,
     flex: 1,
@@ -3285,106 +3285,106 @@ const styles = StyleSheet.create({
   // ── EMPTY STATE ──
   emptyState: { alignItems: 'center', paddingVertical: 20 },
   emptyStateEmoji: { fontSize: 28, marginBottom: 8 },
-  emptyStateText: { color: '#8B8FA8', fontSize: 12, fontWeight: '600', marginBottom: 3 },
-  emptyStateSub: { color: '#5A5E73', fontSize: 10, textAlign: 'center', paddingHorizontal: 20 },
+  emptyStateText: { color: '#94A3B8', fontSize: 12, fontWeight: '600', marginBottom: 3 },
+  emptyStateSub: { color: '#64748B', fontSize: 10, textAlign: 'center', paddingHorizontal: 20 },
 
   // ── TABLE GRID (in Floor Map modal) ──
   tableGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', width: '100%', paddingBottom: 10 },
-  tableCard: { width: '23.5%', aspectRatio: 0.75, borderRadius: 14, padding: 8, alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, borderWidth: 1.5, backgroundColor: '#161616', elevation: 3 },
-  tableBusyBorder: { borderColor: 'rgba(251,146,60,0.5)', backgroundColor: 'rgba(36,22,14,0.6)' },
-  tableFreeBorder: { borderColor: 'rgba(52,211,153,0.4)' },
-  tableId: { fontSize: 13, fontWeight: 'bold', color: '#FFF' },
+  tableCard: { width: '23.5%', aspectRatio: 0.75, borderRadius: 14, padding: 8, alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, borderWidth: 1.5, backgroundColor: '#161F30', borderColor: '#1E2638', elevation: 3 },
+  tableBusyBorder: { borderColor: 'rgba(245,158,11,0.5)', backgroundColor: 'rgba(35,27,16,0.8)' },
+  tableFreeBorder: { borderColor: 'rgba(16,185,129,0.4)', backgroundColor: 'rgba(13,35,27,0.8)' },
+  tableId: { fontSize: 13, fontWeight: 'bold', color: '#F8FAFC' },
   tableStatusRow: { flexDirection: 'row', alignItems: 'center' },
   statusDot: { width: 6, height: 6, borderRadius: 3, marginRight: 4 },
   tableStatusText: { fontSize: 8, fontWeight: 'bold' },
-  textGreen: { color: '#34D399' },
-  textOrange: { color: '#FB923C' },
-  tableAmount: { fontSize: 9, color: '#FFF' },
+  textGreen: { color: '#10B981' },
+  textOrange: { color: '#F59E0B' },
+  tableAmount: { fontSize: 9, color: '#F8FAFC' },
   chairIcon: { fontSize: 14, opacity: 0.3 },
 
   // ── DELIVERY CARDS (in Floor Map modal) ──
-  deliveryCard: { backgroundColor: '#0D0D0D', borderWidth: 1, borderColor: '#262626', borderRadius: 14, padding: 16 },
-  deliveryTitle: { fontSize: 14, fontWeight: 'bold', color: '#FFF' },
-  deliveryTime: { fontSize: 11, color: '#A1A1AA', marginVertical: 6 },
-  deliveryAmount: { fontSize: 16, fontWeight: 'bold', color: '#FFB703' },
+  deliveryCard: { backgroundColor: '#161F30', borderWidth: 1, borderColor: '#1E2638', borderRadius: 14, padding: 16 },
+  deliveryTitle: { fontSize: 14, fontWeight: 'bold', color: '#F8FAFC' },
+  deliveryTime: { fontSize: 11, color: '#94A3B8', marginVertical: 6 },
+  deliveryAmount: { fontSize: 16, fontWeight: 'bold', color: '#F59E0B' },
 
   // ── MODALS (ALL PRESERVED EXACTLY) ──
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { backgroundColor: '#0D0D0D', borderWidth: 1, borderColor: '#FFB703', borderRadius: 20, padding: 16, width: '85%', alignItems: 'center' },
-  modalTitle: { fontSize: 17, fontWeight: 'bold', color: '#FFF', marginBottom: 10 },
-  modalSubtitle: { fontSize: 11, color: '#888', textAlign: 'center' },
-  detailRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderColor: '#1A1A1A' },
-  detailLabel: { color: '#888', fontSize: 13 },
-  detailValue: { color: '#FFF', fontSize: 13, fontWeight: '500' },
-  modalInput: { backgroundColor: '#161616', borderWidth: 1, borderColor: '#262626', borderRadius: 12, height: 48, paddingHorizontal: 16, color: '#FFF', width: '100%' },
+  modalContent: { backgroundColor: '#111622', borderWidth: 1, borderColor: '#1E2638', borderRadius: 20, padding: 16, width: '85%', alignItems: 'center' },
+  modalTitle: { fontSize: 17, fontWeight: 'bold', color: '#F8FAFC', marginBottom: 10 },
+  modalSubtitle: { fontSize: 11, color: '#94A3B8', textAlign: 'center' },
+  detailRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderColor: '#1E2638' },
+  detailLabel: { color: '#94A3B8', fontSize: 13 },
+  detailValue: { color: '#F8FAFC', fontSize: 13, fontWeight: '500' },
+  modalInput: { backgroundColor: '#161F30', borderWidth: 1, borderColor: '#1E2638', borderRadius: 12, height: 48, paddingHorizontal: 16, color: '#F8FAFC', width: '100%' },
   modalBtnRow: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 20 },
-  modalCancelBtn: { flex: 1, height: 46, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1E1E1E', borderRadius: 10, marginRight: 10 },
-  modalCancelBtnText: { color: '#FFF', fontSize: 14 },
-  modalSaveBtn: { flex: 1, height: 46, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFB703', borderRadius: 10, marginLeft: 10 },
-  modalSaveBtnText: { color: '#000', fontSize: 14, fontWeight: 'bold' },
+  modalCancelBtn: { flex: 1, height: 46, justifyContent: 'center', alignItems: 'center', backgroundColor: '#1E2638', borderRadius: 10, marginRight: 10 },
+  modalCancelBtnText: { color: '#F8FAFC', fontSize: 14 },
+  modalSaveBtn: { flex: 1, height: 46, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F59E0B', borderRadius: 10, marginLeft: 10 },
+  modalSaveBtnText: { color: '#000000', fontSize: 14, fontWeight: 'bold' },
   menuModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-start', alignItems: 'flex-start' },
-  menuModalContent: { backgroundColor: '#161616', borderRadius: 12, marginTop: 45, marginLeft: 16, width: 200, borderWidth: 1, borderColor: '#333', overflow: 'hidden' },
+  menuModalContent: { backgroundColor: '#161F30', borderRadius: 12, marginTop: 45, marginLeft: 16, width: 200, borderWidth: 1, borderColor: '#1E2638', overflow: 'hidden' },
   menuOption: { paddingVertical: 9, paddingHorizontal: 14 },
-  menuOptionText: { color: '#FFF', fontSize: 12, fontWeight: '600' },
-  menuDivider: { height: 1, backgroundColor: '#262626' },
-  menuSectionHeader: { backgroundColor: '#111', paddingVertical: 4, paddingHorizontal: 14, borderBottomWidth: 1, borderColor: '#262626' },
-  menuSectionText: { color: '#555', fontSize: 9, fontWeight: 'bold', letterSpacing: 1 },
-  sheetContainer: { width: '100%', backgroundColor: '#111', borderRadius: 12, borderWidth: 1, borderColor: '#333', overflow: 'hidden', flexShrink: 1 },
-  sheetHeader: { flexDirection: 'row', backgroundColor: '#222', paddingVertical: 10, paddingHorizontal: 10, borderBottomWidth: 1, borderColor: '#444' },
-  sheetHeaderText: { color: '#FFB703', fontSize: 10, fontWeight: 'bold', textAlign: 'center' },
+  menuOptionText: { color: '#F8FAFC', fontSize: 12, fontWeight: '600' },
+  menuDivider: { height: 1, backgroundColor: '#1E2638' },
+  menuSectionHeader: { backgroundColor: '#111726', paddingVertical: 4, paddingHorizontal: 14, borderBottomWidth: 1, borderColor: '#1E2638' },
+  menuSectionText: { color: '#94A3B8', fontSize: 9, fontWeight: 'bold', letterSpacing: 1 },
+  sheetContainer: { width: '100%', backgroundColor: '#111622', borderRadius: 12, borderWidth: 1, borderColor: '#1E2638', overflow: 'hidden', flexShrink: 1 },
+  sheetHeader: { flexDirection: 'row', backgroundColor: '#161F30', paddingVertical: 10, paddingHorizontal: 10, borderBottomWidth: 1, borderColor: '#1E2638' },
+  sheetHeaderText: { color: '#F59E0B', fontSize: 10, fontWeight: 'bold', textAlign: 'center' },
   sheetBody: { maxHeight: 300 },
-  sheetRow: { flexDirection: 'row', paddingVertical: 12, paddingHorizontal: 10, borderBottomWidth: 0.5, borderColor: '#222', alignItems: 'center' },
-  sheetRowAlt: { backgroundColor: '#0A0A0A' },
-  sheetCell: { color: '#FFF', fontSize: 10, textAlign: 'center' },
-  sheetCellTextMain: { color: '#FFF', fontSize: 10, fontWeight: '500' },
-  sheetCellTextSub: { color: '#888', fontSize: 8, marginTop: 1 },
+  sheetRow: { flexDirection: 'row', paddingVertical: 12, paddingHorizontal: 10, borderBottomWidth: 0.5, borderColor: '#1E2638', alignItems: 'center' },
+  sheetRowAlt: { backgroundColor: '#0D111A' },
+  sheetCell: { color: '#F8FAFC', fontSize: 10, textAlign: 'center' },
+  sheetCellTextMain: { color: '#F8FAFC', fontSize: 10, fontWeight: '500' },
+  sheetCellTextSub: { color: '#94A3B8', fontSize: 8, marginTop: 1 },
   filterBar: { flexDirection: 'row', marginBottom: 12, height: 36 },
-  filterChip: { paddingHorizontal: 12, borderRadius: 18, backgroundColor: '#1E1E1E', borderWidth: 1, borderColor: '#333', marginRight: 8, height: 32, justifyContent: 'center' },
-  filterChipActive: { backgroundColor: '#FFB703', borderColor: '#FFB703' },
-  filterChipText: { color: '#888', fontSize: 10, fontWeight: '500' },
-  filterChipTextActive: { color: '#000', fontWeight: 'bold' },
-  sheetFooter: { flexDirection: 'row', backgroundColor: '#1A1A1A', paddingVertical: 12, paddingHorizontal: 10, borderTopWidth: 2, borderColor: '#FFB703' },
-  sheetFooterText: { color: '#FFB703', fontSize: 10, fontWeight: 'bold', textAlign: 'center' },
-  closeCircle: { backgroundColor: '#1E1E1E', width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
-  closeCircleText: { color: '#888', fontSize: 14 },
+  filterChip: { paddingHorizontal: 12, borderRadius: 18, backgroundColor: '#161F30', borderWidth: 1, borderColor: '#1E2638', marginRight: 8, height: 32, justifyContent: 'center' },
+  filterChipActive: { backgroundColor: '#F59E0B', borderColor: '#F59E0B' },
+  filterChipText: { color: '#94A3B8', fontSize: 10, fontWeight: '500' },
+  filterChipTextActive: { color: '#000000', fontWeight: 'bold' },
+  sheetFooter: { flexDirection: 'row', backgroundColor: '#161F30', paddingVertical: 12, paddingHorizontal: 10, borderTopWidth: 2, borderColor: '#F59E0B' },
+  sheetFooterText: { color: '#F59E0B', fontSize: 10, fontWeight: 'bold', textAlign: 'center' },
+  closeCircle: { backgroundColor: '#1E2638', width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
+  closeCircleText: { color: '#94A3B8', fontSize: 14 },
   modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', marginBottom: 16 },
   modalHeaderLeft: { flexDirection: 'row', alignItems: 'center' },
-  modalIconCircle: { width: 50, height: 50, borderRadius: 25, backgroundColor: 'rgba(255,183,3,0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
+  modalIconCircle: { width: 50, height: 50, borderRadius: 25, backgroundColor: 'rgba(245,158,11,0.12)', justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
   modalIconEmoji: { fontSize: 24 },
   filterSection: { width: '100%', marginBottom: 10 },
-  pickDateWrapper: { flexDirection: 'row', alignItems: 'center', marginTop: 4, backgroundColor: '#161616', borderRadius: 8, paddingHorizontal: 10, height: 44, borderWidth: 1, borderColor: '#333' },
+  pickDateWrapper: { flexDirection: 'row', alignItems: 'center', marginTop: 4, backgroundColor: '#161F30', borderRadius: 8, paddingHorizontal: 10, height: 44, borderWidth: 1, borderColor: '#1E2638' },
   modalFooterActions: { flexDirection: 'row', marginTop: 16, width: '100%' },
-  exportBtn: { flex: 1.2, backgroundColor: '#34D399', borderRadius: 10, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginRight: 8, height: 44 },
-  exportBtnText: { color: '#000', fontWeight: 'bold', fontSize: 13 },
+  exportBtn: { flex: 1.2, backgroundColor: '#10B981', borderRadius: 10, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginRight: 8, height: 44 },
+  exportBtnText: { color: '#FFFFFF', fontWeight: 'bold', fontSize: 13 },
   exportBtnIcon: { marginRight: 6 },
-  historyCloseBtn: { flex: 1, backgroundColor: '#1E1E1E', borderRadius: 10, justifyContent: 'center', alignItems: 'center', height: 44, borderWidth: 1, borderColor: '#333' },
-  historyCloseBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 13 },
-  renameInputWrapper: { width: '100%', backgroundColor: '#161616', borderWidth: 1, borderColor: '#262626', borderRadius: 12, height: 50, paddingHorizontal: 16, justifyContent: 'center', marginBottom: 20 },
-  renameInput: { color: '#FFFFFF', fontSize: 15 },
+  historyCloseBtn: { flex: 1, backgroundColor: '#1E2638', borderRadius: 10, justifyContent: 'center', alignItems: 'center', height: 44, borderWidth: 1, borderColor: '#1E2638' },
+  historyCloseBtnText: { color: '#F8FAFC', fontWeight: 'bold', fontSize: 13 },
+  renameInputWrapper: { width: '100%', backgroundColor: '#161F30', borderWidth: 1, borderColor: '#1E2638', borderRadius: 12, height: 50, paddingHorizontal: 16, justifyContent: 'center', marginBottom: 20 },
+  renameInput: { color: '#F8FAFC', fontSize: 15 },
   expenseInputGroup: { width: '100%', marginBottom: 12 },
-  inputLabel: { color: '#888', fontSize: 11, marginBottom: 6, fontWeight: 'bold' },
-  emptySheetText: { color: '#888', textAlign: 'center', padding: 20, fontSize: 12 },
-  manualBadge: { backgroundColor: 'rgba(255,183,3,0.2)', paddingHorizontal: 4, paddingVertical: 1, borderRadius: 4, marginLeft: 4 },
-  manualBadgeText: { color: '#FFB703', fontSize: 8, fontWeight: 'bold' },
+  inputLabel: { color: '#94A3B8', fontSize: 11, marginBottom: 6, fontWeight: 'bold' },
+  emptySheetText: { color: '#94A3B8', textAlign: 'center', padding: 20, fontSize: 12 },
+  manualBadge: { backgroundColor: 'rgba(245,158,11,0.15)', paddingHorizontal: 4, paddingVertical: 1, borderRadius: 4, marginLeft: 4 },
+  manualBadgeText: { color: '#F59E0B', fontSize: 8, fontWeight: 'bold' },
   calendarOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center' },
-  calendarContent: { backgroundColor: '#111', width: width * 0.85, borderRadius: 16, padding: 20, borderWidth: 1, borderColor: '#333' },
+  calendarContent: { backgroundColor: '#111622', width: width * 0.85, borderRadius: 16, padding: 20, borderWidth: 1, borderColor: '#1E2638' },
   calendarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  calNav: { color: '#FFB703', fontSize: 20, paddingHorizontal: 10 },
-  calTitle: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
+  calNav: { color: '#F59E0B', fontSize: 20, paddingHorizontal: 10 },
+  calTitle: { color: '#F8FAFC', fontSize: 16, fontWeight: 'bold' },
   calWeekRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 10 },
-  calWeekDay: { color: '#666', fontSize: 12, width: 35, textAlign: 'center' },
+  calWeekDay: { color: '#94A3B8', fontSize: 12, width: 35, textAlign: 'center' },
   calGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-around' },
   calDayCell: { width: 35, height: 35, justifyContent: 'center', alignItems: 'center', marginBottom: 5, borderRadius: 17 },
-  calDayText: { color: '#FFF', fontSize: 13 },
-  calCloseBtn: { marginTop: 20, height: 44, backgroundColor: '#1E1E1E', borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
-  calCloseBtnText: { color: '#888', fontSize: 14 },
+  calDayText: { color: '#F8FAFC', fontSize: 13 },
+  calCloseBtn: { marginTop: 20, height: 44, backgroundColor: '#1E2638', borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  calCloseBtnText: { color: '#94A3B8', fontSize: 14 },
   inspectorGrid: { flexDirection: 'row', justifyContent: 'space-between', width: '100%' },
-  inspectorCard: { flex: 1, backgroundColor: '#161616', borderWidth: 1, borderColor: '#262626', borderRadius: 10, padding: 12, marginHorizontal: 4, alignItems: 'center' },
-  inspectorLabel: { color: '#888', fontSize: 10, marginBottom: 4, fontWeight: 'bold' },
-  inspectorValue: { color: '#FFF', fontSize: 12, fontWeight: 'bold', textAlign: 'center' },
-  inspectorSub: { color: '#555', fontSize: 8, marginTop: 2 },
-  syncTimerWrapper: { paddingVertical: 4, paddingHorizontal: 12, backgroundColor: '#161616', borderRadius: 8, marginHorizontal: 16, marginTop: 4, marginBottom: 4, alignItems: 'center', borderWidth: 1, borderColor: '#222' },
-  syncTimerText: { color: '#FFB703', fontSize: 8, fontWeight: '600', marginVertical: 1 },
+  inspectorCard: { flex: 1, backgroundColor: '#161F30', borderWidth: 1, borderColor: '#1E2638', borderRadius: 10, padding: 12, marginHorizontal: 4, alignItems: 'center' },
+  inspectorLabel: { color: '#94A3B8', fontSize: 10, marginBottom: 4, fontWeight: 'bold' },
+  inspectorValue: { color: '#F8FAFC', fontSize: 12, fontWeight: 'bold', textAlign: 'center' },
+  inspectorSub: { color: '#64748B', fontSize: 8, marginTop: 2 },
+  syncTimerWrapper: { paddingVertical: 4, paddingHorizontal: 12, backgroundColor: '#161F30', borderRadius: 8, marginHorizontal: 16, marginTop: 4, marginBottom: 4, alignItems: 'center', borderWidth: 1, borderColor: '#1E2638' },
+  syncTimerText: { color: '#F59E0B', fontSize: 8, fontWeight: '600', marginVertical: 1 },
 
   // ── STATUS BADGES (used in modals) ──
   statusBadgeSmall: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 0.8, flexShrink: 0 },
