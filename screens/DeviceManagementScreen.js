@@ -850,7 +850,7 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
                 <Text style={styles.emptyText}>কোনো সক্রিয় ডিভাইস নিবন্ধিত পাওয়া যায়নি</Text>
               </View>
             ) : (
-              devices.map((item) => {
+              devices.map((item, index) => {
                 const st = String(item.status || 'PENDING').toUpperCase().trim();
                 const isLocked = Number(item.admin_lock || 0) === 1;
                 const forceLogoutPending = Number(item.force_logout || 0) === 1;
@@ -1140,7 +1140,7 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
                 <Text style={styles.emptyText}>কোনো মুছে ফেলা ডিভাইস পাওয়া যায়নি</Text>
               </View>
             ) : (
-              deletedDevices.map((item) => (
+              deletedDevices.map((item, index) => (
                 <View key={`${item.device_id || item.id || "dev"}-${index}`} style={styles.deviceCard}>
                   <View style={styles.cardHeader}>
                     <View style={styles.deviceIdentityGroup}>
