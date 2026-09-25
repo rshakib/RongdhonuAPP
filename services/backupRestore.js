@@ -138,6 +138,7 @@ export async function cleanupInspectBackup(inspectDbName) {
   }
 }
 
+
 function formatDisplayDate(date) {
   try {
     const d = new Date(date);
@@ -187,7 +188,7 @@ export async function createBackup() {
 
     await ensureBackupDirectoryExists();
 
-    // 1. Create a clean standalone backup database file directly in the app-scoped SQLiteBackups directory
+    // 1. Create clean standalone backup directly in app-scoped SQLiteBackups directory
     tempDb = SQLite.openDatabaseSync(finalFileName, { useNewConnection: true }, backupDir);
     // Use DELETE journal mode so the backup is a 100% self-contained single .db file (no -wal or -shm needed)
     tempDb.execSync('PRAGMA journal_mode = DELETE;');
@@ -381,11 +382,8 @@ export async function pickAndValidateBackup() {
 
   try {
     // 1. Prompt user to select backup file
-    // copyToCacheDirectory: false returns the Android native content:// URI directly.
-    // This allows FileSystem.copyAsync to stream via ContentResolver without running into
-    // Expo Go's cacheDir sandbox path restriction.
     const pickerResult = await DocumentPicker.getDocumentAsync({
-      copyToCacheDirectory: false,
+      copyToCacheDirectory: true,
       type: '*/*',
     });
 
@@ -398,7 +396,7 @@ export async function pickAndValidateBackup() {
     const fileName = asset.name || 'backup.db';
     const fileSize = asset.size || 0;
 
-    // 2. Copy selected file into app-scoped SQLiteBackups directory
+    // 2. Copy selected file to safe SQLiteBackups directory to inspect using expo-sqlite
     await FileSystem.copyAsync({ from: sourceUri, to: inspectTargetUri });
 
     // 3. Open database using scoped backupDir
