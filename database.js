@@ -926,42 +926,6 @@ export function migrateAIDatasetTables() {
   }
 }
 
-export function migrateActivityLogs() {
-  try {
-    const tableInfo = db.getAllSync("PRAGMA table_info(activity_logs)");
-    if (!tableInfo || tableInfo.length === 0) return;
-
-    const existingCols = new Set(tableInfo.map(c => c.name));
-    const expectedCols = [
-      { name: 'business_date', type: 'TEXT' },
-      { name: 'timestamp', type: 'TEXT' },
-      { name: 'action_type', type: 'TEXT' },
-      { name: 'action_title', type: 'TEXT' },
-      { name: 'description', type: 'TEXT' },
-      { name: 'app_profile', type: 'TEXT' },
-      { name: 'user_role', type: 'TEXT' },
-      { name: 'user_name', type: 'TEXT' },
-      { name: 'device_id', type: 'TEXT' },
-      { name: 'device_name', type: 'TEXT' },
-      { name: 'device_model', type: 'TEXT' },
-      { name: 'device_platform', type: 'TEXT' },
-      { name: 'metadata', type: 'TEXT' },
-      { name: 'created_at', type: 'TEXT' },
-      { name: 'updated_at', type: 'TEXT' },
-      { name: 'is_synced', type: 'INTEGER DEFAULT 0' }
-    ];
-
-    for (const col of expectedCols) {
-      if (!existingCols.has(col.name)) {
-        console.log(`[DB Migration] Adding ${col.name} to activity_logs table...`);
-        db.execSync(`ALTER TABLE activity_logs ADD COLUMN ${col.name} ${col.type}`);
-      }
-    }
-  } catch (err) {
-    console.error("[DB Migration] Activity logs migration failed:", err);
-  }
-}
-
 // ==========================================
 // 1. AUTO INITIALIZATION ENGINE
 // ==========================================
@@ -977,7 +941,6 @@ export function initDatabase(skipSeeding = false) {
     migrateSupplierDue();
     migrateDeleteHistory();
     migrateAIDatasetTables();
-    migrateActivityLogs();
 
     // 1. Create tables
     for (const [tableName, sql] of Object.entries(TABLE_SCHEMAS)) {

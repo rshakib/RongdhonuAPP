@@ -582,54 +582,19 @@ export async function restoreBackup(inspectDbName, validatedMetadata) {
         }
 
         // Standard persistent business tables:
-        // 1. Ensure table exists in localDb (if absent, create using backup's DDL)
-        const localTableExists = localDb.getFirstSync(
-          "SELECT name FROM sqlite_master WHERE type='table' AND name = ?;",
-          [tableName]
-        );
-        if (!localTableExists) {
-          const backupTableMeta = backupDb.getFirstSync(
-            "SELECT sql FROM sqlite_master WHERE type='table' AND name = ?;",
-            [tableName]
-          );
-          if (backupTableMeta?.sql) {
-            localDb.execSync(backupTableMeta.sql);
-          }
-        }
-
-        // 2. Introspect local table columns and dynamically migrate any columns present in backup
-        const localTableInfo = localDb.getAllSync(`PRAGMA table_info(${tableName});`);
-        let localColNames = localTableInfo.map(c => c.name);
-
-        const backupTableInfo = backupDb.getAllSync(`PRAGMA table_info(${tableName});`);
-        for (const bCol of backupTableInfo) {
-          if (!localColNames.includes(bCol.name)) {
-            try {
-              const colType = bCol.type || 'TEXT';
-              const dflt = (bCol.dflt_value !== null && bCol.dflt_value !== undefined) ? ` DEFAULT ${bCol.dflt_value}` : '';
-              localDb.execSync(`ALTER TABLE ${tableName} ADD COLUMN ${bCol.name} ${colType}${dflt};`);
-              localColNames.push(bCol.name);
-            } catch (alterErr) {
-              console.warn(`[BackupRestore] Warning: Could not add column ${bCol.name} to ${tableName}:`, alterErr);
-            }
-          }
-        }
-
-        // 3. Wipe existing rows in local table
+        // 1. Wipe existing rows in local table
         localDb.execSync(`DELETE FROM ${tableName};`);
 
-        // 4. Fetch rows from backup and insert using only verified local columns
+        // 2. Fetch rows from backup
         const rows = backupDb.getAllSync(`SELECT * FROM ${tableName};`);
         if (rows && rows.length > 0) {
-          const validCols = Object.keys(rows[0]).filter(c => localColNames.includes(c));
-          if (validCols.length > 0) {
-            const placeholders = validCols.map(() => '?').join(', ');
-            const insertSql = `INSERT OR REPLACE INTO ${tableName} (${validCols.join(', ')}) VALUES (${placeholders});`;
+          const cols = Object.keys(rows[0]);
+          const placeholders = cols.map(() => '?').join(', ');
+          const insertSql = `INSERT INTO ${tableName} (${cols.join(', ')}) VALUES (${placeholders});`;
 
-            for (const r of rows) {
-              localDb.runSync(insertSql, validCols.map(c => r[c]));
-              totalRestored++;
-            }
+          for (const r of rows) {
+            localDb.runSync(insertSql, cols.map(c => r[c]));
+            totalRestored++;
           }
         }
       }
