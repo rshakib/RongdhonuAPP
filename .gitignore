@@ -56,6 +56,18 @@ firestore_count.js
 
 # Credentials (keep credentials.example.json as template only)
 credentials.json
+credentials.*.json
+credentials/*.json
+credentials/**/*.json
 credentials/*.jks
+credentials/**/*.jks
+credentials/android/*.jks
 credentials/*.p12
+credentials/**/*.p12
 credentials/*.key
+credentials/**/*.key
+
+
+# Binary APKs and signing backups
+*.apk
+RONGDHONU_SIGNING_BACKUP_*/

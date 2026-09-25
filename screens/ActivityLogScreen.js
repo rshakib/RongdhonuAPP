@@ -479,11 +479,11 @@ export default function ActivityLogScreen({ onBack, userRole }) {
               >
                 <Text style={[styles.chipText, selectedDevice === 'ALL' && styles.chipTextActive]}>সকল ডিভাইস ({deviceList.length})</Text>
               </TouchableOpacity>
-              {deviceList.map((d) => {
+              {deviceList.map((d, dIdx) => {
                 const active = selectedDevice === d.device_id;
                 return (
                   <TouchableOpacity
-                    key={d.device_id}
+                    key={`${d.device_id || 'dev'}-${dIdx}`}
                     style={[styles.chip, active && styles.chipActive]}
                     onPress={() => setSelectedDevice(d.device_id)}
                     activeOpacity={0.7}

@@ -7,6 +7,7 @@ import {
   transmitBatchToGoogleSheets,
   processStructuredTransportResponse
 } from './services/aiDataset/transport/googleSheets';
+import { getFirestoreAuthHeaders, invalidateCurrentToken, isAuthCredentialKey } from './services/firebaseAuth.js';
 
 let dbInstance = null;
 
@@ -30,7 +31,7 @@ export function getDb() {
   return dbInstance;
 }
 
-const db = new Proxy({}, {
+export const db = new Proxy({}, {
   get(target, prop) {
     const instance = getDb();
     if (!instance) {
@@ -1286,6 +1287,11 @@ export function cleanupDuplicateMenuItems() {
 
 export function enqueueSync(tableName, recordId, action) {
   try {
+    // SECURITY GUARD: Never enqueue auth credentials into sync_queue
+    if (isAuthCredentialKey(recordId) || (tableName === 'app_config' && String(recordId).startsWith('_fb_auth_'))) {
+      return;
+    }
+
     // IGNORE local-only tables to prevent Firestore 403 errors
     const forbiddenTables = ['ai_dataset_queue', 'ai_dataset_history', 'weather_timeline_queue'];
     if (forbiddenTables.includes(tableName)) return;
@@ -1622,11 +1628,31 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
           continue;
         }
 
+        // SECURITY GUARD: Never sync auth credentials if somehow queued
+        if (tableName === 'app_config' && isAuthCredentialKey(recordId)) {
+          console.log(`[Queue Cleanup] Removing forbidden auth credential queue item queueId=${queueId}`);
+          dbInstance.runSync("DELETE FROM sync_queue WHERE id = ?", [Number(queueId)]);
+          continue;
+        }
+
         if (!tableName || !recordId) {
           // Delete invalid/empty sync queue records to clear them from SQLite
           console.log(`[Queue Audit] Removing invalid queue item queueId=${queueId} collection=${tableName || ''} recordId=${recordId || ''} action=${action || ''}`);
           dbInstance.runSync("DELETE FROM sync_queue WHERE id = ?", [Number(queueId)]);
           successfulWrites++;
+          continue;
+        }
+
+        // PRE-DISPATCH AUTH GUARD: Never dispatch unauthenticated requests to Firestore
+        const auth = await getFirestoreAuthHeaders();
+        if (!auth.success) {
+          lastSyncError = `Auth unavailable: ${auth.error}`;
+          dbInstance.runSync(
+            "UPDATE sync_queue SET status = 'FAILED', last_error = ? WHERE id = ?",
+            [lastSyncError, Number(queueId)]
+          );
+          console.log(`[Queue Audit] AUTH ABORT queueId=${queueId} collection=${tableName} recordId=${recordId} error=${lastSyncError}`);
+          failedWrites++;
           continue;
         }
 
@@ -1642,7 +1668,15 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
           const encodedId = encodeURIComponent(recordId);
           if (action === 'DELETE') {
             const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${tableName}/${encodedId}?key=${apiKey}`;
-            const res = await fetch(url, { method: 'DELETE' });
+            let res = await fetch(url, { method: 'DELETE', headers: { ...auth.headers } });
+
+            if (res.status === 401) {
+              invalidateCurrentToken();
+              const retryAuth = await getFirestoreAuthHeaders();
+              if (retryAuth.success) {
+                res = await fetch(url, { method: 'DELETE', headers: { ...retryAuth.headers } });
+              }
+            }
             
             if (res.ok || res.status === 404) {
               // Delete record from sync queue upon successful synchronization
@@ -1653,6 +1687,15 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
               // Track metrics
               firestoreDeletesToday++;
               syncUploadsToday++;
+            } else if (res.status === 403) {
+              const errText = await res.text();
+              lastSyncError = `HTTP 403 (Permission Denied): ${errText}`;
+              dbInstance.runSync(
+                "UPDATE sync_queue SET status = 'FAILED', last_error = ? WHERE id = ?",
+                [lastSyncError, Number(queueId)]
+              );
+              console.log(`[Queue Audit] FAIL (403 Permission Denied) queueId=${queueId} collection=${tableName} recordId=${recordId}`);
+              failedWrites++;
             } else {
               const errText = await res.text();
               lastSyncError = `HTTP ${res.status}: ${errText}`;
@@ -1690,7 +1733,14 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
 
                 // Fetch remote priority from Firestore for this business date
                 const remotePriorityUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/daily_submit_priority/${encodeURIComponent(rIdStr)}?key=${apiKey}`;
-                const remotePriorityRes = await fetch(remotePriorityUrl);
+                let remotePriorityRes = await fetch(remotePriorityUrl, { headers: { ...auth.headers } });
+                if (remotePriorityRes.status === 401) {
+                  invalidateCurrentToken();
+                  const retryAuth = await getFirestoreAuthHeaders();
+                  if (retryAuth.success) {
+                    remotePriorityRes = await fetch(remotePriorityUrl, { headers: { ...retryAuth.headers } });
+                  }
+                }
                 
                 if (remotePriorityRes.ok) {
                   const remotePriorityDoc = await remotePriorityRes.json();
@@ -1715,11 +1765,23 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
             const targetCollection = tableName === 'deletions' ? 'app_config' : tableName;
             const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${targetCollection}/${encodeURIComponent(rIdStr)}?key=${apiKey}`;
             
-            const res = await fetch(url, {
+            let res = await fetch(url, {
               method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 'Content-Type': 'application/json', ...auth.headers },
               body: JSON.stringify(firestoreDoc)
             });
+
+            if (res.status === 401) {
+              invalidateCurrentToken();
+              const retryAuth = await getFirestoreAuthHeaders();
+              if (retryAuth.success) {
+                res = await fetch(url, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json', ...retryAuth.headers },
+                  body: JSON.stringify(firestoreDoc)
+                });
+              }
+            }
 
             if (res.ok) {
               // Delete record from sync queue upon successful synchronization
@@ -1738,6 +1800,15 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
               } else {
                 dbInstance.runSync(`UPDATE ${tableName} SET is_synced = 1 WHERE id = ?`, [rIdStr]);
               }
+            } else if (res.status === 403) {
+              const errText = await res.text();
+              lastSyncError = `HTTP 403 (Permission Denied): ${errText}`;
+              dbInstance.runSync(
+                "UPDATE sync_queue SET status = 'FAILED', last_error = ? WHERE id = ?",
+                [lastSyncError, Number(queueId)]
+              );
+              console.log(`[Queue Audit] FAIL (403 Permission Denied) queueId=${queueId} collection=${tableName} recordId=${recordId}`);
+              failedWrites++;
             } else {
               const errText = await res.text();
               lastSyncError = `HTTP ${res.status}: ${errText}`;
@@ -1816,6 +1887,12 @@ async function fetchChangedRecordsFromFirestore(collectionName, lastSyncTime) {
   if (!projectId || !apiKey) return { success: false, documents: [] };
 
   try {
+    const auth = await getFirestoreAuthHeaders();
+    if (!auth.success) {
+      console.warn(`[Pull Sync] ${collectionName} skipped: Auth unavailable (${auth.error})`);
+      return { success: false, documents: [] };
+    }
+
     const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery?key=${apiKey}`;
     const query = {
       structuredQuery: {
@@ -1830,11 +1907,23 @@ async function fetchChangedRecordsFromFirestore(collectionName, lastSyncTime) {
       }
     };
 
-    const res = await fetch(url, {
+    let res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...auth.headers },
       body: JSON.stringify(query)
     });
+
+    if (res.status === 401) {
+      invalidateCurrentToken();
+      const retryAuth = await getFirestoreAuthHeaders();
+      if (retryAuth.success) {
+        res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...retryAuth.headers },
+          body: JSON.stringify(query)
+        });
+      }
+    }
 
     if (!res.ok) {
       if (res.status === 403) {
@@ -2173,7 +2262,7 @@ export const ACTIVE_APP_PROFILE = String(process.env.EXPO_PUBLIC_APP_PROFILE || 
 export const APP_PROFILES = {
   ADMIN: {
     name: 'ADMIN',
-    alwaysFull: ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due', 'owner_employees', 'owner_salary_ledger', 'owner_deposits', 'device_registry', 'owner_home_deposits'],
+    alwaysFull: ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due', 'owner_employees', 'owner_salary_ledger', 'owner_deposits', 'owner_home_deposits'],
     recentOnly: [
       'orders', 'order_items', 'payments', 'expenses', 'deliveries', 
       'daily_submit', 'daily_summary', 'due_payments', 'eja_history', 
@@ -2187,12 +2276,12 @@ export const APP_PROFILES = {
       'supplier_due_history', 'supplier_payment_ledger', 'delete_history', 
       'owner_employees', 'owner_salary_ledger', 'owner_expenses', 'owner_deposits', 'owner_home_deposits'
     ],
-    deviceRegistry: ['device_registry'],
+    deviceRegistry: [],
     skipRestoreMarkers: ['deletions', 'delete_history', 'supplier_due_history']
   },
   OWNER: {
     name: 'OWNER',
-    alwaysFull: ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due', 'owner_employees', 'owner_salary_ledger', 'owner_deposits', 'device_registry', 'owner_home_deposits'],
+    alwaysFull: ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due', 'owner_employees', 'owner_salary_ledger', 'owner_deposits', 'owner_home_deposits'],
     recentOnly: [
       'orders', 'order_items', 'payments', 'expenses', 'deliveries', 
       'daily_submit', 'daily_summary', 'due_payments', 'eja_history', 
@@ -2206,12 +2295,12 @@ export const APP_PROFILES = {
       'supplier_due_history', 'supplier_payment_ledger', 
       'owner_employees', 'owner_salary_ledger', 'owner_expenses', 'owner_deposits', 'owner_home_deposits'
     ],
-    deviceRegistry: ['device_registry'],
+    deviceRegistry: [],
     skipRestoreMarkers: ['deletions', 'delete_history', 'supplier_due_history']
   },
   MANAGER: {
     name: 'MANAGER',
-    alwaysFull: ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due', 'device_registry'],
+    alwaysFull: ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config', 'supplier_due'],
     recentOnly: [
       'orders', 'order_items', 'payments', 'expenses', 'deliveries', 
       'daily_submit', 'daily_summary', 'eja_history'
@@ -2221,7 +2310,7 @@ export const APP_PROFILES = {
     lowFreq: [
       'users', 'daily_summary', 'app_config', 'expenses', 'daily_submit', 'supplier_due', 'eja_history'
     ],
-    deviceRegistry: ['device_registry'],
+    deviceRegistry: [],
     skipRestoreMarkers: [
       'deletions', 'delete_history', 'supplier_due_history', 'due_payments', 
       'off_days', 'weather_data', 'supplier_payment_ledger', 
@@ -2298,14 +2387,14 @@ export async function syncLowFrequencyCollections() {
 }
 
 export async function syncDeviceRegistry() {
-  const profile = getActiveProfileConfig();
-  const regList = profile.deviceRegistry;
-  return await syncCollections(regList, 'Device Registry Sync');
+  // Device Registry cloud sync has migrated to Supabase Realtime.
+  // Firestore sync for device_registry is fully decommissioned.
+  return false;
 }
 
 export function clearDeadQueueItems() {
   try {
-    const deadCollections = ['firebase_usage'];
+    const deadCollections = ['firebase_usage', 'device_registry'];
     for (const coll of deadCollections) {
       db.runSync("DELETE FROM sync_queue WHERE table_name = ?", [coll]);
     }
@@ -2335,10 +2424,16 @@ export function resetLastSyncTime(collectionName = null) {
 
 // --- CLOUD RESTORATION LOGIC ---
 
-async function fetchCollection(collectionName) {
+async function fetchCollection(collectionName, isMasterTable = false) {
   const projectId = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID);
   const apiKey = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_API_KEY);
   if (!projectId || !apiKey) return { success: false, documents: [] };
+
+  const auth = await getFirestoreAuthHeaders();
+  if (!auth.success) {
+    console.warn(`[Restore] Collection ${collectionName} skipped: Auth unavailable (${auth.error})`);
+    return { success: false, documents: [] };
+  }
 
   let allDocuments = [];
   let nextPageToken = "";
@@ -2346,12 +2441,21 @@ async function fetchCollection(collectionName) {
   try {
     do {
       const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${collectionName}?key=${apiKey}&pageSize=300${nextPageToken ? `&pageToken=${nextPageToken}` : ""}`;
-      const res = await fetch(url);
+      let res = await fetch(url, { headers: { ...auth.headers } });
+
+      if (res.status === 401) {
+        invalidateCurrentToken();
+        const retryAuth = await getFirestoreAuthHeaders();
+        if (retryAuth.success) {
+          res = await fetch(url, { headers: { ...retryAuth.headers } });
+        }
+      }
+
       if (!res.ok) {
-        if (res.status === 404) return { success: true, documents: [] }; 
+        if (res.status === 404) return { success: !isMasterTable, documents: [] }; 
         if (res.status === 403) {
           console.log(`[Restore] Collection ${collectionName} is forbidden (403). Handling gracefully (treating as empty).`);
-          return { success: true, documents: [] };
+          return { success: !isMasterTable, documents: [] };
         }
         console.error(`[Restore] Failed to fetch collection ${collectionName}:`, res.status);
         return { success: false, documents: [] };
@@ -2390,14 +2494,17 @@ function fromFirestoreDocument(doc) {
   return obj;
 }
 
-export async function restoreDatabaseFromCloud() {
+export async function restoreDatabaseFromCloud({ mode = 'full' } = {}) {
   const profile = getActiveProfileConfig();
   const alwaysFull = profile.alwaysFull;
   const recentOnly = profile.recentOnly;
   const skipRestoreMarkers = profile.skipRestoreMarkers || ['deletions', 'delete_history', 'supplier_due_history'];
+  const MASTER_TABLES = ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config'];
 
-  console.log(`[Restore] Starting Smart History Restoration (31-Day Window) for profile '${profile.name}'...`);
+  console.log(`[Restore] Starting Smart History Restoration (mode=${mode}) for profile '${profile.name}'...`);
   console.log(`[Restore] Targeting: Full=[${alwaysFull.join(',')}] Recent=[${recentOnly.join(',')}]`);
+
+  const failedCollections = [];
 
   const processDocs = async (table, docs) => {
     if (docs.length === 0) return;
@@ -2434,26 +2541,41 @@ export async function restoreDatabaseFromCloud() {
   // Capture start time to use as sync marker baseline
   const restoreStartTime = new Date().toISOString();
 
-  // Threshold for recent history: 31 days ago
-  const thresholdDate = new Date();
-  thresholdDate.setDate(thresholdDate.getDate() - 31);
-  const thresholdIso = thresholdDate.toISOString();
+  // Threshold for recent history: start of today's business day (today) or 31 days ago (full)
+  let thresholdIso;
+  if (mode === 'today') {
+    thresholdIso = new Date(`${getBusinessDate()}T00:00:00`).toISOString();
+  } else {
+    const thresholdDate = new Date();
+    thresholdDate.setDate(thresholdDate.getDate() - 31);
+    thresholdIso = thresholdDate.toISOString();
+  }
+
+  // FK checks off during master-table load: owner_salary_ledger.employee_id → owner_employees(id).
+  // Also prevents INSERT OR REPLACE on employees from CASCADE-deleting child ledger rows. Re-enabled after.
+  try { db.execSync("PRAGMA foreign_keys = OFF;"); } catch (e) {}
 
   // 1. Process Always Full
   for (const table of alwaysFull) {
     try {
       console.log(`[Restore] Restoring full table: ${table}...`);
       incrementReadCounter('restore', 1);
-      const { success, documents: docs } = await fetchCollection(table);
+      const { success, documents: docs } = await fetchCollection(table, MASTER_TABLES.includes(table));
       if (success) {
         await processDocs(table, docs);
         // Initialize sync marker so background sync doesn't re-download full history
         db.runSync("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)", [`last_sync_time_${table}`, restoreStartTime]);
+      } else {
+        failedCollections.push(table);
+        console.warn(`[Restore] Table '${table}' fetch failed — cursor not stamped.`);
       }
     } catch (err) {
+      failedCollections.push(table);
       console.error(`[Restore] Critical error restoring ${table}:`, err);
     }
   }
+
+  try { db.execSync("PRAGMA foreign_keys = ON;"); } catch (e) {}
 
   // Initialize markers for tables skipped in this profile to prevent background full-fetch loop
   for (const table of skipRestoreMarkers) {
@@ -2473,14 +2595,148 @@ export async function restoreDatabaseFromCloud() {
         await processDocs(table, result.documents);
         // Initialize sync marker to prevent full history pull.
         db.runSync("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)", [`last_sync_time_${table}`, restoreStartTime]);
+      } else {
+        failedCollections.push(table);
+        console.warn(`[Restore] Table '${table}' fetch failed — cursor not stamped.`);
       }
     } catch (err) {
+      failedCollections.push(table);
       console.error(`[Restore] Critical error restoring recent ${table}:`, err);
     }
   }
   
+  if (mode === 'today') {
+    try {
+      const orphanIds = new Set();
+      const itemOrphans = db.getAllSync("SELECT DISTINCT order_id FROM order_items WHERE order_id IS NOT NULL AND order_id NOT IN (SELECT id FROM orders)");
+      const payOrphans = db.getAllSync("SELECT DISTINCT order_id FROM payments WHERE order_id IS NOT NULL AND order_id NOT IN (SELECT id FROM orders)");
+      [...itemOrphans, ...payOrphans].forEach(r => { if (r.order_id) orphanIds.add(String(r.order_id)); });
+
+      if (orphanIds.size === 0) {
+        console.log('[Restore] Orphan check: no order_items/payments without a local parent order.');
+      } else {
+        console.log(`[Restore] Orphan check: ${orphanIds.size} order(s) referenced by order_items/payments have no local parent. Fetching parents by ID...`);
+        for (const orphanOrderId of orphanIds) {
+          try {
+            const rawDoc = await fetchSingleDocFromFirestore('orders', orphanOrderId);
+            if (rawDoc) {
+              await processDocs('orders', [rawDoc]);
+              console.log(`[Restore] Orphan parent fetched: orders/${orphanOrderId}`);
+            } else {
+              console.warn(`[Restore] Orphan parent not found on server: orders/${orphanOrderId}`);
+            }
+          } catch (fetchErr) {
+            console.error(`[Restore] Orphan parent fetch error for orders/${orphanOrderId}:`, fetchErr.message);
+            if (!failedCollections.includes('orders')) failedCollections.push('orders');
+          }
+        }
+      }
+    } catch (orphanErr) {
+      console.error('[Restore] Orphan safety-net error:', orphanErr.message);
+    }
+  }
+
+  const success = failedCollections.length === 0;
+  if (!success) {
+    console.warn(`[Restore] Completed with failures: ${failedCollections.join(', ')}`);
+  }
   console.log(`[Restore] Smart History Restoration completed for profile '${profile.name}'.`);
-  return true;
+  return { success, failedCollections };
+}
+
+// Downloads ONLY this profile's users (role-filtered) so login can work before the device is approved.
+const USERS_ROLE_FILTER = {
+  ADMIN: ['admin', 'owner', 'manager'],
+  OWNER: ['owner'],
+  MANAGER: ['manager']
+};
+
+export async function restoreUsersOnlyForProfile() {
+  const profile = getActiveProfileConfig();
+  const roles = USERS_ROLE_FILTER[profile.name] || ['admin'];
+  const projectId = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID);
+  const apiKey = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_API_KEY);
+  if (!projectId || !apiKey || roles.length === 0) return { success: false, count: 0 };
+
+  try {
+    const auth = await getFirestoreAuthHeaders();
+    if (!auth.success) {
+      console.warn(`[UsersBootstrap] Auth unavailable (${auth.error})`);
+      return { success: false, count: 0 };
+    }
+
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery?key=${apiKey}`;
+    const query = {
+      structuredQuery: {
+        from: [{ collectionId: 'users' }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: 'role' },
+            op: 'IN',
+            value: { arrayValue: { values: roles.map(r => ({ stringValue: r })) } }
+          }
+        }
+      }
+    };
+
+    let res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...auth.headers },
+      body: JSON.stringify(query)
+    });
+
+    if (res.status === 401) {
+      invalidateCurrentToken();
+      const retryAuth = await getFirestoreAuthHeaders();
+      if (retryAuth.success) {
+        res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...retryAuth.headers },
+          body: JSON.stringify(query)
+        });
+      }
+    }
+
+    if (!res.ok) {
+      console.warn(`[UsersBootstrap] users query failed: HTTP ${res.status}`);
+      return { success: false, count: 0 };
+    }
+
+    const rows = await res.json();
+    const docs = (Array.isArray(rows) ? rows : []).filter(r => r && r.document).map(r => r.document);
+
+    let validColumns = [];
+    try {
+      validColumns = db.getAllSync("PRAGMA table_info(users)").map(c => c.name);
+    } catch (err) {
+      console.error('[UsersBootstrap] Failed to read users schema:', err.message);
+      return { success: false, count: 0 };
+    }
+
+    for (const doc of docs) {
+      const row = fromFirestoreDocument(doc);
+      const filteredRow = {};
+      for (const key of Object.keys(row)) {
+        if (validColumns.includes(key) && key !== 'is_synced') {
+          filteredRow[key] = row[key];
+        }
+      }
+      const keys = Object.keys(filteredRow);
+      if (keys.length === 0) continue;
+      const placeholders = keys.map(() => '?').join(', ');
+      try {
+        db.runSync(`INSERT OR REPLACE INTO users (${keys.join(', ')}, is_synced) VALUES (${placeholders}, 1)`, keys.map(k => filteredRow[k]));
+      } catch (e) {
+        console.error('[UsersBootstrap] Failed to insert user:', e.message);
+      }
+    }
+
+    console.log(`[UsersBootstrap] Downloaded ${docs.length} users for profile '${profile.name}' (roles=${roles.join(',')}).`);
+    return { success: true, count: docs.length };
+  } catch (err) {
+    console.error('[UsersBootstrap] Error:', err.message);
+    return { success: false, count: 0, error: err.message };
+  }
 }
 
 // Getter for sync error
@@ -2488,6 +2744,309 @@ export function getLastSyncError() {
   return lastSyncError;
 }
 
+// --- SAME-DAY CLOUD RESYNC SYSTEM (EMERGENCY DAY RESTORE) ---
+
+export function getSameDayResyncStatus(targetDateStr = null) {
+  try {
+    const todayStr = targetDateStr || getBusinessDate();
+    const countRow = db.getFirstSync("SELECT value FROM app_config WHERE key = ?", [`same_day_resync_count_${todayStr}`]);
+    const lastAtRow = db.getFirstSync("SELECT value FROM app_config WHERE key = 'same_day_resync_last_at'");
+    const count = countRow ? parseInt(countRow.value, 10) || 0 : 0;
+    const maxLimit = 2;
+    return {
+      count,
+      maxLimit,
+      remaining: Math.max(0, maxLimit - count),
+      limitReached: count >= maxLimit,
+      lastAt: lastAtRow?.value || null
+    };
+  } catch (err) {
+    console.error("[SameDay Resync] Failed to get status:", err);
+    return { count: 0, maxLimit: 2, remaining: 2, limitReached: false, lastAt: null };
+  }
+}
+
+export function resetSameDayResyncLimit(targetDateStr = null) {
+  try {
+    const todayStr = targetDateStr || getBusinessDate();
+    db.runSync("DELETE FROM app_config WHERE key = ?", [`same_day_resync_count_${todayStr}`]);
+    console.log(`[SameDay Resync] Reset limit counter for ${todayStr}`);
+    return true;
+  } catch (err) {
+    console.error("[SameDay Resync] Failed to reset limit counter:", err);
+    return false;
+  }
+}
+
+async function fetchSingleDocFromFirestore(collectionName, docId) {
+  const projectId = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID);
+  const apiKey = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_API_KEY);
+  if (!projectId || !apiKey || !docId) return null;
+
+  const auth = await getFirestoreAuthHeaders();
+  if (!auth.success) return null;
+
+  try {
+    const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/${collectionName}/${encodeURIComponent(docId)}?key=${apiKey}`;
+    let res = await fetch(url, { headers: { ...auth.headers } });
+    if (res.status === 401) {
+      invalidateCurrentToken();
+      const retryAuth = await getFirestoreAuthHeaders();
+      if (retryAuth.success) {
+        res = await fetch(url, { headers: { ...retryAuth.headers } });
+      }
+    }
+    if (res.ok) {
+      return await res.json();
+    }
+  } catch (e) {
+    console.warn(`[SameDay Resync] Error fetching single doc ${collectionName}/${docId}:`, e.message);
+  }
+  return null;
+}
+
+export async function resyncSameDayFromCloud(targetDateStr = null) {
+  const todayStr = targetDateStr || getBusinessDate();
+  console.log(`[SameDay Resync] Starting Same-Day Cloud Resync for date: ${todayStr}...`);
+
+  // 1. Check rate limit
+  const status = getSameDayResyncStatus(todayStr);
+  if (status.limitReached) {
+    console.warn(`[SameDay Resync] Daily limit reached (${status.count}/${status.maxLimit}) for ${todayStr}`);
+    return {
+      success: false,
+      limitReached: true,
+      count: status.count,
+      maxLimit: status.maxLimit,
+      message: 'আজকের জন্য রিসিন্কের সীমা শেষ (সর্বোচ্চ ২ বার)।'
+    };
+  }
+
+  // 2. SAFETY FIRST: Fetch raw records from Firebase Firestore BEFORE touching local SQLite data
+  // In Bangladesh (UTC+6), calculate business day start in UTC with 2-hour safety buffer
+  let queryMarkerIso;
+  try {
+    const midnightBd = new Date(Date.parse(`${todayStr}T00:00:00+06:00`));
+    queryMarkerIso = new Date(midnightBd.getTime() - 2 * 3600 * 1000).toISOString();
+  } catch (e) {
+    // Fallback: 26 hours ago
+    queryMarkerIso = new Date(Date.now() - 26 * 3600 * 1000).toISOString();
+  }
+
+  console.log(`[SameDay Resync] Fetching Firestore records updated after ${queryMarkerIso}...`);
+
+  const collections = [
+    'orders',
+    'order_items',
+    'payments',
+    'expenses',
+    'deliveries',
+    'due_payments',
+    'eja_history',
+    'supplier_due_history'
+  ];
+
+  const downloadedDocs = {};
+  for (const table of collections) {
+    incrementReadCounter('restore', 1);
+    const result = await fetchChangedRecordsFromFirestore(table, queryMarkerIso);
+    if (!result.success) {
+      console.error(`[SameDay Resync] Network fetch failed for collection "${table}". Aborting without touching local data.`);
+      return {
+        success: false,
+        error: `Firebase থেকে "${table}" ডাটা আনতে সমস্যা হয়েছে। নেটওয়ার্ক সংযোগ চেক করুন।`
+      };
+    }
+    downloadedDocs[table] = result.documents || [];
+  }
+
+  // Direct fetch for daily_submit, daily_summary, and supplier_payment_ledger
+  const dsResult = await fetchChangedRecordsFromFirestore('daily_submit', queryMarkerIso);
+  let dsDocs = dsResult.success ? (dsResult.documents || []) : [];
+  if (dsDocs.length === 0) {
+    const singleDs = await fetchSingleDocFromFirestore('daily_submit', todayStr);
+    if (singleDs) dsDocs.push(singleDs);
+  }
+  downloadedDocs['daily_submit'] = dsDocs;
+
+  const dsumResult = await fetchChangedRecordsFromFirestore('daily_summary', queryMarkerIso);
+  let dsumDocs = dsumResult.success ? (dsumResult.documents || []) : [];
+  if (dsumDocs.length === 0) {
+    const singleDsum = await fetchSingleDocFromFirestore('daily_summary', todayStr);
+    if (singleDsum) dsumDocs.push(singleDsum);
+  }
+  downloadedDocs['daily_summary'] = dsumDocs;
+
+  const splResult = await fetchChangedRecordsFromFirestore('supplier_payment_ledger', queryMarkerIso);
+  let splDocs = splResult.success ? (splResult.documents || []) : [];
+  if (splDocs.length === 0) {
+    const singleSpl = await fetchSingleDocFromFirestore('supplier_payment_ledger', `spl_${todayStr}`);
+    if (singleSpl) splDocs.push(singleSpl);
+  }
+  downloadedDocs['supplier_payment_ledger'] = splDocs;
+
+  // Restaurant tables current live state
+  const tablesResult = await fetchCollection('restaurant_tables');
+  const restaurantTableDocs = tablesResult.success ? (tablesResult.documents || []) : [];
+
+  // 3. Filter documents strictly belonging to todayStr
+  const todayOrderDocs = (downloadedDocs['orders'] || []).filter(doc => {
+    const row = fromFirestoreDocument(doc);
+    const createdDate = row.created_at ? getBusinessDateFromISO(row.created_at) : '';
+    const updatedDate = row.updated_at ? getBusinessDateFromISO(row.updated_at) : '';
+    const dateField = row.date || '';
+    return createdDate === todayStr || updatedDate === todayStr || dateField === todayStr || (row.id && String(row.id).includes(todayStr));
+  });
+
+  const todayOrderIds = new Set(todayOrderDocs.map(doc => {
+    const row = fromFirestoreDocument(doc);
+    return String(row.id);
+  }));
+
+  const todayOrderItemDocs = (downloadedDocs['order_items'] || []).filter(doc => {
+    const row = fromFirestoreDocument(doc);
+    const createdDate = row.created_at ? getBusinessDateFromISO(row.created_at) : '';
+    return createdDate === todayStr || (row.order_id && todayOrderIds.has(String(row.order_id)));
+  });
+
+  const todayPaymentDocs = (downloadedDocs['payments'] || []).filter(doc => {
+    const row = fromFirestoreDocument(doc);
+    const createdDate = row.created_at ? getBusinessDateFromISO(row.created_at) : '';
+    return createdDate === todayStr || (row.order_id && todayOrderIds.has(String(row.order_id)));
+  });
+
+  const todayExpenseDocs = (downloadedDocs['expenses'] || []).filter(doc => {
+    const row = fromFirestoreDocument(doc);
+    const createdDate = row.created_at ? getBusinessDateFromISO(row.created_at) : '';
+    return createdDate === todayStr || (row.id && String(row.id).includes(todayStr));
+  });
+
+  const todayDeliveryDocs = (downloadedDocs['deliveries'] || []).filter(doc => {
+    const row = fromFirestoreDocument(doc);
+    const createdDate = row.created_at ? getBusinessDateFromISO(row.created_at) : '';
+    const completedDate = row.completed_at ? getBusinessDateFromISO(row.completed_at) : '';
+    return createdDate === todayStr || completedDate === todayStr || (row.id && String(row.id).includes(todayStr));
+  });
+
+  const todayDueDocs = (downloadedDocs['due_payments'] || []).filter(doc => {
+    const row = fromFirestoreDocument(doc);
+    const createdDate = row.created_at ? getBusinessDateFromISO(row.created_at) : '';
+    return createdDate === todayStr || (row.order_id && todayOrderIds.has(String(row.order_id)));
+  });
+
+  const todayEjaDocs = (downloadedDocs['eja_history'] || []).filter(doc => {
+    const row = fromFirestoreDocument(doc);
+    const createdDate = row.created_at ? getBusinessDateFromISO(row.created_at) : '';
+    return row.date === todayStr || createdDate === todayStr || (row.id && String(row.id).includes(todayStr));
+  });
+
+  const todaySdhDocs = (downloadedDocs['supplier_due_history'] || []).filter(doc => {
+    const row = fromFirestoreDocument(doc);
+    const createdDate = row.created_at ? getBusinessDateFromISO(row.created_at) : '';
+    return row.date === todayStr || createdDate === todayStr;
+  });
+
+  const todayDsDocs = (downloadedDocs['daily_submit'] || []).filter(doc => {
+    const row = fromFirestoreDocument(doc);
+    return row.date === todayStr || String(row.id) === todayStr;
+  });
+
+  const todayDsumDocs = (downloadedDocs['daily_summary'] || []).filter(doc => {
+    const row = fromFirestoreDocument(doc);
+    return row.date === todayStr || String(row.id) === todayStr;
+  });
+
+  const todaySplDocs = (downloadedDocs['supplier_payment_ledger'] || []).filter(doc => {
+    const row = fromFirestoreDocument(doc);
+    return row.payment_date === todayStr || String(row.id) === `spl_${todayStr}`;
+  });
+
+  console.log(`[SameDay Resync] Cloud download complete. Orders: ${todayOrderDocs.length}, Items: ${todayOrderItemDocs.length}, Payments: ${todayPaymentDocs.length}, Expenses: ${todayExpenseDocs.length}, Deliveries: ${todayDeliveryDocs.length}, Submits: ${todayDsDocs.length}`);
+
+  // 4. ATOMIC LOCAL WIPE OF TODAY'S DATA IN SQLITE
+  try {
+    const localOrders = db.getAllSync("SELECT id FROM orders WHERE date(created_at, 'localtime') = ?", [todayStr]);
+    const localOrderIds = localOrders.map(o => String(o.id));
+
+    db.runSync("DELETE FROM order_items WHERE date(created_at, 'localtime') = ?", [todayStr]);
+    if (localOrderIds.length > 0) {
+      const placeholders = localOrderIds.map(() => '?').join(',');
+      db.runSync(`DELETE FROM order_items WHERE order_id IN (${placeholders})`, localOrderIds);
+      db.runSync(`DELETE FROM payments WHERE order_id IN (${placeholders})`, localOrderIds);
+      db.runSync(`DELETE FROM due_payments WHERE order_id IN (${placeholders})`, localOrderIds);
+    }
+    db.runSync("DELETE FROM payments WHERE date(created_at, 'localtime') = ?", [todayStr]);
+    db.runSync("DELETE FROM due_payments WHERE date(created_at, 'localtime') = ?", [todayStr]);
+    db.runSync("DELETE FROM orders WHERE date(created_at, 'localtime') = ?", [todayStr]);
+    db.runSync("DELETE FROM expenses WHERE date(created_at, 'localtime') = ? OR id LIKE ?", [todayStr, `exp_${todayStr}_%`]);
+    db.runSync("DELETE FROM deliveries WHERE date(created_at, 'localtime') = ? OR date(completed_at, 'localtime') = ? OR id LIKE ?", [todayStr, todayStr, `D-${todayStr}-%`]);
+    db.runSync("DELETE FROM daily_submit WHERE date = ? OR id = ?", [todayStr, todayStr]);
+    db.runSync("DELETE FROM daily_summary WHERE date = ? OR id = ?", [todayStr, todayStr]);
+    db.runSync("DELETE FROM eja_history WHERE date = ? OR date(created_at, 'localtime') = ? OR id = ?", [todayStr, todayStr, `eja_${todayStr}`]);
+    db.runSync("DELETE FROM supplier_due_history WHERE date = ? OR date(created_at, 'localtime') = ?", [todayStr, todayStr]);
+    db.runSync("DELETE FROM supplier_payment_ledger WHERE payment_date = ? OR id = ?", [todayStr, `spl_${todayStr}`]);
+
+    // Clean sync_queue for today's wiped records so stale local pending writes don't overwrite cloud data
+    db.runSync(
+      "DELETE FROM sync_queue WHERE (table_name IN ('orders', 'order_items', 'payments', 'expenses', 'deliveries', 'due_payments', 'daily_submit', 'daily_summary', 'eja_history', 'supplier_payment_ledger')) AND (record_id LIKE ? OR record_id LIKE ?)",
+      [`%${todayStr}%`, `%${todayStr.replace(/-/g, '')}%`]
+    );
+    if (localOrderIds.length > 0) {
+      const placeholders = localOrderIds.map(() => '?').join(',');
+      db.runSync(`DELETE FROM sync_queue WHERE table_name IN ('orders', 'order_items', 'payments', 'due_payments') AND record_id IN (${placeholders})`, localOrderIds);
+    }
+
+    console.log(`[SameDay Resync] Local data for ${todayStr} cleared.`);
+
+    // 5. INSERT FETCHED CLOUD DOCUMENTS INTO SQLITE
+    await processRemoteDocsToLocal('orders', todayOrderDocs);
+    await processRemoteDocsToLocal('order_items', todayOrderItemDocs);
+    await processRemoteDocsToLocal('payments', todayPaymentDocs);
+    await processRemoteDocsToLocal('expenses', todayExpenseDocs);
+    await processRemoteDocsToLocal('deliveries', todayDeliveryDocs);
+    await processRemoteDocsToLocal('due_payments', todayDueDocs);
+    await processRemoteDocsToLocal('eja_history', todayEjaDocs);
+    await processRemoteDocsToLocal('supplier_due_history', todaySdhDocs);
+    await processRemoteDocsToLocal('daily_submit', todayDsDocs);
+    await processRemoteDocsToLocal('daily_summary', todayDsumDocs);
+    await processRemoteDocsToLocal('supplier_payment_ledger', todaySplDocs);
+    if (restaurantTableDocs.length > 0) {
+      await processRemoteDocsToLocal('restaurant_tables', restaurantTableDocs);
+    }
+
+    // Recalculate daily summary
+    calculateAndSaveDailySummary(todayStr);
+
+    // 6. Increment rate limit counter
+    const newCount = status.count + 1;
+    const nowIso = new Date().toISOString();
+    db.runSync(
+      "INSERT OR REPLACE INTO app_config (id, key, value, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, 0)",
+      [`same_day_resync_count_${todayStr}`, `same_day_resync_count_${todayStr}`, String(newCount), nowIso, nowIso]
+    );
+    db.runSync(
+      "INSERT OR REPLACE INTO app_config (id, key, value, created_at, updated_at, is_synced) VALUES (?, 'same_day_resync_last_at', ?, ?, ?, 0)",
+      ['same_day_resync_last_at', nowIso, nowIso, nowIso]
+    );
+
+    const totalRestored = todayOrderDocs.length + todayOrderItemDocs.length + todayPaymentDocs.length + todayExpenseDocs.length + todayDeliveryDocs.length + todayDueDocs.length + todayEjaDocs.length + todaySdhDocs.length + todayDsDocs.length + todayDsumDocs.length + todaySplDocs.length;
+    const remaining = Math.max(0, 2 - newCount);
+
+    console.log(`[SameDay Resync] Successfully restored ${totalRestored} records for ${todayStr}. Remaining: ${remaining}`);
+    return {
+      success: true,
+      count: totalRestored,
+      remaining,
+      businessDate: todayStr
+    };
+  } catch (err) {
+    console.error("[SameDay Resync] Error during SQLite replace:", err);
+    return {
+      success: false,
+      error: `ডাটাবেজ আপডেটে সমস্যা: ${err.message}`
+    };
+  }
+}
 
 // --- HISTORICAL DOWNLOAD TRACKING & LIMITS ---
 
@@ -2723,6 +3282,16 @@ export async function testFirestoreConnection() {
     };
   }
 
+  const auth = await getFirestoreAuthHeaders();
+  if (!auth.success) {
+    return {
+      firebaseConnected: false,
+      firestoreWritable: false,
+      lastError: `Authentication failed: ${auth.error}`,
+      envLoaded: true
+    };
+  }
+
   try {
     const docId = `conn_${Date.now()}`;
     const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/app_test/${docId}?key=${apiKey}`;
@@ -2736,11 +3305,23 @@ export async function testFirestoreConnection() {
 
     console.log("[Diagnostics] Initiating active write test to Firestore collection 'app_test'...");
     
-    const res = await fetch(url, {
+    let res = await fetch(url, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...auth.headers },
       body: JSON.stringify(body)
     });
+
+    if (res.status === 401) {
+      invalidateCurrentToken();
+      const retryAuth = await getFirestoreAuthHeaders();
+      if (retryAuth.success) {
+        res = await fetch(url, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', ...retryAuth.headers },
+          body: JSON.stringify(body)
+        });
+      }
+    }
 
     if (res.ok) {
       console.log("[Diagnostics] Connection testing successfully completed! Firestore write SUCCESS!");
@@ -3413,6 +3994,16 @@ export function checkUserExists(username) {
   }
 }
 
+export function getUserByUsername(username) {
+  try {
+    const user = db.getFirstSync("SELECT * FROM users WHERE username = ?", [username.trim().toLowerCase()]);
+    return user || null;
+  } catch (err) {
+    console.error(err);
+    return null;
+  }
+}
+
 export function changeUserPin(username, newPin) {
   try {
     const user = db.getFirstSync("SELECT * FROM users WHERE username = ?", [username.trim().toLowerCase()]);
@@ -3471,6 +4062,9 @@ async function checkFirestoreMenuItemExists(name, category) {
   if (!projectId || !apiKey) return null;
 
   try {
+    const auth = await getFirestoreAuthHeaders();
+    if (!auth.success) return null;
+
     const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery?key=${apiKey}`;
     const query = {
       structuredQuery: {
@@ -3500,11 +4094,23 @@ async function checkFirestoreMenuItemExists(name, category) {
       }
     };
 
-    const res = await fetch(url, {
+    let res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...auth.headers },
       body: JSON.stringify(query)
     });
+
+    if (res.status === 401) {
+      invalidateCurrentToken();
+      const retryAuth = await getFirestoreAuthHeaders();
+      if (retryAuth.success) {
+        res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...retryAuth.headers },
+          body: JSON.stringify(query)
+        });
+      }
+    }
 
     if (!res.ok) return null;
     const data = await res.json();
@@ -3690,15 +4296,30 @@ export function updateTableName(tableId, newName) {
 export function getDeliveries() {
   try {
     const rows = db.getAllSync("SELECT * FROM deliveries WHERE status != 'COMPLETED'");
-    return rows.map(r => ({
-      id: r.id,
-      name: r.customer_name,
-      status: r.status,
-      items: JSON.parse(r.items || '[]'),
-      startTime: r.startTime || '',
-      deliveryCharge: r.delivery_charge || 0,
-      changeMoneyGiven: r.change_money_given || 0
-    }));
+    return rows.map(r => {
+      const parsedItems = JSON.parse(r.items || '[]');
+      const charge = parseFloat(r.delivery_charge) || 0;
+      const changeMoney = parseFloat(r.change_money_given) || 0;
+      const itemsSubtotal = parsedItems.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.qty, 10) || 1)), 0);
+      const computedAmount = itemsSubtotal + charge;
+      const canonicalAmount = (r.amount !== null && r.amount !== undefined && !isNaN(r.amount) && Number(r.amount) > 0)
+        ? parseFloat(r.amount)
+        : computedAmount;
+
+      return {
+        id: r.id,
+        name: r.customer_name,
+        status: r.status,
+        items: parsedItems,
+        startTime: r.startTime || '',
+        deliveryCharge: charge,
+        delivery_charge: charge,
+        changeMoneyGiven: changeMoney,
+        change_money_given: changeMoney,
+        amount: canonicalAmount,
+        totalAmount: canonicalAmount
+      };
+    });
   } catch (err) {
     console.error(err);
     return [];
@@ -3730,7 +4351,10 @@ export function createDelivery(id, name, status, startTime) {
 export function updateDeliveryState(id, updatedItems, status, startTime) {
   try {
     const now = new Date().toISOString();
-    const totalAmount = updatedItems.reduce((sum, item) => sum + (item.price * item.qty), 0);
+    const row = db.getFirstSync("SELECT delivery_charge FROM deliveries WHERE id = ?", [id]);
+    const delCharge = row ? (parseFloat(row.delivery_charge) || 0) : 0;
+    const itemsSubtotal = updatedItems.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.qty, 10) || 1)), 0);
+    const totalAmount = itemsSubtotal + delCharge;
     db.runSync(
       "UPDATE deliveries SET items = ?, status = ?, startTime = ?, amount = ?, updated_at = ?, is_synced = 0 WHERE id = ?",
       [JSON.stringify(updatedItems), status, startTime, totalAmount, now, id]
@@ -3744,13 +4368,57 @@ export function updateDeliveryState(id, updatedItems, status, startTime) {
 export function updateDeliveryDetails(id, delCharge, changeMoney) {
   try {
     const now = new Date().toISOString();
+    const row = db.getFirstSync("SELECT items FROM deliveries WHERE id = ?", [id]);
+    let itemsSubtotal = 0;
+    if (row && row.items) {
+      try {
+        const parsed = JSON.parse(row.items);
+        itemsSubtotal = parsed.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.qty, 10) || 1)), 0);
+      } catch (e) {}
+    }
+    const numericDelCharge = parseFloat(delCharge) || 0;
+    const numericChangeMoney = parseFloat(changeMoney) || 0;
+    const finalAmount = itemsSubtotal + numericDelCharge;
+
     db.runSync(
-      "UPDATE deliveries SET delivery_charge = ?, change_money_given = ?, updated_at = ?, is_synced = 0 WHERE id = ?",
-      [delCharge, changeMoney, now, id]
+      "UPDATE deliveries SET delivery_charge = ?, change_money_given = ?, amount = ?, updated_at = ?, is_synced = 0 WHERE id = ?",
+      [numericDelCharge, numericChangeMoney, finalAmount, now, id]
     );
     enqueueSync("deliveries", id, "UPDATE");
   } catch (err) {
     console.error(err);
+  }
+}
+
+export function completeDelivery(id, finalTotal, delCharge, changeMoney) {
+  try {
+    const now = new Date().toISOString();
+    db.runSync(
+      `UPDATE deliveries 
+       SET status = 'COMPLETED',
+           amount = ?,
+           delivery_charge = ?,
+           change_money_given = ?,
+           completed_at = ?,
+           updated_at = ?,
+           is_synced = 0 
+       WHERE id = ?`,
+      [finalTotal, delCharge, changeMoney, now, now, id]
+    );
+    enqueueSync("deliveries", id, "UPDATE");
+    return true;
+  } catch (err) {
+    console.error("[DB] Error completing delivery:", err);
+    return false;
+  }
+}
+
+export function getDeliveryById(id) {
+  try {
+    return db.getFirstSync("SELECT * FROM deliveries WHERE id = ?", [id]);
+  } catch (err) {
+    console.error("[DB] Error getting delivery by id:", err);
+    return null;
   }
 }
 
@@ -3782,6 +4450,7 @@ export function getCompletedOrders() {
       paidAmount: r.grand_total,
       method: r.payment_method,
       time: r.time,
+      paymentTime: r.time,
       status: 'Done',
       fullDate: getBusinessDateFromISO(r.created_at)
     }));
@@ -6310,6 +6979,12 @@ export async function fetchActivityLogsForDate(businessDate) {
   const apiKey = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_API_KEY);
   if (!projectId || !apiKey || !businessDate) return { success: false, count: 0 };
 
+  const auth = await getFirestoreAuthHeaders();
+  if (!auth.success) {
+    console.warn(`[ActivitySync] Cloud fetch skipped: Auth unavailable (${auth.error})`);
+    return { success: false, count: 0 };
+  }
+
   try {
     const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery?key=${apiKey}`;
     const query = {
@@ -6325,11 +7000,23 @@ export async function fetchActivityLogsForDate(businessDate) {
       }
     };
 
-    const res = await fetch(url, {
+    let res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...auth.headers },
       body: JSON.stringify(query)
     });
+
+    if (res.status === 401) {
+      invalidateCurrentToken();
+      const retryAuth = await getFirestoreAuthHeaders();
+      if (retryAuth.success) {
+        res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...retryAuth.headers },
+          body: JSON.stringify(query)
+        });
+      }
+    }
 
     if (!res.ok) {
       const errText = await res.text();
@@ -6424,12 +7111,12 @@ export function getDistinctActivityDevices(businessDate = null) {
     if (!db) return [];
     if (businessDate) {
       return db.getAllSync(
-        "SELECT DISTINCT device_id, device_name, device_model, app_profile FROM activity_logs WHERE business_date = ? AND device_name IS NOT NULL",
+        "SELECT device_id, MAX(device_name) as device_name, MAX(device_model) as device_model, MAX(app_profile) as app_profile FROM activity_logs WHERE business_date = ? AND device_name IS NOT NULL GROUP BY device_id",
         [businessDate]
       );
     }
     return db.getAllSync(
-      "SELECT DISTINCT device_id, device_name, device_model, app_profile FROM activity_logs WHERE device_name IS NOT NULL"
+      "SELECT device_id, MAX(device_name) as device_name, MAX(device_model) as device_model, MAX(app_profile) as app_profile FROM activity_logs WHERE device_name IS NOT NULL GROUP BY device_id"
     );
   } catch (err) {
     console.error('[DB] getDistinctActivityDevices error:', err);

@@ -1,0 +1,57 @@
+# Dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Generated native directories (EAS runs clean prebuild per profile)
+android/
+android/**
+ios/
+ios/**
+
+# Gradle & build caches (prevent local cache leaks)
+.gradle/
+*/.gradle/
+build/
+*/build/
+local.properties
+*/local.properties
+
+# Native keys
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Documentation, backups, and local test files
+docs/
+tests/
+backup/
+.backups/
+.commandcode/
+.claude/
+.idea/
+BACKUP_NOTES.md
+AI_DATASET_E2E_REPORT.md
+audit_out.txt
+firestore_count.js
+
+# Metro & debug
+.metro-health-check*
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# OS
+.DS_Store
+*.pem
+
+# TypeScript
+*.tsbuildinfo

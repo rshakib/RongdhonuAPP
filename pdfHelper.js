@@ -1,20 +1,105 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import { Alert } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
+import { Alert, Platform } from 'react-native';
 import { formatDisplayDate } from './database';
+
+let isGeneratingPDF = false;
 
 /**
  * Utility to generate and share a PDF using expo-print & expo-sharing.
+ * Handles Android scoped storage and Expo Go sandboxing by writing directly
+ * into FileSystem.cacheDirectory/documentDirectory before sharing.
  */
-async function generateAndSharePDF(html, fileName) {
+async function generateAndSharePDF(html, fileName = 'report.pdf') {
+  if (isGeneratingPDF) {
+    console.warn("[PDF] Another PDF generation is already in progress.");
+    return false;
+  }
+  isGeneratingPDF = true;
+
   try {
-    const { uri } = await Print.printToFileAsync({ html });
-    await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
+    // 1. Generate PDF with base64 enabled so it can be written to scoped storage
+    const printResult = await Print.printToFileAsync({
+      html,
+      base64: true,
+    });
+
+    let targetUri = printResult.uri;
+
+    // Sanitize filename for Android/iOS file systems
+    const safeBaseName = (fileName || 'report.pdf')
+      .replace(/[\/\?<>\\:\*\|":]/g, '_')
+      .replace(/\s+/g, '_');
+    const safeFileName = safeBaseName.endsWith('.pdf') ? safeBaseName : `${safeBaseName}.pdf`;
+
+    // 2. In Expo Go / scoped storage, files generated in host cache outside
+    // the experience directory trigger "Not allowed to read file under given URL".
+    // Write or copy directly to FileSystem.cacheDirectory / documentDirectory.
+    if (FileSystem) {
+      const destDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+      if (destDir) {
+        const destUri = `${destDir}${safeFileName}`;
+
+        if (printResult.base64) {
+          try {
+            await FileSystem.writeAsStringAsync(destUri, printResult.base64, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+            targetUri = destUri;
+          } catch (writeErr) {
+            console.warn("[PDF] FileSystem.writeAsStringAsync failed, falling back to copyAsync:", writeErr);
+            try {
+              await FileSystem.copyAsync({ from: printResult.uri, to: destUri });
+              targetUri = destUri;
+            } catch (copyErr) {
+              console.warn("[PDF] FileSystem.copyAsync failed, using raw uri:", copyErr);
+            }
+          }
+        } else {
+          try {
+            await FileSystem.copyAsync({ from: printResult.uri, to: destUri });
+            targetUri = destUri;
+          } catch (copyErr) {
+            console.warn("[PDF] FileSystem.copyAsync failed, using raw uri:", copyErr);
+          }
+        }
+      }
+    }
+
+    // 3. Verify sharing availability
+    const isAvailable = await Sharing.isAvailableAsync();
+    if (!isAvailable) {
+      Alert.alert(
+        "PDF তৈরি সম্পন্ন",
+        `আপনার ডিভাইসে সরাসরি শেয়ারিং সমর্থিত নয়। ফাইলটি তৈরি হয়েছে:\n${targetUri}`
+      );
+      return true;
+    }
+
+    // 4. Share with platform-appropriate options
+    const shareOptions = Platform.select({
+      ios: {
+        UTI: 'com.adobe.pdf',
+        mimeType: 'application/pdf',
+      },
+      default: {
+        mimeType: 'application/pdf',
+        dialogTitle: safeFileName,
+      },
+    });
+
+    await Sharing.shareAsync(targetUri, shareOptions);
     return true;
   } catch (err) {
     console.error("PDF Generation error:", err);
-    Alert.alert("ত্রুটি", "PDF রিপোর্ট তৈরি বা শেয়ার করতে ব্যর্থ হয়েছে।");
+    Alert.alert(
+      "ত্রুটি",
+      `PDF রিপোর্ট তৈরি বা শেয়ার করতে ব্যর্থ হয়েছে।\n${err?.message || ''}`
+    );
     return false;
+  } finally {
+    isGeneratingPDF = false;
   }
 }
 
@@ -92,7 +177,8 @@ export async function exportSalesReportPDF(orders, filterName = "Daily Sales") {
     </html>
   `;
 
-  return await generateAndSharePDF(html, `sales-report-${filterName.replace(' ', '-')}.pdf`);
+  const safeFilterTitle = (filterName || 'Daily-Sales').toString().replace(/\s+/g, '-');
+  return await generateAndSharePDF(html, `sales-report-${safeFilterTitle}.pdf`);
 }
 
 /**
@@ -100,34 +186,35 @@ export async function exportSalesReportPDF(orders, filterName = "Daily Sales") {
  */
 export async function exportDepositReportPDF(history, monthName = "জমা রিপোর্ট") {
   const dateStr = formatDisplayDate(new Date());
+  const records = Array.isArray(history) ? history : [];
   
-  const totalSell = history.reduce((sum, i) => sum + (i.sell || 0), 0);
-  const totalBkash = history.reduce((sum, i) => sum + (i.breakdown?.bkash || 0), 0);
-  const totalNagad = history.reduce((sum, i) => sum + (i.breakdown?.nagad || 0), 0);
-  const totalCash = history.reduce((sum, i) => sum + (i.breakdown?.cash || 0), 0);
-  const totalIjara = history.reduce((sum, i) => sum + (i.breakdown?.ijara || 0), 0);
+  const totalSell = records.reduce((sum, i) => sum + (Number(i.sell) || 0), 0);
+  const totalBkash = records.reduce((sum, i) => sum + (Number(i.breakdown?.bkash) || 0), 0);
+  const totalNagad = records.reduce((sum, i) => sum + (Number(i.breakdown?.nagad) || 0), 0);
+  const totalCash = records.reduce((sum, i) => sum + (Number(i.breakdown?.cash) || 0), 0);
+  const totalIjara = records.reduce((sum, i) => sum + (Number(i.breakdown?.ijara) || 0), 0);
   
-  const totalDudu = history.reduce((sum, i) => sum + (i.breakdown?.dudu || 0), 0);
-  const totalAkash = history.reduce((sum, i) => sum + (i.breakdown?.akash || 0), 0);
-  const totalBurger = history.reduce((sum, i) => sum + (i.breakdown?.burger || 0), 0);
-  const totalBazar = history.reduce((sum, i) => sum + (i.breakdown?.bazar || 0), 0);
-  const totalOthers = history.reduce((sum, i) => sum + (i.breakdown?.others || 0), 0);
-  const totalExpense = history.reduce((sum, i) => sum + (i.expense || 0), 0);
-  const totalDeposit = history.reduce((sum, i) => sum + (i.deposit || 0), 0);
+  const totalDudu = records.reduce((sum, i) => sum + (Number(i.breakdown?.dudu) || 0), 0);
+  const totalAkash = records.reduce((sum, i) => sum + (Number(i.breakdown?.akash) || 0), 0);
+  const totalBurger = records.reduce((sum, i) => sum + (Number(i.breakdown?.burger) || 0), 0);
+  const totalBazar = records.reduce((sum, i) => sum + (Number(i.breakdown?.bazar) || 0), 0);
+  const totalOthers = records.reduce((sum, i) => sum + (Number(i.breakdown?.others) || 0), 0);
+  const totalExpense = records.reduce((sum, i) => sum + (Number(i.expense) || 0), 0);
+  const totalDeposit = records.reduce((sum, i) => sum + (Number(i.deposit) || 0), 0);
 
-  const rowsHtml = history.map((item, idx) => `
+  const rowsHtml = records.map((item, idx) => `
     <tr class="${idx % 2 === 1 ? 'alt-row' : ''}">
       <td style="text-align: left; font-weight: 500;">
         ${formatDisplayDate(item.date)} 
         ${item.isManualEntry ? '<span class="manual-badge">M</span>' : ''}
       </td>
-      <td style="text-align: right; font-weight: bold;">৳${(item.sell || 0).toLocaleString()}</td>
-      <td style="text-align: right; color: #4B5563;">৳${(item.breakdown?.bkash || 0).toLocaleString()}</td>
-      <td style="text-align: right; color: #4B5563;">৳${(item.breakdown?.nagad || 0).toLocaleString()}</td>
-      <td style="text-align: right; color: #4B5563;">৳${(item.breakdown?.cash || 0).toLocaleString()}</td>
-      <td style="text-align: right; color: #4B5563;">৳${(item.breakdown?.ijara || 0).toLocaleString()}</td>
-      <td style="text-align: right; color: #DC2626; font-weight: bold;">৳${(item.expense || 0).toLocaleString()}</td>
-      <td style="text-align: right; color: #059669; font-weight: bold;">৳${(item.deposit || 0).toLocaleString()}</td>
+      <td style="text-align: right; font-weight: bold;">৳${(Number(item.sell) || 0).toLocaleString()}</td>
+      <td style="text-align: right; color: #4B5563;">৳${(Number(item.breakdown?.bkash) || 0).toLocaleString()}</td>
+      <td style="text-align: right; color: #4B5563;">৳${(Number(item.breakdown?.nagad) || 0).toLocaleString()}</td>
+      <td style="text-align: right; color: #4B5563;">৳${(Number(item.breakdown?.cash) || 0).toLocaleString()}</td>
+      <td style="text-align: right; color: #4B5563;">৳${(Number(item.breakdown?.ijara) || 0).toLocaleString()}</td>
+      <td style="text-align: right; color: #DC2626; font-weight: bold;">৳${(Number(item.expense) || 0).toLocaleString()}</td>
+      <td style="text-align: right; color: #059669; font-weight: bold;">৳${(Number(item.deposit) || 0).toLocaleString()}</td>
     </tr>
   `).join('');
 
@@ -251,5 +338,6 @@ export async function exportDepositReportPDF(history, monthName = "জমা র
     </html>
   `;
 
-  return await generateAndSharePDF(html, `deposit-report-${monthName.replace(' ', '-')}.pdf`);
+  const safeMonthTitle = (monthName || 'জমা-রিপোর্ট').toString().replace(/\s+/g, '-');
+  return await generateAndSharePDF(html, `deposit-report-${safeMonthTitle}.pdf`);
 }

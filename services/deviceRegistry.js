@@ -24,7 +24,7 @@ export function checkAndFlushLastSeen() {
     // Update last_seen to current time locally
     const now = new Date().toISOString();
     const isExpoGo = Application.applicationId === 'host.exp.exponent' || Application.nativeApplicationVersion?.startsWith('56.');
-    const currentVer = isExpoGo ? APP_VERSION : (Application.nativeApplicationVersion || APP_VERSION || '1.0.3');
+    const currentVer = isExpoGo ? APP_VERSION : (Application.nativeApplicationVersion || APP_VERSION || '1.0.4');
     const hasVersionChanged = record.app_version !== currentVer;
 
     const deviceName = Device.deviceName || Device.modelName || record.device_name || 'Android Device';
@@ -84,7 +84,7 @@ export async function syncDeviceHardwareAndVersion() {
 
     const now = new Date().toISOString();
     const isExpoGo = Application.applicationId === 'host.exp.exponent' || Application.nativeApplicationVersion?.startsWith('56.');
-    const currentVer = isExpoGo ? APP_VERSION : (Application.nativeApplicationVersion || APP_VERSION || '1.0.3');
+    const currentVer = isExpoGo ? APP_VERSION : (Application.nativeApplicationVersion || APP_VERSION || '1.0.4');
     const deviceName = Device.deviceName || Device.modelName || record.device_name || 'Android Device';
     const manufacturer = Device.manufacturer || record.manufacturer || 'Android';
     const brand = Device.brand || manufacturer || record.brand || 'Android';
@@ -362,7 +362,7 @@ export async function registerDeviceIfNeeded(options = {}) {
   const model = Device.modelName || Device.designName || Platform.OS;
   const androidVersion = Device.osVersion || String(Platform.Version || '');
   const isExpoGo = Application.applicationId === 'host.exp.exponent' || Application.nativeApplicationVersion?.startsWith('56.');
-  const appVersion = isExpoGo ? APP_VERSION : (APP_VERSION || Application.nativeApplicationVersion || '1.0.3');
+  const appVersion = isExpoGo ? APP_VERSION : (APP_VERSION || Application.nativeApplicationVersion || '1.0.4');
 
   const now = new Date().toISOString();
 
@@ -641,7 +641,19 @@ export function checkDeviceLoginPermission(userRole) {
 export function getAllRegisteredDevices() {
   try {
     const db = getDb();
-    return db.getAllSync("SELECT * FROM device_registry WHERE is_deleted IS NULL OR is_deleted = 0 ORDER BY created_at DESC");
+    const rows = db.getAllSync("SELECT * FROM device_registry WHERE is_deleted IS NULL OR is_deleted = 0 ORDER BY updated_at DESC, created_at DESC");
+    const seen = new Set();
+    const unique = [];
+    for (const r of rows) {
+      const dId = r.device_id || r.id;
+      if (dId && !seen.has(dId)) {
+        seen.add(dId);
+        unique.push(r);
+      } else if (!dId) {
+        unique.push(r);
+      }
+    }
+    return unique;
   } catch (err) {
     console.error("[DeviceRegistry] Error fetching all registered devices:", err);
     return [];

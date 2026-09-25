@@ -55,14 +55,28 @@ module.exports = ({ config }) => {
 
   console.log(`[Expo Build Config] Building for APP_PROFILE: '${profile}' (${pConfig.name}) | Package: ${pConfig.package} | Slug: ${pConfig.slug}`);
 
+  // Ensure local credentials.json matches active build profile when building locally
+  const profileCreds = path.resolve(__dirname, `credentials/android/credentials.${profile.toLowerCase()}.json`);
+  const rootCreds = path.resolve(__dirname, 'credentials.json');
+  if (fs.existsSync(profileCreds)) {
+    try {
+      const pData = fs.readFileSync(profileCreds, 'utf8');
+      const curData = fs.existsSync(rootCreds) ? fs.readFileSync(rootCreds, 'utf8') : '';
+      if (curData !== pData) {
+        fs.writeFileSync(rootCreds, pData, 'utf8');
+        console.log(`[Expo Build Config] Synchronized credentials.json for profile '${profile}'`);
+      }
+    } catch (e) {
+      console.warn(`[Expo Build Config] Warning syncing credentials: ${e.message}`);
+    }
+  }
+
   return {
     ...config,
     name: pConfig.name,
     slug: pConfig.slug,
-    version: config.version || '1.0.1',
-    runtimeVersion: {
-      policy: 'appVersion'
-    },
+    version: config.version || '1.0.5',
+    runtimeVersion: '1.0.0',
     orientation: 'portrait',
     icon: iconPath,
     userInterfaceStyle: 'light',
@@ -80,7 +94,8 @@ module.exports = ({ config }) => {
         }
       ],
       'expo-sharing',
-      'expo-sqlite'
+      'expo-sqlite',
+      'react-native-thermal-printer-driver'
     ],
     ios: {
       supportsTablet: true,
@@ -92,16 +107,19 @@ module.exports = ({ config }) => {
         foregroundImage: iconPath
       },
       package: pConfig.package,
-      versionCode: config.android?.versionCode || 2
+      versionCode: config.android?.versionCode || 8,
+      // Bluetooth thermal-printer access. BLUETOOTH_SCAN/CONNECT are runtime
+      // permissions on Android 12+ and are requested in-app before scanning.
+      permissions: [
+        'android.permission.BLUETOOTH',
+        'android.permission.BLUETOOTH_ADMIN',
+        'android.permission.BLUETOOTH_SCAN',
+        'android.permission.BLUETOOTH_CONNECT',
+        'android.permission.ACCESS_FINE_LOCATION'
+      ]
     },
     web: {
       favicon: iconPath
-    },
-    "extra": {
-      "eas": {
-        "projectId": "5bbb3050-c514-4ce8-88f4-655a9cec68ba"
-      }
-    },
-    "owner": "shakib223"
+    }
   };
 };

@@ -14,8 +14,15 @@ import {
   BackHandler
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { formatDisplayDate, getBusinessDate } from '../database';
+import { 
+  formatDisplayDate, 
+  getBusinessDate
+} from '../database';
+import PrintReceiptModal from '../components/PrintReceiptModal';
 import { TodaySalesCard, TotalCashCard } from '../components/StatCard';
+import ManagerSideMenu from '../components/ManagerSideMenu';
+import PastAccountModal from '../components/PastAccountModal';
+import OrderDetailModal from '../components/OrderDetailModal';
 
 const { width } = Dimensions.get('window');
 
@@ -113,7 +120,7 @@ const formatStartTime = (timeStr) => {
   return timeStr;
 };
 
-export default function ManagerDashboard({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onNavigateToSubmit, onUpdateTableName, onNavigateToExpenses, onNavigateToSupplierDue, onNavigateToItemSalesReport, onCloudRestore, onMenuRecovery, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, onResetIjara, onRollbackAutoIjara, delCountdown, tabCountdown, fullCountdown, userRole = 'manager' }) {
+export default function ManagerDashboard({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onNavigateToSubmit, onUpdateTableName, onNavigateToExpenses, onNavigateToSupplierDue, onNavigateToItemSalesReport, onCloudRestore, onSameDayResync, onMenuRecovery, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, onResetIjara, onRollbackAutoIjara, onNavigateToPrinterSettings, onNavigateToBackupRestore, delCountdown, tabCountdown, fullCountdown, userRole = 'manager' }) {
   const [renameModalVisible, setRenameModalVisible] = useState(false);
   const [selectedTableForRename, setSelectedTableForRename] = useState(null);
   const [newTableName, setNewTableName] = useState('');
@@ -149,6 +156,7 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
 
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [orderDetailVisible, setOrderDetailVisible] = useState(false);
+  const [printOrder, setPrintOrder] = useState(null);
 
   // Android Back Handler for Modals
   useEffect(() => {
@@ -280,7 +288,19 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
   };
 
   const handleSavePastEntry = () => {
-    if (!pastDate || !pastTotalSell) {
+    let effectiveSell = parseFloat(pastTotalSell) || 0;
+    if (effectiveSell === 0) {
+      effectiveSell = (parseFloat(pastCash) || 0) +
+                      (parseFloat(pastBkash) || 0) +
+                      (parseFloat(pastNagad) || 0) +
+                      (parseFloat(pastRocket) || 0) +
+                      (parseFloat(pastDeliverySell) || 0);
+      if (effectiveSell > 0) {
+        setPastTotalSell(String(effectiveSell));
+      }
+    }
+
+    if (!pastDate || effectiveSell === 0) {
       Alert.alert("ত্রুটি", "তারিখ এবং মোট বিক্রয় আবশ্যিক!");
       return;
     }
@@ -300,7 +320,7 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
     const bazar = parseFloat(pastBazar) || 0;
     const others = parseFloat(pastOthers) || 0;
     const totalExpense = dudu + akash + burger + bazar + others;
-    const sell = parseFloat(pastTotalSell) || 0;
+    const sell = effectiveSell;
 
     const record = {
       date: pastDate,
@@ -472,7 +492,7 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
                          <Text style={styles.deliveryTitle}>{delivery.name}</Text>
                          <Text style={styles.deliveryTime}>শুরু: {formatStartTime(delivery.startTime)}</Text>
                        </View>
-                       <Text style={styles.deliveryAmount}>৳ {delivery.items.reduce((sum, i) => sum + (i.price * i.qty), 0)}</Text>
+                       <Text style={styles.deliveryAmount}>৳ {(delivery.amount !== undefined && delivery.amount !== null && Number(delivery.amount) > 0) ? parseFloat(delivery.amount) : ((delivery.items ? delivery.items.reduce((sum, i) => sum + ((parseFloat(i.price) || 0) * (parseInt(i.qty, 10) || 1)), 0) : 0) + (parseFloat(delivery.deliveryCharge || delivery.delivery_charge) || 0))}</Text>
                      </View>
                    </TouchableOpacity>
                ))
@@ -524,6 +544,15 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
                       <Text style={[styles.orderItemStatus, styles.textGreen]}>পেমেন্ট শেষ</Text>
                     </View>
                     <View style={styles.actionRow}>
+                      <TouchableOpacity 
+                        style={styles.printBtn} 
+                        onPress={(e) => { 
+                          e.stopPropagation(); 
+                          setPrintOrder(order); 
+                        }}
+                      >
+                        <Text style={styles.btnIcon}>🖨️</Text>
+                      </TouchableOpacity>
                       {(userRole === 'owner' || userRole === 'admin') && (
                         <TouchableOpacity style={styles.deleteBtn} onPress={(e) => { e.stopPropagation(); onDeleteDoneOrder(order.id); }}>
                           <Text style={styles.btnIcon}>🗑️</Text>
@@ -562,75 +591,21 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
         </TouchableOpacity>
       </View>
 
-      {/* ORDER DETAIL MODAL */}
-      <Modal animationType="slide" transparent={true} visible={orderDetailVisible} onRequestClose={() => setOrderDetailVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { width: '90%' }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', alignItems: 'center', marginBottom: 20 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <View style={[styles.modalIconCircle, { marginBottom: 0, width: 40, height: 40, marginRight: 12 }]}><Text style={styles.modalIconEmoji}>📋</Text></View>
-                <Text style={[styles.modalTitle, { marginBottom: 0 }]}>অর্ডার বিস্তারিত</Text>
-              </View>
-              <TouchableOpacity onPress={() => setOrderDetailVisible(false)} style={styles.closeCircle}>
-                <Text style={styles.closeCircleText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            {selectedOrder && (
-              <View style={{ width: '100%', paddingVertical: 10 }}>
-                <View style={styles.detailRow}><Text style={styles.detailLabel}>টেবিল:</Text><Text style={styles.detailValue}>{selectedOrder.table}</Text></View>
-                <View style={styles.detailRow}><Text style={styles.detailLabel}>সময়:</Text><Text style={styles.detailValue}>{selectedOrder.time}</Text></View>
-                <View style={styles.detailRow}><Text style={styles.detailLabel}>তারিখ:</Text><Text style={styles.detailValue}>{selectedOrder.fullDate ? formatDisplayDate(selectedOrder.fullDate) : 'আজ'}</Text></View>
-                <View style={styles.detailRow}><Text style={styles.detailLabel}>পেমেন্ট মাধ্যম:</Text><Text style={styles.detailValue}>{selectedOrder.method}</Text></View>
-
-                {/* Detailed Payment Breakdown */}
-                <View style={{ marginTop: 8, padding: 8, backgroundColor: '#0A0A0A', borderRadius: 8, borderWidth: 1, borderColor: '#1A1A1A' }}>
-                   <Text style={{ color: '#888', fontSize: 10, marginBottom: 6, fontWeight: 'bold' }}>পেমেন্ট ব্রেকডাউন:</Text>
-                   <View style={styles.detailRow}><Text style={[styles.detailLabel, { fontSize: 11 }]}>💵 ক্যাশ:</Text><Text style={[styles.detailValue, { fontSize: 11 }]}>৳ {selectedOrder.cash_amount || 0}</Text></View>
-                   <View style={styles.detailRow}><Text style={[styles.detailLabel, { fontSize: 11 }]}>🐦 বিকাশ:</Text><Text style={[styles.detailValue, { fontSize: 11 }]}>৳ {selectedOrder.bkash_amount || 0}</Text></View>
-                   <View style={styles.detailRow}><Text style={[styles.detailLabel, { fontSize: 11 }]}>💰 নগদ:</Text><Text style={[styles.detailValue, { fontSize: 11 }]}>৳ {selectedOrder.nagad_amount || 0}</Text></View>
-                   <View style={styles.detailRow}><Text style={[styles.detailLabel, { fontSize: 11 }]}>🚀 রকেট:</Text><Text style={[styles.detailValue, { fontSize: 11 }]}>৳ {selectedOrder.rocket_amount || 0}</Text></View>
-                </View>
-
-                {selectedOrder.deliveryCharge > 0 ? (
-                  <>
-                    <View style={styles.detailRow}><Text style={styles.detailLabel}>অর্ডার টোটাল:</Text><Text style={styles.detailValue}>৳ {selectedOrder.totalAmount}</Text></View>
-                    <View style={styles.detailRow}><Text style={styles.detailLabel}>ডেলিভারি চার্জ:</Text><Text style={styles.detailValue}>৳ {selectedOrder.deliveryCharge}</Text></View>
-                    <View style={styles.detailRow}><Text style={styles.detailLabel}>সর্বমোট পরিমাণ:</Text><Text style={[styles.detailValue, { color: '#34D399', fontWeight: 'bold' }]}>৳ {selectedOrder.grandTotal || selectedOrder.paidAmount}</Text></View>
-                  </>
-                ) : (
-                  <View style={styles.detailRow}><Text style={styles.detailLabel}>মোট পরিমাণ:</Text><Text style={[styles.detailValue, { color: '#34D399', fontWeight: 'bold' }]}>৳ {selectedOrder.amount || selectedOrder.paidAmount}</Text></View>
-                )}
-                <View style={{ marginTop: 10, borderTopWidth: 1, borderColor: '#262626', paddingTop: 10 }}>
-                  <Text style={styles.detailLabel}>আইটেম সমূহ:</Text>
-                  <Text style={[styles.detailValue, { marginTop: 4, color: '#FFB703' }]}>{selectedOrder.items}</Text>
-                </View>
-              </View>
-            )}
-            
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 20 }}>
-              <TouchableOpacity 
-                style={[styles.modalCancelBtn, { width: (userRole === 'owner' || userRole === 'admin') ? '48%' : '100%' }]} 
-                onPress={() => setOrderDetailVisible(false)}
-              >
-                <Text style={styles.modalCancelBtnText}>পিছনে যান</Text>
-              </TouchableOpacity>
-              {(userRole === 'owner' || userRole === 'admin') && (
-                <TouchableOpacity 
-                  style={[styles.modalSaveBtn, { width: '48%', backgroundColor: '#EF4444' }]} 
-                  onPress={() => {
-                    const targetId = selectedOrder?.id;
-                    setOrderDetailVisible(false);
-                    if (targetId) onDeleteDoneOrder(targetId);
-                  }}
-                >
-                  <Text style={[styles.modalSaveBtnText, { color: '#FFF' }]}>🗑️ ডিলিট করুন</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-        </View>
-      </Modal>
+{/* ORDER DETAIL MODAL (REDESIGNED) */}
+      <OrderDetailModal
+        visible={orderDetailVisible}
+        onClose={() => setOrderDetailVisible(false)}
+        order={selectedOrder}
+        onPrint={(order) => {
+          setOrderDetailVisible(false);
+          setPrintOrder(order);
+        }}
+        onDelete={(targetId) => {
+          setOrderDetailVisible(false);
+          if (targetId) onDeleteDoneOrder(targetId);
+        }}
+        formatDisplayDate={formatDisplayDate}
+      />
 
       {/* RENAME MODAL */}
       <Modal animationType="fade" transparent={true} visible={renameModalVisible} onRequestClose={() => setRenameModalVisible(false)}>
@@ -648,39 +623,29 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
         </View>
       </Modal>
 
-      {/* 3-DOT MENU */}
-      <Modal animationType="fade" transparent={true} visible={menuModalVisible} onRequestClose={() => setMenuModalVisible(false)}>
-        <TouchableOpacity style={styles.menuModalOverlay} activeOpacity={1} onPress={() => setMenuModalVisible(false)}>
-          <View style={styles.menuModalContent}>
-            <View style={styles.syncTimerWrapper}>
-              <Text style={styles.syncTimerText}>Del: {delCountdown}s | Tab: {tabCountdown}s | Full: {fullCountdown}s</Text>
-            </View>
-            <View style={styles.menuSectionHeader}><Text style={styles.menuSectionText}>CORE OPERATIONS</Text></View>
-
-            {dailyExpenses.ijara > 0 ? (
-              <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); Alert.alert("ইতিমধ্যে যোগ করা হয়েছে", "ইজা শুধুমাত্র একবার যোগ করা যাবে এবং এটি আর পরিবর্তন বা এডিট করা সম্ভব নয়!"); }}><Text style={[styles.menuOptionText, { color: '#888' }]}>🔒 ইজা যুক্ত করা হয়েছে</Text></TouchableOpacity>
-            ) : (
-              <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); setTempIjara(''); setIjaraModalVisible(true); }}><Text style={styles.menuOptionText}>➕ Add Ijara</Text></TouchableOpacity>
-            )}
-
-            <TouchableOpacity style={styles.menuOption} onPress={handleOpenPastAccount}><Text style={styles.menuOptionText}>📅 অতীতের হিসাব</Text></TouchableOpacity>
-
-            {/* Auto Ijara Rollback Option */}
-            {(userRole === 'owner' || userRole === 'admin') && onRollbackAutoIjara && (
-              <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onRollbackAutoIjara(); }}>
-                <Text style={[styles.menuOptionText, { color: '#F59E0B' }]}>🔄 অটো ইজা রোলব্যাক</Text>
-              </TouchableOpacity>
-            )}
-
-            <View style={styles.menuSectionHeader}><Text style={styles.menuSectionText}>SYSTEM TOOLS</Text></View>
-            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onCloudRestore(); }}><Text style={[styles.menuOptionText, { color: '#34D399' }]}>☁️ Cloud Restore</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onMenuRecovery(); }}><Text style={[styles.menuOptionText, { color: '#34D399' }]}>🍴 Recover Menu Items</Text></TouchableOpacity>
-
-            <View style={{ height: 1, backgroundColor: '#262626' }} />
-            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onLogout(); }}><Text style={[styles.menuOptionText, { color: '#FF4D4D' }]}>Logout</Text></TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      {/* 3-DOT MENU (MANAGER SIDE MENU) */}
+      {/* Preserves 3-dot menu options: আজকের ডেটা রিসিন্ক (Same-Day Resync) */}
+      <ManagerSideMenu
+        visible={menuModalVisible}
+        onClose={() => setMenuModalVisible(false)}
+        dailyExpenses={dailyExpenses}
+        onAddIjara={() => {
+          setTempIjara('');
+          setIjaraModalVisible(true);
+        }}
+        onIjaraAlreadyAdded={() => {
+          Alert.alert("ইতিমধ্যে যোগ করা হয়েছে", "ইজা শুধুমাত্র একবার যোগ করা যাবে এবং এটি আর পরিবর্তন বা এডিট করা সম্ভব নয়!");
+        }}
+        handleOpenPastAccount={handleOpenPastAccount}
+        showAutoIjaraRollback={(userRole === 'owner' || userRole === 'admin') && Boolean(onRollbackAutoIjara)}
+        onRollbackAutoIjara={onRollbackAutoIjara}
+        onSameDayResync={onSameDayResync}
+        onCloudRestore={onCloudRestore}
+        onMenuRecovery={onMenuRecovery}
+        onNavigateToPrinterSettings={onNavigateToPrinterSettings}
+        onNavigateToBackupRestore={onNavigateToBackupRestore}
+        onLogout={onLogout}
+      />
 
       {/* IJARA MODAL */}
       <Modal animationType="slide" transparent={true} visible={ijaraModalVisible} onRequestClose={() => setIjaraModalVisible(false)}>
@@ -700,62 +665,53 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
       </Modal>
 
       {/* PAST ACCOUNT MODAL */}
-      <Modal animationType="slide" transparent={true} visible={pastAccountModalVisible} onRequestClose={() => setPastAccountModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { width: '90%', maxHeight: '85%' }]}>
-            <View style={styles.modalIconCircle}><Text style={styles.modalIconEmoji}>📅</Text></View>
-            <Text style={styles.modalTitle}>অতীতের হিসাব যোগ করুন</Text>
-            <ScrollView style={{ width: '100%' }} contentContainerStyle={{ paddingBottom: 20 }} showsVerticalScrollIndicator={false}>
-              <TouchableOpacity style={styles.expenseInputGroup} onPress={() => setCalendarVisible(true)}>
-                <Text style={styles.inputLabel}>তারিখ</Text>
-                <View style={[styles.modalInput, { justifyContent: 'center' }]}>
-                  <Text style={{color:'#FFF'}}>{pastDate ? formatDisplayDate(pastDate) : "তারিখ সিলেক্ট করুন"}</Text>
-                </View>
-              </TouchableOpacity>
-              <View style={styles.expenseInputGroup}><Text style={styles.inputLabel}>মোট বিক্রয়</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastTotalSell} onChangeText={setPastTotalSell}/></View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>bKash</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastBkash} onChangeText={setPastBkash}/></View>
-                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>Nagad</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastNagad} onChangeText={setPastNagad}/></View>
-              </View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>Rocket</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastRocket} onChangeText={setPastRocket}/></View>
-                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>Cash</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastCash} onChangeText={setPastCash}/></View>
-              </View>
+      <PastAccountModal
+        visible={pastAccountModalVisible}
+        onClose={() => setPastAccountModalVisible(false)}
+        isEditingPast={isEditingPast}
+        pastDate={pastDate}
+        onOpenDatePicker={() => setCalendarVisible(true)}
+        pastTotalSell={pastTotalSell}
+        setPastTotalSell={setPastTotalSell}
+        pastBkash={pastBkash}
+        setPastBkash={setPastBkash}
+        pastNagad={pastNagad}
+        setPastNagad={setPastNagad}
+        pastRocket={pastRocket}
+        setPastRocket={setPastRocket}
+        pastCash={pastCash}
+        setPastCash={setPastCash}
+        pastDeliverySell={pastDeliverySell}
+        setPastDeliverySell={setPastDeliverySell}
+        pastDeliveryCharge={pastDeliveryCharge}
+        setPastDeliveryCharge={setPastDeliveryCharge}
+        pastDudu={pastDudu}
+        setPastDudu={setPastDudu}
+        pastAkash={pastAkash}
+        setPastAkash={setPastAkash}
+        pastBurger={pastBurger}
+        setPastBurger={setPastBurger}
+        pastBazar={pastBazar}
+        setPastBazar={setPastBazar}
+        pastOthers={pastOthers}
+        setPastOthers={setPastOthers}
+        pastIjara={pastIjara}
+        setPastIjara={setPastIjara}
+        pastNetCash={pastNetCash}
+        setPastNetCash={setPastNetCash}
+        pastDeposit={pastDeposit}
+        setPastDeposit={setPastDeposit}
+        pastNote={pastNote}
+        setPastNote={setPastNote}
+        onSave={handleSavePastEntry}
+        formatDisplayDate={formatDisplayDate}
+      />
 
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>🛵 Delivery Sell</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastDeliverySell} onChangeText={setPastDeliverySell}/></View>
-                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>🏷️ Delivery Charge</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastDeliveryCharge} onChangeText={setPastDeliveryCharge}/></View>
-              </View>
-              
-              <View style={{ marginTop: 10, marginBottom: 5 }}><Text style={{ color: '#FFB703', fontSize: 12, fontWeight: 'bold' }}>খরচসমূহ (Expenses)</Text></View>
-              
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>🛍️ দুদু মিয়া</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastDudu} onChangeText={setPastDudu}/></View>
-                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>🐔 আকাশ মুরগী</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastAkash} onChangeText={setPastAkash}/></View>
-              </View>
-              
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>🍔 বার্গার বান</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastBurger} onChangeText={setPastBurger}/></View>
-                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>🛒 বাজার খরচ</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastBazar} onChangeText={setPastBazar}/></View>
-              </View>
-              
-              <View style={styles.expenseInputGroup}><Text style={styles.inputLabel}>📦 অন্যান্য খরচ</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastOthers} onChangeText={setPastOthers}/></View>
-
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>🏛️ ইজা (Ijara)</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastIjara} onChangeText={setPastIjara}/></View>
-                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>💵 নেট ক্যাশ (Net Cash)</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastNetCash} onChangeText={setPastNetCash}/></View>
-              </View>
-
-              <View style={[styles.expenseInputGroup, { backgroundColor: 'rgba(52, 211, 153, 0.05)', padding: 10, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(52, 211, 153, 0.2)' }]}>
-                <Text style={[styles.inputLabel, { color: '#34D399' }]}>👤 Owner কে জমা (Deposit)</Text>
-                <TextInput style={[styles.modalInput, { color: '#34D399', fontWeight: 'bold', borderColor: 'rgba(52, 211, 153, 0.4)' }]} keyboardType="numeric" value={pastDeposit} onChangeText={setPastDeposit} placeholder="0"/>
-              </View>
-
-              <View style={styles.expenseInputGroup}><Text style={styles.inputLabel}>নোট (ঐচ্ছিক)</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} value={pastNote} onChangeText={setPastNote} placeholder="অতিরিক্ত তথ্য..."/></View>
-            </ScrollView>
-            <View style={styles.modalBtnRow}><TouchableOpacity style={styles.modalCancelBtn} onPress={() => setPastAccountModalVisible(false)}><Text style={styles.modalCancelBtnText}>বাতিল</Text></TouchableOpacity><TouchableOpacity style={styles.modalSaveBtn} onPress={handleSavePastEntry}><Text style={styles.modalSaveBtnText}>সেভ করুন</Text></TouchableOpacity></View>
-        </View></View>
-      </Modal>
+      <PrintReceiptModal
+        visible={!!printOrder}
+        order={printOrder}
+        onClose={() => setPrintOrder(null)}
+      />
 
     </SafeAreaView>
   );
@@ -1154,6 +1110,29 @@ const styles = StyleSheet.create({
   },
   actionRow: {
     flexDirection: 'row',
+  },
+  printBtn: {
+    backgroundColor: 'rgba(59, 130, 246, 0.15)',
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 4,
+  },
+  modalPrintBtn: {
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#3B82F6',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalPrintBtnText: {
+    color: '#60A5FA',
+    fontSize: 14,
+    fontWeight: 'bold',
   },
   editBtn: {
     backgroundColor: 'rgba(255, 183, 3, 0.15)',

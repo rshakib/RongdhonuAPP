@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -11,6 +11,8 @@ import {
   StatusBar as RNStatusBar
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import PrintReceiptModal from '../components/PrintReceiptModal';
+import { BILL_SHOP_PHONE } from '../components/ReceiptPaper';
 
 const formatStartTime = (timeStr) => {
   if (!timeStr) return '';
@@ -31,13 +33,20 @@ const formatStartTime = (timeStr) => {
 };
 
 export default function TableDetailScreen({
-  table,
+  table: propTable,
   onBack,
   onUpdateTableItems,
   onUpdateDeliveryDetails,
   onPaymentDone,
-  onNavigateToAddItem
+  onNavigateToAddItem,
+  onDeliveryBillComplete
 }) {
+  const lastTableRef = useRef(propTable);
+  if (propTable) {
+    lastTableRef.current = propTable;
+  }
+  const table = propTable || lastTableRef.current;
+
   if (!table) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
@@ -53,6 +62,20 @@ export default function TableDetailScreen({
 
   const [deliveryChargeText, setDeliveryChargeText] = useState(table.deliveryCharge?.toString() || '0');
   const [changeMoneyText, setChangeMoneyText] = useState(table.changeMoneyGiven?.toString() || '0');
+  const [printOrder, setPrintOrder] = useState(null);
+  const [isSubmittingBill, setIsSubmittingBill] = useState(false);
+  const isSubmittingBillRef = useRef(false);
+
+  useEffect(() => {
+    if (table) {
+      if (table.deliveryCharge !== undefined && table.deliveryCharge !== null) {
+        setDeliveryChargeText(table.deliveryCharge.toString());
+      }
+      if (table.changeMoneyGiven !== undefined && table.changeMoneyGiven !== null) {
+        setChangeMoneyText(table.changeMoneyGiven.toString());
+      }
+    }
+  }, [table?.id, table?.deliveryCharge, table?.changeMoneyGiven]);
 
   const deliveryCharge = parseFloat(deliveryChargeText) || 0;
   const changeMoneyGiven = parseFloat(changeMoneyText) || 0;
@@ -69,6 +92,94 @@ export default function TableDetailScreen({
   // Grand Total only includes appliedChangeMoney (the one deducted from cash)
   const grandTotal = totalAmount + (isDelivery ? (deliveryCharge + appliedChangeMoney) : 0);
 
+  // Customer bill for THIS table's current order — so the customer can see the total.
+  const buildBillOrder = () => ({
+    id: `BILL-${table.id}`,
+    tableId: table.name || table.id,
+    fullDate: new Date().toISOString().substring(0, 10),
+    time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    items: items.map((it) => ({ name: it.name, qty: it.qty, price: it.price, total: it.price * it.qty })),
+    totalAmount,
+    deliveryCharge: isDelivery ? deliveryCharge : 0,
+    changeMoneyGiven: isDelivery ? appliedChangeMoney : 0,
+    paidAmount: grandTotal,
+    paymentMethod: 'বিল',
+    isLiveBill: true
+  });
+
+  const handleBillPress = async () => {
+    if (!items || items.length === 0) {
+      Alert.alert("সতর্কতা", "কোনো আইটেম যোগ করা হয়নি।");
+      return;
+    }
+
+    if (isDelivery) {
+      if (isSubmittingBillRef.current) return;
+      isSubmittingBillRef.current = true;
+      setIsSubmittingBill(true);
+
+      try {
+        const itemsSubtotal = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
+        const currentDeliveryCharge = parseFloat(deliveryChargeText) || 0;
+        const currentChangeMoney = appliedChangeMoney || 0;
+        const finalTotal = itemsSubtotal + currentDeliveryCharge + currentChangeMoney;
+
+        // Build receipt items list with delivery charge row included so printed receipt transparently shows items + delivery charge = সর্বমোট
+        const receiptItems = items.map((it) => ({
+          name: it.name,
+          qty: it.qty,
+          price: it.price,
+          total: it.price * it.qty,
+        }));
+        if (currentChangeMoney > 0) {
+          receiptItems.push({
+            name: 'ভাঙতি টাকা',
+            qty: 1,
+            price: currentChangeMoney,
+            total: currentChangeMoney,
+          });
+        }
+        if (currentDeliveryCharge > 0) {
+          receiptItems.push({
+            name: 'ডেলিভারি চার্জ',
+            qty: 1,
+            price: currentDeliveryCharge,
+            total: currentDeliveryCharge,
+          });
+        }
+
+        const deliveryBillOrder = {
+          id: `BILL-${table.id}`,
+          tableId: table.name || table.id,
+          fullDate: new Date().toISOString().substring(0, 10),
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          items: receiptItems,
+          totalAmount: finalTotal,
+          deliveryCharge: 0,
+          changeMoneyGiven: 0,
+          paidAmount: finalTotal,
+          grandTotal: finalTotal,
+          paymentMethod: 'বিল',
+          isLiveBill: false,
+        };
+
+        setPrintOrder(deliveryBillOrder);
+
+        // Update delivery details and total in database while keeping delivery active
+        if (onUpdateDeliveryDetails) {
+          onUpdateDeliveryDetails(table.id, currentDeliveryCharge, currentChangeMoney);
+        }
+      } catch (err) {
+        console.error("Error submitting delivery bill:", err);
+      } finally {
+        isSubmittingBillRef.current = false;
+        setIsSubmittingBill(false);
+      }
+    } else {
+      setPrintOrder(buildBillOrder());
+    }
+  };
+
   const handleApplyChangeMoney = () => {
     if (isDelivery && onUpdateDeliveryDetails) {
        onUpdateDeliveryDetails(table.id, deliveryCharge, changeMoneyGiven);
@@ -76,10 +187,20 @@ export default function TableDetailScreen({
     }
   };
 
-  const handleApplyDeliveryCharge = () => {
+  const handleApplyDeliveryCharge = (chargeValue) => {
+    const charge = chargeValue !== undefined ? (parseFloat(chargeValue) || 0) : (parseFloat(deliveryChargeText) || 0);
+    setDeliveryChargeText(charge.toString());
     if (isDelivery && onUpdateDeliveryDetails) {
-       onUpdateDeliveryDetails(table.id, deliveryCharge, changeMoneyGiven);
+       onUpdateDeliveryDetails(table.id, charge, appliedChangeMoney);
     }
+  };
+
+  const handleBack = () => {
+    if (isDelivery && onUpdateDeliveryDetails) {
+      const currentCharge = parseFloat(deliveryChargeText) || 0;
+      onUpdateDeliveryDetails(table.id, currentCharge, appliedChangeMoney);
+    }
+    onBack();
   };
 
   // Increase item quantity in cart
@@ -124,7 +245,7 @@ export default function TableDetailScreen({
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
-          <TouchableOpacity style={styles.backButton} onPress={onBack}>
+          <TouchableOpacity style={styles.backButton} onPress={handleBack}>
             <Text style={styles.backArrow}>⬅</Text>
           </TouchableOpacity>
           <View>
@@ -136,8 +257,14 @@ export default function TableDetailScreen({
             </View>
           </View>
         </View>
-        <TouchableOpacity style={styles.moreButton} onPress={onBack}>
-          <Text style={styles.moreIcon}>⋮</Text>
+        <TouchableOpacity
+          style={[styles.headerPrintBtn, isSubmittingBill && { opacity: 0.6 }]}
+          onPress={handleBillPress}
+          disabled={isSubmittingBill}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.headerPrintIcon}>🖨️</Text>
+          <Text style={styles.headerPrintText}>বিল</Text>
         </TouchableOpacity>
       </View>
 
@@ -239,9 +366,7 @@ export default function TableDetailScreen({
                       deliveryCharge === val && styles.presetBtnSelected
                     ]}
                     onPress={() => {
-                      setDeliveryChargeText(val.toString());
-                      // Trigger update
-                      setTimeout(handleApplyDeliveryCharge, 100);
+                      handleApplyDeliveryCharge(val);
                     }}
                     activeOpacity={0.8}
                   >
@@ -279,16 +404,19 @@ export default function TableDetailScreen({
                     onChangeText={(txt) => {
                       const cleanTxt = txt.replace(/[^0-9]/g, '');
                       setDeliveryChargeText(cleanTxt);
+                      if (isDelivery && onUpdateDeliveryDetails) {
+                        const parsed = parseFloat(cleanTxt) || 0;
+                        onUpdateDeliveryDetails(table.id, parsed, appliedChangeMoney);
+                      }
                     }}
-                    onBlur={handleApplyDeliveryCharge}
+                    onBlur={() => handleApplyDeliveryCharge()}
                   />
                 </View>
                 {deliveryCharge > 0 && (
                   <TouchableOpacity
                     style={styles.clearBtn}
                     onPress={() => {
-                      setDeliveryChargeText('0');
-                      setTimeout(handleApplyDeliveryCharge, 100);
+                      handleApplyDeliveryCharge(0);
                     }}
                     activeOpacity={0.7}
                   >
@@ -403,6 +531,18 @@ export default function TableDetailScreen({
           <Text style={styles.paymentBtnArrow}>➔</Text>
         </TouchableOpacity>
       </View>
+
+      <PrintReceiptModal
+        visible={!!printOrder}
+        order={printOrder}
+        onClose={() => {
+          setPrintOrder(null);
+          isSubmittingBillRef.current = false;
+          setIsSubmittingBill(false);
+        }}
+        showPayment={false}
+        phone={BILL_SHOP_PHONE}
+      />
     </SafeAreaView>
   );
 }
@@ -461,12 +601,24 @@ const styles = StyleSheet.create({
     color: '#888888',
     fontSize: 11,
   },
-  moreButton: {
-    padding: 6,
+  headerPrintBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 183, 3, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 183, 3, 0.5)',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
   },
-  moreIcon: {
-    fontSize: 22,
-    color: '#FFFFFF',
+  headerPrintIcon: {
+    fontSize: 15,
+    marginRight: 5,
+  },
+  headerPrintText: {
+    color: '#FFB703',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   scrollBody: {
     flex: 1,

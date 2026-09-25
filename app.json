@@ -2,7 +2,7 @@
   "expo": {
     "name": "রংধনু",
     "slug": "temp-expo",
-    "version": "1.0.1",
+    "version": "1.0.5",
     "orientation": "portrait",
     "icon": "./image/mylogo.png",
     "userInterfaceStyle": "light",
@@ -28,16 +28,19 @@
         "foregroundImage": "./image/mylogo.png"
       },
       "package": "com.riajulshakib.rongdhonu",
-      "versionCode": 2
+      "versionCode": 8
     },
     "web": {
       "favicon": "./image/mylogo.png"
     },
+    "fonts": [
+      "./assets/fonts/NotoSansBengali-Bold.ttf"
+    ],
     "extra": {
       "eas": {
-        "projectId": "5bbb3050-c514-4ce8-88f4-655a9cec68ba"
+        "projectId": "c0ef37bc-f64e-4a5d-8f68-8296556b722a"
       }
     },
-    "owner": "shakib223"
+    "owner": "riajulshakib"
   }
 }

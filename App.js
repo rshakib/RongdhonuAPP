@@ -45,6 +45,9 @@ const runAutoPull = async (name, syncFn, refreshData) => {
 
 // Import SQLite and cloud synchronization layer
 import {
+  db,
+  enqueueSync,
+  calculateAndSaveDailySummary,
   initDatabase,
   getMenuItems,
   addMenuItem,
@@ -58,6 +61,8 @@ import {
   updateDeliveryState,
   removeDelivery,
   updateDeliveryDetails,
+  completeDelivery,
+  getDeliveryById,
   getCompletedOrders,
   addCompletedOrder,
   deleteCompletedOrder,
@@ -76,7 +81,6 @@ import {
   getLastSyncError,
   isSyncServiceRunning,
   isDbInitialized,
-  isDatabaseEmpty,
   restoreDatabaseFromCloud,
   syncRecordImmediately,
   syncDeletionsOnly,
@@ -106,6 +110,8 @@ import PaymentSuccess from './screens/PaymentSuccess';
 import DailySubmitScreen from './screens/DailySubmitScreen';
 import AddItemScreen from './screens/AddItemScreen';
 import PaymentCheckoutScreen from './screens/PaymentCheckoutScreen';
+import PrinterSettingsScreen from './screens/PrinterSettingsScreen';
+import AutoReceiptPrinter from './components/AutoReceiptPrinter';
 import ExpensesScreen from './screens/ExpensesScreen';
 import SupplierDueScreen from './screens/SupplierDueScreen';
 import DailyItemSalesReport from './screens/DailyItemSalesReport';
@@ -117,6 +123,7 @@ import OfflineVerificationScreen from './screens/OfflineVerificationScreen';
 import SyncDiagnosticsScreen from './screens/SyncDiagnosticsScreen';
 import DeleteHistoryScreen from './screens/DeleteHistoryScreen';
 import SystemToolsScreen from './screens/SystemToolsScreen';
+import BackupRestoreScreen from './screens/BackupRestoreScreen';
 import DatabaseHealthScreen from './screens/DatabaseHealthScreen';
 import SyncStatusScreen from './screens/SyncStatusScreen';
 import DatabaseStatsScreen from './screens/DatabaseStatsScreen';
@@ -271,6 +278,10 @@ export default function App() {
   // Module-level flag: prevents overlapping async force-logout checks from stacking up.
   // Declared outside React so it persists across re-renders without causing re-renders.
   const _forceLogoutCheckRef = useRef(false);
+  const _forceLogoutCheckAtRef = useRef(0);
+
+  // Concurrency lock for ensureInitialData() so overlapping calls return immediately.
+  const ensureInitialDataLockRef = useRef(false);
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -284,9 +295,19 @@ export default function App() {
       //          We use isLoggedInRef.current which is kept in sync via a useEffect above.
       // GUARD 2: Skip if a previous async check hasn't finished yet (prevents queue buildup).
       if (!isLoggedInRef.current) return;
-      if (_forceLogoutCheckRef.current) return;
+      if (_forceLogoutCheckRef.current) {
+        // Watchdog: a hung check must not disable the 1s poll forever (e.g. a fetch that never
+        // settles after a network change). Force-release after 20s so the next tick retries.
+        if (Date.now() - _forceLogoutCheckAtRef.current > 20000) {
+          console.warn('[ForceLogout] stage=periodic_check watchdog release (previous check hung)');
+          _forceLogoutCheckRef.current = false;
+        } else {
+          return;
+        }
+      }
 
       _forceLogoutCheckRef.current = true;
+      _forceLogoutCheckAtRef.current = Date.now();
       ;(async () => {
         try {
           const { checkAndExecuteForceLogout } = require('./services/deviceRegistry');
@@ -331,6 +352,8 @@ export default function App() {
   const [changeMoneyGiven, setChangeMoneyGiven] = useState(0); // Change money given to rider
   const [paidAmount, setPaidAmount] = useState(0);       // User entered paid amount
   const [paymentMethod, setPaymentMethod] = useState('ক্যাশ');
+  const [lastCompletedOrder, setLastCompletedOrder] = useState(null);
+  const [autoPrintOrder, setAutoPrintOrder] = useState(null);
 
   // Global Dynamic Menu State
   const [menuItems, setMenuItems] = useState([]);
@@ -451,12 +474,6 @@ export default function App() {
             setCurrentScreen('OFFLINE_VERIFICATION');
             return;
           }
-          if (devAccess && devAccess.status === 'PENDING' && ACTIVE_APP_PROFILE !== 'ADMIN') {
-            setIsLoggedIn(false);
-            setPendingDeviceId(devAccess.deviceId || '');
-            setCurrentScreen('DEVICE_PENDING');
-            return;
-          }
         } catch (devErr) {
           console.error("[App] Device registration check failed:", devErr);
         }
@@ -477,19 +494,20 @@ export default function App() {
         const { clearDeadQueueItems } = require('./database');
         clearDeadQueueItems();
 
-        // 2. Check if the database is actually empty (fresh install)
-        const isEmpty = isDatabaseEmpty();
-        if (isEmpty) {
-          console.log("[App] Database is empty. Initiating cloud restoration...");
-          setIsRestoring(true);
-          
-          // Download all collections from Firestore and insert into SQLite
-          await restoreDatabaseFromCloud();
-          
-          // Now that data is restored, run full init (refresh and seed if still missing)
-          initDatabase(false);
-          refreshData();
-          setIsRestoring(false);
+        // Unfinished-restore marker (set by ensureInitialData, cleared on finish). Retry happens post-login.
+        const { getAppConfig, setAppConfig, restoreUsersOnlyForProfile } = require('./database');
+        const restoreInProgress = getAppConfig('restore_in_progress');
+        if (restoreInProgress) {
+          console.warn(`[App] Detected unfinished initial restore (restore_in_progress=${restoreInProgress}). Will retry after login.`);
+        }
+
+        // Fresh install: download ONLY this profile's users (role-filtered) so login works pre-approval.
+        const usersEmpty = (executeInspectorQuery("SELECT COUNT(*) as c FROM users")[0]?.c || 0) === 0;
+        if (usersEmpty) {
+          console.log(`[App] No local users. Running users-only bootstrap for profile ${ACTIVE_APP_PROFILE}...`);
+          // Genuine fresh install: mark it so ensureInitialData() performs the one-time restore.
+          setAppConfig('initial_restore_required', 'true');
+          await restoreUsersOnlyForProfile();
         } else {
           // Regular launch: existing data found
           initDatabase(false);
@@ -509,10 +527,13 @@ export default function App() {
           if (rollover) refreshData();
         }, 60000);
 
-        // Pull low frequency collections (excluding menu) in the background asynchronously on startup
-        syncLowFrequencyCollections().then((didChange) => {
-          if (didChange) refreshData();
-        }).catch(e => console.log("[Startup Sync] Offline, skipped low frequency pull:", e.message));
+        // Pull low frequency collections (excluding menu) in the background on startup.
+        // Only for devices that already have data; a fresh install downloads post-login (ensureInitialData).
+        if (!usersEmpty) {
+          syncLowFrequencyCollections().then((didChange) => {
+            if (didChange) refreshData();
+          }).catch(e => console.log("[Startup Sync] Offline, skipped low frequency pull:", e.message));
+        }
       } catch (err) {
         console.error("[App] Critical Initialization error:", err);
         setIsRestoring(false);
@@ -681,6 +702,18 @@ export default function App() {
               if (!alreadyLoggedIn && onApprovableScreen) {
                 if (pendingLoginInfoRef.current) {
                   const { role, displayName, mode } = pendingLoginInfoRef.current;
+                  const initStatus = await ensureInitialData();
+                  if (initStatus === 'failed') {
+                    setPendingLoginInfo({ role, displayName, mode });
+                    setIsLoggedIn(false);
+                    setCurrentScreen('INITIAL_DATA_FAILED');
+                    return;
+                  }
+                  if (initStatus === 'running') {
+                    console.log('[App] ensureInitialData already running; skipping realtime approval routing.');
+                    return;
+                  }
+                  refreshData();
                   handleLoginSuccess(role, displayName, mode);
                 } else {
                   if (currentScreenRef.current !== 'LOGIN') {
@@ -917,21 +950,24 @@ export default function App() {
       const { setSystemOnline } = require('./database');
       setSystemOnline(isOnlineState);
 
-      if (!isOnlineState) {
+      // Latch offline unless connectivity AND internet reachability are BOTH confirmed true.
+      // isInternetReachable is often null while WiFi/cellular is "connected" but the internet is
+      // unreachable; the old check treated null as online, so wasOffline stayed false and the
+      // recovery (force-logout) branch below never ran when the connection actually returned.
+      if (state.isConnected !== true || state.isInternetReachable !== true) {
         wasOffline = true;
         return;
       }
 
-      if (wasOffline && isOnlineState) {
+      if (wasOffline) {
         wasOffline = false; // Reset to prevent duplicate recovery loops
         console.log("[Network Recovery] Internet RECONNECTED. Starting device and data recovery...");
 
-        // 1. Hardware & App Version check & push to Supabase (overwrites SQLite if different)
         try {
           const { syncDeviceHardwareAndVersion, checkAndExecuteForceLogout } = require('./services/deviceRegistry');
-          await syncDeviceHardwareAndVersion();
 
-          // 2. Authoritative check: Was this device force-logged out while offline?
+          // 1. Authoritative force-logout check FIRST — ensures a slow/failed hardware sync
+          //    cannot skip the check when connectivity returns.
           const forceRes = await checkAndExecuteForceLogout();
           if (forceRes && forceRes.triggered) {
             console.log("[Network Recovery] Force logout detected upon reconnecting! Triggering full logout...");
@@ -948,6 +984,9 @@ export default function App() {
             );
             return;
           }
+
+          // 2. Hardware & App Version check & push to Supabase (overwrites SQLite if different)
+          await syncDeviceHardwareAndVersion();
         } catch (devRecoveryErr) {
           console.warn("[Network Recovery] Device check warning on reconnect:", devRecoveryErr.message);
         }
@@ -1121,6 +1160,23 @@ export default function App() {
       const m = String(d.getMonth() + 1).padStart(2, '0');
       const day = String(d.getDate()).padStart(2, '0');
       const yesterday = `${y}-${m}-${day}`;
+
+      // 4c: If this install only holds today's data (today-only restore), skip the check entirely.
+      try {
+        const { getAppConfig } = require('./database');
+        if (getAppConfig('initial_restore_done_v1') === 'true') {
+          const olderCount =
+            (executeInspectorQuery("SELECT COUNT(*) as c FROM orders WHERE date(created_at, 'localtime') < ?", [today])[0]?.c || 0) +
+            (executeInspectorQuery("SELECT COUNT(*) as c FROM payments WHERE date(created_at, 'localtime') < ?", [today])[0]?.c || 0) +
+            (executeInspectorQuery("SELECT COUNT(*) as c FROM expenses WHERE date(created_at, 'localtime') < ?", [today])[0]?.c || 0) +
+            (executeInspectorQuery("SELECT COUNT(*) as c FROM deliveries WHERE date(created_at, 'localtime') < ? OR date(completed_at, 'localtime') < ?", [today, today])[0]?.c || 0);
+          if (olderCount === 0) {
+            return false;
+          }
+        }
+      } catch (guardErr) {
+        console.warn('[checkMissingPreviousSubmit] Guard check failed:', guardErr.message);
+      }
       
       // 1. Check if yesterday exists in daily_submit
       const history = getSubmissionHistory();
@@ -1230,7 +1286,18 @@ export default function App() {
       console.warn("[App] Login version check error:", verErr);
     }
 
-    // --- DEVICE ACCESS CONTROL (AUTHORITATIVE VERIFICATION) ---
+    // --- APP PROFILE LOGIN VALIDATION ---
+    const userRoleNormalized = String(role || '').toUpperCase().trim();
+
+    if (ACTIVE_APP_PROFILE === 'MANAGER' && userRoleNormalized !== 'MANAGER') {
+      return;
+    }
+
+    if (ACTIVE_APP_PROFILE === 'OWNER' && userRoleNormalized !== 'OWNER') {
+      return;
+    }
+
+    // --- DEVICE ACCESS CONTROL (AUTHORITATIVE VERIFICATION, post-login) ---
     try {
       const { verifyDeviceAccessOnStartupOrResume } = require('./services/deviceRegistry');
       const devAccess = await verifyDeviceAccessOnStartupOrResume(role);
@@ -1270,14 +1337,16 @@ export default function App() {
       console.error("[App] Device login permission check error:", devErr);
     }
 
-    // --- APP PROFILE LOGIN VALIDATION ---
-    const userRoleNormalized = String(role || '').toUpperCase().trim();
-
-    if (ACTIVE_APP_PROFILE === 'MANAGER' && userRoleNormalized !== 'MANAGER') {
+    // --- INITIAL DATA DOWNLOAD (today only) — required before app access ---
+    const initStatus = await ensureInitialData();
+    if (initStatus === 'failed') {
+      setPendingLoginInfo({ role, displayName, mode });
+      setIsLoggedIn(false);
+      setCurrentScreen('INITIAL_DATA_FAILED');
       return;
     }
-
-    if (ACTIVE_APP_PROFILE === 'OWNER' && userRoleNormalized !== 'OWNER') {
+    if (initStatus === 'running') {
+      console.log('[App] ensureInitialData already running; not entering app yet.');
       return;
     }
 
@@ -1359,7 +1428,8 @@ export default function App() {
         'SUPPLIER_DUE', 'ITEM_SALES_REPORT', 'SYNC_DIAGNOSTICS',
         'DELETE_HISTORY', 'SYSTEM_TOOLS', 'DEVICE_MANAGEMENT',
         'ADMIN_ANALYTICS', 'OWNER_FINANCE_DASHBOARD', 'EMPLOYEE_LIST',
-        'OWNER_EXPENSES', 'DATABASE_STATS', 'DATABASE_EXPLORER'
+        'OWNER_EXPENSES', 'DATABASE_STATS', 'DATABASE_EXPLORER',
+        'PRINTER_SETTINGS'
       ];
 
       if (subScreens.includes(currentScreen)) {
@@ -1576,6 +1646,68 @@ export default function App() {
     await syncRecordImmediately('deliveries', id);
   };
 
+  const handleDeliveryBillComplete = async (deliveryId, orderItems, delCharge = 0, changeMoney = 0) => {
+    try {
+      // Guard against duplicate execution
+      const existing = getDeliveryById(deliveryId);
+      if (existing && existing.status === 'COMPLETED') {
+        console.warn(`[DeliveryBill] Delivery ${deliveryId} is already marked COMPLETED.`);
+        return;
+      }
+
+      const activeDelivery = deliveries.find(d => d.id === deliveryId) || existing || { id: deliveryId };
+      const baseStartTime = activeDelivery.startTime || (existing && existing.startTime) || new Date().toISOString();
+      const cleanStartTime = baseStartTime.replace(/[:.]/g, '-');
+      const orderId = `${deliveryId}_${cleanStartTime}`;
+
+      const itemsSubtotal = (orderItems || []).reduce((sum, i) => sum + (i.price * i.qty), 0);
+      const finalTotal = itemsSubtotal + delCharge + changeMoney;
+      const nowIso = new Date().toISOString();
+      const todayStr = getBusinessDate();
+      const tableName = (existing && existing.customer_name) || activeDelivery.name || deliveryId;
+
+      // 1. Update deliveries table in SQLite: status='COMPLETED', amount=finalTotal, delivery_charge=delCharge
+      completeDelivery(deliveryId, finalTotal, delCharge, changeMoney);
+
+      // 2. Format order record and record completed order in orders, payments, order_items
+      const orderRecord = {
+        id: orderId,
+        tableId: tableName,
+        items: (orderItems || []).map(i => `${i.name} x${i.qty} @${i.price}`).join(', '),
+        totalAmount: itemsSubtotal,
+        deliveryCharge: delCharge,
+        changeMoneyGiven: changeMoney,
+        cashAmount: finalTotal,
+        bkashAmount: 0,
+        nagadAmount: 0,
+        rocketAmount: 0,
+        paidAmount: finalTotal,
+        grandTotal: finalTotal,
+        method: 'বিল',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        paymentTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        date: todayStr,
+        fullDate: todayStr,
+        status: 'Done'
+      };
+
+      addCompletedOrder(orderRecord);
+      setLastCompletedOrder(orderRecord);
+
+      // 3. Recalculate daily summary
+      calculateAndSaveDailySummary(todayStr);
+
+      // 4. Refresh React states so active deliveries count decrements & daily summary updates
+      refreshData();
+
+      // 5. Cloud sync immediately
+      syncRecordImmediately('orders', orderRecord.id).catch(() => {});
+      syncRecordImmediately('deliveries', deliveryId).catch(() => {});
+    } catch (err) {
+      console.error("[DeliveryBill] Error completing delivery bill:", err);
+    }
+  };
+
   // Triggers navigation to the Checkout Page (Screen 8)
   const handleNavigateToCheckout = (amount, delCharge = 0, changeMoney = 0) => {
     setPaymentAmount(amount);
@@ -1607,10 +1739,17 @@ export default function App() {
         paidAmount: paid,
         method: method,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        paymentTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        date: new Date().toISOString().substring(0, 10),
+        fullDate: new Date().toISOString().substring(0, 10),
         status: 'Done'
       };
 
       addCompletedOrder(orderRecord);
+      setLastCompletedOrder(orderRecord);
+
+      // Auto-print receipt if a verified printer is connected (silent, deduped).
+      setAutoPrintOrder(orderRecord);
 
       setPaidAmount(paid);
       setPaymentMethod(method);
@@ -1640,6 +1779,7 @@ export default function App() {
     setDeliveryCharge(0);
     setChangeMoneyGiven(0);
     setPaidAmount(0);
+    setLastCompletedOrder(null);
     setCurrentScreen('DASHBOARD');
     
     if (tid) {
@@ -2048,7 +2188,7 @@ export default function App() {
   const handleCloudRestore = async () => {
     Alert.alert(
       "Cloud Restore",
-      "Cloud থেকে আজকের এবং গতকালের তথ্য পুনরায় ডাউনলোড করা হবে।\n\nচালিয়ে যেতে চান?",
+      "Cloud থেকে সম্পূর্ণ ডাটা পুনরায় ডাউনলোড করা হবে — মাস্টার টেবিল (সম্পূর্ণ) + গত ৩১ দিনের লেনদেন (mode: full)।\n\nচালিয়ে যেতে চান?",
       [
         { text: "বাতিল", style: "cancel" },
         {
@@ -2056,12 +2196,13 @@ export default function App() {
           onPress: async () => {
             showToast("🔄 রিস্টোর করা হচ্ছে...", "sync");
             try {
-              const success = await restoreDatabaseFromCloud();
-              if (success) {
+              const restoreResult = await restoreDatabaseFromCloud();
+              if (restoreResult && restoreResult.success) {
                 refreshData();
                 Alert.alert("সফল", "Cloud থেকে ডাটা সফলভাবে রিস্টোর করা হয়েছে।");
               } else {
-                Alert.alert("ব্যর্থ", "ডাটা রিস্টোর করতে সমস্যা হয়েছে। দয়া করে নেটওয়ার্ক কানেকশন চেক করুন।");
+                const failedList = ((restoreResult && restoreResult.failedCollections) || []).join(', ');
+                Alert.alert("ব্যর্থ", `ডাটা রিস্টোর করতে সমস্যা হয়েছে। দয়া করে নেটওয়ার্ক কানেকশন চেক করুন।${failedList ? `\n\nব্যর্থ Collection: ${failedList}` : ''}`);
               }
             } catch (err) {
               console.error("[Cloud Restore] Error:", err);
@@ -2071,6 +2212,49 @@ export default function App() {
         }
       ]
     );
+  };
+
+  const ensureInitialData = async () => {
+    if (ensureInitialDataLockRef.current) return 'running';
+    ensureInitialDataLockRef.current = true;
+    try {
+      const { getAppConfig, setAppConfig } = require('./database');
+
+      if (getAppConfig('initial_restore_done_v1') === 'true') {
+        console.log('[ensureInitialData] Skipped: initial_restore_done_v1 already set.');
+        return 'done';
+      }
+
+      // Only a genuine fresh install (marked at startup when local users were empty) gets an initial
+      // restore. Existing installs — including app updates — must NOT re-download; delta sync covers them.
+      if (getAppConfig('initial_restore_required') !== 'true') {
+        setAppConfig('initial_restore_done_v1', 'true');
+        console.log('[ensureInitialData] Existing install — no initial restore needed.');
+        return 'done';
+      }
+
+      setAppConfig('restore_in_progress', new Date().toISOString());
+      setIsRestoring(true);
+
+      const result = await restoreDatabaseFromCloud({ mode: 'today' });
+
+      if (result && result.success) {
+        setAppConfig('initial_restore_done_v1', 'true');
+        setAppConfig('initial_restore_required', '');
+        console.log('[ensureInitialData] Success. initial_restore_done_v1 set.');
+        return 'done';
+      }
+
+      console.warn(`[ensureInitialData] Failed. Failed collections: ${((result && result.failedCollections) || []).join(', ') || 'unknown'}`);
+      return 'failed';
+    } catch (err) {
+      console.error('[ensureInitialData] Error:', err);
+      return 'failed';
+    } finally {
+      try { require('./database').setAppConfig('restore_in_progress', ''); } catch (e) {}
+      setIsRestoring(false);
+      ensureInitialDataLockRef.current = false;
+    }
   };
 
   const handleMenuRecovery = async () => {
@@ -2195,16 +2379,50 @@ export default function App() {
       );
     }
 
+    if (currentScreen === 'INITIAL_DATA_FAILED') {
+      return (
+        <OfflineVerificationScreen
+          onRetry={async () => {
+            const info = pendingLoginInfoRef.current;
+            if (info && info.role) {
+              await handleLoginSuccess(info.role, info.displayName, info.mode);
+            }
+          }}
+          onExit={() => BackHandler.exitApp()}
+        />
+      );
+    }
+
     if (!isLoggedIn) {
       if (currentScreen === 'DEVICE_PENDING') {
         return (
           <DevicePendingScreen
             deviceId={pendingDeviceId}
-            onApproved={() => {
+            onApproved={async () => {
               if (pendingLoginInfo) {
                 const { role, displayName, mode } = pendingLoginInfo;
+                const initStatus = await ensureInitialData();
+                if (initStatus === 'failed') {
+                  setPendingLoginInfo({ role, displayName, mode });
+                  setIsLoggedIn(false);
+                  setCurrentScreen('INITIAL_DATA_FAILED');
+                  return;
+                }
+                if (initStatus === 'running') {
+                  console.log('[App] ensureInitialData already running; skipping pending-screen approval.');
+                  return;
+                }
+                refreshData();
                 handleLoginSuccess(role, displayName, mode);
               } else {
+                const initStatus = await ensureInitialData();
+                if (initStatus === 'failed') {
+                  setCurrentScreen('LOGIN');
+                  return;
+                }
+                if (initStatus === 'running') {
+                  return;
+                }
                 setIsLoggedIn(true);
                 setCurrentScreen('DASHBOARD');
               }
@@ -2249,7 +2467,10 @@ export default function App() {
                 onNavigateToSyncDiagnostics={() => setCurrentScreen('SYNC_DIAGNOSTICS')}
                 onNavigateToDeleteHistory={() => setCurrentScreen('DELETE_HISTORY')}
                 onNavigateToSystemTools={() => setCurrentScreen('SYSTEM_TOOLS')}
+                onNavigateToBackupRestore={() => setCurrentScreen('BACKUP_RESTORE')}
                 onNavigateToDeviceManagement={() => setCurrentScreen('DEVICE_MANAGEMENT')}
+                onNavigateToPrinterSettings={() => setCurrentScreen('PRINTER_SETTINGS')}
+                onNavigateToBackupRestore={() => setCurrentScreen('BACKUP_RESTORE')}
                 onNavigateToAIDatasetMonitor={() => setCurrentScreen('AI_DATASET_MONITOR')}
                 onNavigateToAIDatasetAuditCenter={() => setCurrentScreen('AI_DATASET_AUDIT_CENTER')}
                 onNavigateToAnalytics={() => setCurrentScreen('ADMIN_ANALYTICS')}
@@ -2295,6 +2516,8 @@ export default function App() {
                 onNavigateToItemSalesReport={() => setCurrentScreen('ITEM_SALES_REPORT')}
                 onNavigateToAnalytics={() => setCurrentScreen('ADMIN_ANALYTICS')}
                 onNavigateToActivityLog={() => setCurrentScreen('ACTIVITY_LOG')}
+                onNavigateToPrinterSettings={() => setCurrentScreen('PRINTER_SETTINGS')}
+                onNavigateToBackupRestore={() => setCurrentScreen('BACKUP_RESTORE')}
                 onCloudRestore={handleCloudRestore}
                 onSameDayResync={handleSameDayResync}
 
@@ -2333,6 +2556,8 @@ export default function App() {
                 onNavigateToExpenses={() => setCurrentScreen('EXPENSES')}
                 onNavigateToSupplierDue={() => setCurrentScreen('SUPPLIER_DUE')}
                 onNavigateToItemSalesReport={() => setCurrentScreen('ITEM_SALES_REPORT')}
+                onNavigateToPrinterSettings={() => setCurrentScreen('PRINTER_SETTINGS')}
+                onNavigateToBackupRestore={() => setCurrentScreen('BACKUP_RESTORE')}
                 onCloudRestore={handleCloudRestore}
                 onSameDayResync={handleSameDayResync}
                 onMenuRecovery={handleMenuRecovery}
@@ -2366,6 +2591,8 @@ export default function App() {
               onNavigateToItemSalesReport={() => setCurrentScreen('ITEM_SALES_REPORT')}
               onNavigateToAnalytics={() => setCurrentScreen('ADMIN_ANALYTICS')}
               onNavigateToActivityLog={() => setCurrentScreen('ACTIVITY_LOG')}
+              onNavigateToPrinterSettings={() => setCurrentScreen('PRINTER_SETTINGS')}
+                onNavigateToBackupRestore={() => setCurrentScreen('BACKUP_RESTORE')}
               onCloudRestore={handleCloudRestore}
               onSameDayResync={handleSameDayResync}
 
@@ -2404,6 +2631,8 @@ export default function App() {
               onNavigateToExpenses={() => setCurrentScreen('EXPENSES')}
               onNavigateToSupplierDue={() => setCurrentScreen('SUPPLIER_DUE')}
               onNavigateToItemSalesReport={() => setCurrentScreen('ITEM_SALES_REPORT')}
+              onNavigateToPrinterSettings={() => setCurrentScreen('PRINTER_SETTINGS')}
+                onNavigateToBackupRestore={() => setCurrentScreen('BACKUP_RESTORE')}
               onCloudRestore={handleCloudRestore}
               onSameDayResync={handleSameDayResync}
               onMenuRecovery={handleMenuRecovery}
@@ -2413,15 +2642,46 @@ export default function App() {
               isDailySubmitted={isDailySubmitted}
               onDeleteActiveOrder={handleDeleteActiveOrder}
               onDeleteDoneOrder={handleDeleteDoneOrder}
+              onResetIjara={handleResetIjara}
+              onRollbackAutoIjara={handleRollbackAutoIjara}
               userRole={userRole}
             />
           );
         }
 
-      case 'TABLE_DETAIL':
-        const allActiveOrders = [...tables, ...deliveries];
-        let activeTable = allActiveOrders.find(t => t.id === selectedTableId);
-        
+      case 'TABLE_DETAIL': {
+        let activeTable = null;
+        if (selectedTableId && selectedTableId.toString().startsWith('D-')) {
+          const del = getDeliveryById(selectedTableId);
+          if (del) {
+            const parsedItems = typeof del.items === 'string' ? JSON.parse(del.items || '[]') : (del.items || []);
+            const charge = parseFloat(del.delivery_charge) || 0;
+            const changeMoney = parseFloat(del.change_money_given) || 0;
+            const itemsSubtotal = parsedItems.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.qty, 10) || 1)), 0);
+            const canonicalAmount = (del.amount !== null && del.amount !== undefined && !isNaN(del.amount) && Number(del.amount) > 0)
+              ? parseFloat(del.amount)
+              : (itemsSubtotal + charge);
+            activeTable = {
+              id: del.id,
+              name: del.customer_name,
+              status: del.status,
+              items: parsedItems,
+              startTime: del.startTime || '',
+              deliveryCharge: charge,
+              delivery_charge: charge,
+              changeMoneyGiven: changeMoney,
+              change_money_given: changeMoney,
+              amount: canonicalAmount,
+              totalAmount: canonicalAmount,
+            };
+          }
+        }
+
+        if (!activeTable) {
+          const allActiveOrders = [...tables, ...deliveries];
+          activeTable = allActiveOrders.find(t => t.id === selectedTableId);
+        }
+
         // If not found in active, look in completed (Admin edit mode)
         if (!activeTable && userRole === 'admin') {
           const doneOrder = completedOrders.find(o => o.id === selectedTableId);
@@ -2456,10 +2716,13 @@ export default function App() {
             table={activeTable}
             onBack={async () => {
               if (selectedTableId && selectedTableId.toString().startsWith('D-')) {
-                const delOrder = deliveries.find(d => d.id === selectedTableId);
-                if (!delOrder || !delOrder.items || delOrder.items.length === 0) {
-                  removeDelivery(selectedTableId);
-                  await syncRecordImmediately('deliveries', selectedTableId);
+                const existing = getDeliveryById(selectedTableId);
+                if (existing && existing.status !== 'COMPLETED') {
+                  const parsed = JSON.parse(existing.items || '[]');
+                  if (!parsed || parsed.length === 0) {
+                    removeDelivery(selectedTableId);
+                    await syncRecordImmediately('deliveries', selectedTableId);
+                  }
                 }
               }
               setCurrentScreen('DASHBOARD');
@@ -2469,12 +2732,42 @@ export default function App() {
             onUpdateDeliveryDetails={handleUpdateDeliveryDetails}
             onPaymentDone={handleNavigateToCheckout}
             onNavigateToAddItem={() => setCurrentScreen('ADD_ITEM')}
+            onDeliveryBillComplete={handleDeliveryBillComplete}
           />
         );
+      }
       
-      case 'ADD_ITEM':
-        const allActiveItems = [...tables, ...deliveries];
-        const activeItemTable = allActiveItems.find(t => t.id === selectedTableId);
+      case 'ADD_ITEM': {
+        let activeItemTable = null;
+        if (selectedTableId && selectedTableId.toString().startsWith('D-')) {
+          const del = getDeliveryById(selectedTableId);
+          if (del) {
+            const parsedItems = typeof del.items === 'string' ? JSON.parse(del.items || '[]') : (del.items || []);
+            const charge = parseFloat(del.delivery_charge) || 0;
+            const changeMoney = parseFloat(del.change_money_given) || 0;
+            const itemsSubtotal = parsedItems.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.qty, 10) || 1)), 0);
+            const canonicalAmount = (del.amount !== null && del.amount !== undefined && !isNaN(del.amount) && Number(del.amount) > 0)
+              ? parseFloat(del.amount)
+              : (itemsSubtotal + charge);
+            activeItemTable = {
+              id: del.id,
+              name: del.customer_name,
+              status: del.status,
+              items: parsedItems,
+              startTime: del.startTime || '',
+              deliveryCharge: charge,
+              delivery_charge: charge,
+              changeMoneyGiven: changeMoney,
+              change_money_given: changeMoney,
+              amount: canonicalAmount,
+              totalAmount: canonicalAmount,
+            };
+          }
+        }
+        if (!activeItemTable) {
+          const allActiveItems = [...tables, ...deliveries];
+          activeItemTable = allActiveItems.find(t => t.id === selectedTableId);
+        }
         return (
           <AddItemScreen
             table={activeItemTable}
@@ -2486,6 +2779,7 @@ export default function App() {
             onUpdateMenuPrice={handleUpdateMenuPrice}
           />
         );
+      }
 
       case 'EDIT_MENU':
         return (
@@ -2513,6 +2807,7 @@ export default function App() {
             deliveryCharge={deliveryCharge}
             changeMoneyGiven={changeMoneyGiven}
             totalItems={totalItemsCount}
+            items={checkoutTable ? checkoutTable.items : []}
             userRole={userRole}
             onBack={() => setCurrentScreen('TABLE_DETAIL')}
             onCompletePayment={handleCompletePayment}
@@ -2528,6 +2823,8 @@ export default function App() {
            totalAmount={paymentAmount + deliveryCharge + changeMoneyGiven}
            paidAmount={paidAmount}
            paymentMethod={paymentMethod}
+           order={lastCompletedOrder}
+           items={successTable ? successTable.items : []}
            onReturnHome={handleReturnHome}
          />
        );
@@ -2671,6 +2968,14 @@ export default function App() {
           return null;
         }
 
+      case 'BACKUP_RESTORE':
+        return (
+          <BackupRestoreScreen
+            onBack={() => setCurrentScreen('DASHBOARD')}
+            onRefreshAppState={refreshData}
+          />
+        );
+
       case 'SYSTEM_TOOLS':
         if (ACTIVE_APP_PROFILE === 'ADMIN' && String(userRole || '').toLowerCase().trim() === 'admin') {
           return (
@@ -2682,6 +2987,14 @@ export default function App() {
         } else {
           return null;
         }
+
+      case 'PRINTER_SETTINGS':
+        return (
+          <PrinterSettingsScreen
+            onBack={() => setCurrentScreen('DASHBOARD')}
+            userRole={userRole}
+          />
+        );
 
       case 'DB_HEALTH':
         if (ACTIVE_APP_PROFILE === 'ADMIN' && String(userRole || '').toLowerCase().trim() === 'admin') {
@@ -2878,6 +3191,9 @@ export default function App() {
       <View style={styles.container}>
         <StatusBar style="light" translucent={true} backgroundColor="transparent" />
         {renderScreen()}
+
+        {/* Silent auto-print host (only when a verified printer is connected) */}
+        <AutoReceiptPrinter order={autoPrintOrder} onDone={() => setAutoPrintOrder(null)} />
 
 
 

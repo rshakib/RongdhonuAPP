@@ -1,14 +1,60 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   StyleSheet,
   Text,
   View,
   TouchableOpacity,
+  BackHandler,
+  ActivityIndicator,
+  Alert,
   StatusBar as RNStatusBar
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-export default function DeviceBlockedScreen({ deviceId, isAdminLock = false, onExit }) {
+export default function DeviceBlockedScreen({ deviceId, isAdminLock = false, onRecheck, onExit }) {
+  const [isChecking, setIsChecking] = useState(false);
+
+  // Prevent back navigation to bypass the block screen
+  useEffect(() => {
+    const backAction = () => {
+      Alert.alert(
+        'অ্যাপ বন্ধ করুন',
+        'ডিভাইসটি ব্লক করা অবস্থায় ব্যবহারের অনুমতি নেই। আপনি কি অ্যাপ থেকে বের হতে চান?',
+        [
+          { text: 'না', style: 'cancel' },
+          { text: 'হ্যাঁ', onPress: () => BackHandler.exitApp() }
+        ]
+      );
+      return true; // Block hardware back action
+    };
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+    return () => backHandler.remove();
+  }, []);
+
+  const handleRecheckStatus = async () => {
+    if (typeof onRecheck === 'function') {
+      setIsChecking(true);
+      try {
+        await onRecheck();
+      } catch (err) {
+        Alert.alert('ত্রুটি', 'স্ট্যাটাস যাচাই করতে সমস্যা হয়েছে: ' + (err.message || 'নেটওয়ার্ক সমস্যা'));
+      } finally {
+        setIsChecking(false);
+      }
+    } else {
+      Alert.alert('অপেক্ষারত', 'অ্যাডমিনিস্ট্রেটর আনব্লক না করা পর্যন্ত অপেক্ষা করুন।');
+    }
+  };
+
+  const handleExitApp = () => {
+    if (typeof onExit === 'function') {
+      onExit();
+    } else {
+      BackHandler.exitApp();
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <RNStatusBar barStyle="light-content" backgroundColor="#09090b" />
@@ -27,7 +73,7 @@ export default function DeviceBlockedScreen({ deviceId, isAdminLock = false, onE
         {/* Status Pill */}
         <View style={styles.statusPill}>
           <Text style={styles.statusPillText}>
-            {isAdminLock ? '✖ স্ট্যাটাস: সাকিব লকড (হারানো/চুরি ডিভাইস)' : '✖ স্ট্যাটাস: ব্লকড'}
+            {isAdminLock ? '✖ স্ট্যাটাস: অ্যাডমিন লকড (হারানো/চুরি ডিভাইস)' : '✖ স্ট্যাটাস: ব্লকড'}
           </Text>
         </View>
 
@@ -36,25 +82,25 @@ export default function DeviceBlockedScreen({ deviceId, isAdminLock = false, onE
           {isAdminLock ? (
             <>
               <Text style={styles.bodyText}>
-                এই ডিভাইসের সাকিব এক্সেস নিষ্ক্রিয় করা হয়েছে।
+                এই ডিভাইসের অ্যাক্সেস স্থায়ীভাবে নিষ্ক্রিয় করা হয়েছে।
               </Text>
               <Text style={[styles.bodyText, { marginTop: 8 }]}>
                 ডিভাইসটি হারানো অথবা চুরি হিসেবে চিহ্নিত করা হয়েছে।
               </Text>
               <Text style={[styles.bodyText, { marginTop: 10, color: '#a1a1aa' }]}>
-                অনুগ্রহ করে অন্য সাকিব-এর সাথে যোগাযোগ করুন।
+                অনুগ্রহ করে সিস্টেম অ্যাডমিনিস্ট্রেটরের সাথে যোগাযোগ করুন।
               </Text>
             </>
           ) : (
             <>
               <Text style={styles.bodyText}>
-                এই ডিভাইসটি সাকিব ব্লক করেছেন।
+                এই ডিভাইসটি অ্যাডমিনিস্ট্রেটর কর্তৃক ব্লক করা হয়েছে।
               </Text>
               <Text style={[styles.bodyText, { marginTop: 8 }]}>
-                এই ডিভাইস থেকে লগইন করা যাবে না।
+                এই ডিভাইস থেকে লগইন বা কোনো অপারেশন পরিচালনা করা যাবে না।
               </Text>
               <Text style={[styles.bodyText, { marginTop: 10, color: '#a1a1aa' }]}>
-                অনুগ্রহ করে সাকিব-এর সাথে যোগাযোগ করুন।
+                পুনরায় সচল করতে অ্যাডমিনিস্ট্রেটরের সাথে যোগাযোগ করুন।
               </Text>
             </>
           )}
@@ -68,14 +114,27 @@ export default function DeviceBlockedScreen({ deviceId, isAdminLock = false, onE
           </View>
         ) : null}
 
-        {/* Action Button */}
+        {/* Action Buttons */}
         <View style={styles.btnGroup}>
           <TouchableOpacity
-            style={styles.btnExit}
-            onPress={onExit}
+            style={styles.btnRecheck}
+            onPress={handleRecheckStatus}
+            disabled={isChecking}
             activeOpacity={0.85}
           >
-            <Text style={styles.btnExitText}>🚪 প্রস্থান / লগইনে ফিরে যান</Text>
+            {isChecking ? (
+              <ActivityIndicator size="small" color="#ffffff" />
+            ) : (
+              <Text style={styles.btnRecheckText}>🔄 পুনরায় স্ট্যাটাস যাচাই করুন (Recheck)</Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.btnExit}
+            onPress={handleExitApp}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.btnExitText}>🚪 অ্যাপ বন্ধ করুন (Exit App)</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -175,9 +234,25 @@ const styles = StyleSheet.create({
   },
   btnGroup: {
     width: '100%',
+    gap: 12,
+  },
+  btnRecheck: {
+    backgroundColor: '#3b82f6',
+    borderRadius: 12,
+    height: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+  },
+  btnRecheckText: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+    fontSize: 14,
   },
   btnExit: {
-    backgroundColor: '#b91c1c',
+    backgroundColor: '#27272a',
+    borderWidth: 1,
+    borderColor: '#3f3f46',
     borderRadius: 12,
     height: 48,
     justifyContent: 'center',
@@ -185,7 +260,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   btnExitText: {
-    color: '#ffffff',
+    color: '#f87171',
     fontWeight: 'bold',
     fontSize: 14,
   },

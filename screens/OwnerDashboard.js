@@ -15,10 +15,22 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { exportSalesReportPDF, exportDepositReportPDF } from '../pdfHelper';
-import { formatDisplayDate, getBusinessDate } from '../database';
-import { TodaySalesCard, TotalCashCard, ActiveTablesCard, MonthlyTotalCard } from '../components/StatCard';
+import { formatDisplayDate, getBusinessDate, getDb, getItemSalesReport } from '../database';
+import PrintReceiptModal from '../components/PrintReceiptModal';
+import { TodaySalesCard, TotalCashCard, MonthlyTotalCard } from '../components/StatCard';
+import OwnerSideMenu from '../components/OwnerSideMenu';
+import DepositReportModal from '../components/DepositReportModal';
+import PastAccountModal from '../components/PastAccountModal';
+import SalesReportModal from '../components/SalesReportModal';
+import OrderDetailModal from '../components/OrderDetailModal';
 
 const { width } = Dimensions.get('window');
+
+const toBengaliNumber = (num) => {
+  if (num === null || num === undefined) return '';
+  const bengaliDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+  return String(num).replace(/\d/g, d => bengaliDigits[parseInt(d, 10)]);
+};
 
 const getBengaliDate = () => {
   const days = ['রবিবার', 'সোমবার', 'মঙ্গলবার', 'বুধবার', 'বৃহস্পতিবার', 'শুক্রবার', 'শনিবার'];
@@ -114,7 +126,7 @@ const formatStartTime = (timeStr) => {
   return timeStr;
 };
 
-export default function OwnerDashboard({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onUpdateTableName, onNavigateToExpenses, onNavigateToSubmit, onNavigateToEditMenu, onNavigateToSupplierDue, onNavigateToItemSalesReport, onNavigateToAnalytics, onCloudRestore, onMenuRecovery, onHistoricalMonthDownload, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, delCountdown, tabCountdown, fullCountdown, onNavigateToOwnerFinance, onNavigateToActivityLog }) {
+export default function OwnerDashboard({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onUpdateTableName, onNavigateToExpenses, onNavigateToSubmit, onNavigateToEditMenu, onNavigateToSupplierDue, onNavigateToItemSalesReport, onNavigateToAnalytics, onCloudRestore, onSameDayResync, onMenuRecovery, onHistoricalMonthDownload, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, delCountdown, tabCountdown, fullCountdown, onNavigateToOwnerFinance, onNavigateToActivityLog, onNavigateToPrinterSettings, onNavigateToBackupRestore }) {
   const [renameModalVisible, setRenameModalVisible] = useState(false);
   const [selectedTableForRename, setSelectedTableForRename] = useState(null);
   const [newTableName, setNewTableName] = useState('');
@@ -124,7 +136,10 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
   const [ijaraModalVisible, setIjaraModalVisible] = useState(false);
   const [salesReportVisible, setSalesReportVisible] = useState(false);
   const [depositReportVisible, setDepositReportVisible] = useState(false);
+  const [dayDetailModalVisible, setDayDetailModalVisible] = useState(false);
+  const [selectedReportDay, setSelectedReportDay] = useState(null);
   const [tempIjara, setTempIjara] = useState(dailyExpenses.ijara.toString());
+  const [tableFilter, setTableFilter] = useState('ALL');
 
   // Past Account States
   const [pastAccountModalVisible, setPastAccountModalVisible] = useState(false);
@@ -191,6 +206,7 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
 
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [orderDetailVisible, setOrderDetailVisible] = useState(false);
+  const [printOrder, setPrintOrder] = useState(null);
 
   // Android Back Handler for Modals
   useEffect(() => {
@@ -204,6 +220,7 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
       if (ijaraModalVisible) { setIjaraModalVisible(false); return true; }
       if (salesReportVisible) { setSalesReportVisible(false); return true; }
       if (depositReportVisible) { setDepositReportVisible(false); return true; }
+      if (dayDetailModalVisible) { setDayDetailModalVisible(false); return true; }
       if (menuModalVisible) { setMenuModalVisible(false); return true; }
       if (renameModalVisible) { setRenameModalVisible(false); return true; }
 
@@ -216,7 +233,7 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
     );
 
     return () => backHandler.remove();
-  }, [orderDetailVisible, calendarVisible, yearPickerVisible, monthPickerVisible, pastAccountModalVisible, ijaraModalVisible, salesReportVisible, depositReportVisible, menuModalVisible, renameModalVisible]);
+  }, [orderDetailVisible, calendarVisible, yearPickerVisible, monthPickerVisible, pastAccountModalVisible, ijaraModalVisible, salesReportVisible, depositReportVisible, dayDetailModalVisible, menuModalVisible, renameModalVisible]);
 
   const handleTableLongPress = (table) => {
     setSelectedTableForRename(table);
@@ -327,7 +344,19 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
   };
 
   const handleSavePastEntry = () => {
-    if (!pastDate || !pastTotalSell) {
+    let effectiveSell = parseFloat(pastTotalSell) || 0;
+    if (effectiveSell === 0) {
+      effectiveSell = (parseFloat(pastCash) || 0) +
+                      (parseFloat(pastBkash) || 0) +
+                      (parseFloat(pastNagad) || 0) +
+                      (parseFloat(pastRocket) || 0) +
+                      (parseFloat(pastDeliverySell) || 0);
+      if (effectiveSell > 0) {
+        setPastTotalSell(String(effectiveSell));
+      }
+    }
+
+    if (!pastDate || effectiveSell === 0) {
       Alert.alert("ত্রুটি", "তারিখ এবং মোট বিক্রয় আবশ্যিক!");
       return;
     }
@@ -347,7 +376,7 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
     const bazar = parseFloat(pastBazar) || 0;
     const others = parseFloat(pastOthers) || 0;
     const totalExpense = dudu + akash + burger + bazar + others;
-    const sell = parseFloat(pastTotalSell) || 0;
+    const sell = effectiveSell;
 
     const record = {
       date: pastDate,
@@ -399,6 +428,99 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
   const bkashSale = todaysOrders.reduce((sum, o) => sum + (o.bkash_amount || (o.method === 'বিকাশ' ? o.paidAmount : 0) || 0), 0);
   const nagadSale = todaysOrders.reduce((sum, o) => sum + (o.nagad_amount || (o.method === 'নগদ' ? o.paidAmount : 0) || 0), 0);
   const rocketSale = todaysOrders.reduce((sum, o) => sum + (o.rocket_amount || (o.method === 'রকেট' ? o.paidAmount : 0) || 0), 0);
+  const cashSale = todaysOrders.reduce((sum, o) => sum + (o.cash_amount || (o.method === 'ক্যাশ' ? o.paidAmount : 0) || 0), 0);
+  const dueSale = todaysOrders.reduce((sum, o) => sum + (o.due_amount || (o.method === 'বাকি' ? (o.dueAmount || o.totalAmount || 0) : 0) || 0), 0);
+
+  // Segmented payment percentages
+  const totalPaymentCalculated = (cashSale + bkashSale + nagadSale + rocketSale + dueSale) || todaySale || 1;
+  const cashPct = Math.max(cashSale > 0 ? 5 : 0, Math.round((cashSale / totalPaymentCalculated) * 100));
+  const bkashPct = Math.max(bkashSale > 0 ? 5 : 0, Math.round((bkashSale / totalPaymentCalculated) * 100));
+  const nagadPct = Math.max(nagadSale > 0 ? 5 : 0, Math.round((nagadSale / totalPaymentCalculated) * 100));
+  const rocketPct = Math.max(rocketSale > 0 ? 5 : 0, Math.round((rocketSale / totalPaymentCalculated) * 100));
+  const duePct = Math.max(dueSale > 0 ? 5 : 0, Math.max(0, 100 - (cashPct + bkashPct + nagadPct + rocketPct)));
+
+  // Last 7 Days History
+  const dayNamesShortBn = ['রবি', 'সোম', 'মঙ্গল', 'বুধ', 'বৃহ', 'শুক্র', 'শনি'];
+  const last7DaysData = [];
+  let max7DaySale = 1;
+
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const dateKey = `${yyyy}-${mm}-${dd}`;
+    const shortDate = `${parseInt(dd, 10)}/${parseInt(mm, 10)}`;
+    const isToday = (i === 0);
+    const dayName = isToday ? 'আজ' : dayNamesShortBn[d.getDay()];
+
+    let sales = 0;
+    if (isToday) {
+      sales = todaySale;
+    } else {
+      const sub = submissionHistory?.find(s => s.date === dateKey);
+      if (sub && sub.sell) {
+        sales = sub.sell;
+      } else {
+        try {
+          const db = getDb();
+          const row = db?.getFirstSync("SELECT total_sell FROM daily_submit WHERE date = ?", [dateKey]);
+          if (row && row.total_sell) sales = row.total_sell;
+        } catch (e) {}
+      }
+    }
+    if (sales > max7DaySale) max7DaySale = sales;
+    last7DaysData.push({ dayName, shortDate, dateKey, sales, isToday });
+  }
+
+  let bestDayKey = '';
+  let highest7DaySale = 0;
+  last7DaysData.forEach(item => {
+    if (item.sales > highest7DaySale) {
+      highest7DaySale = item.sales;
+      bestDayKey = item.dateKey;
+    }
+  });
+
+  // Table status and order amount helpers
+  const getTableAmount = (t) => {
+    if (!t || !t.items) return 0;
+    return t.items.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.qty, 10) || 1)), 0);
+  };
+
+  const getTableElapsedMinutes = (t) => {
+    if (!t || !t.startTime) return null;
+    try {
+      const start = new Date(t.startTime).getTime();
+      if (isNaN(start)) return null;
+      return Math.max(0, Math.floor((Date.now() - start) / 60000));
+    } catch (e) {
+      return null;
+    }
+  };
+
+  const freeTablesCount = tables.filter(t => t.status !== 'BUSY').length;
+  const busyTablesCount = tables.filter(t => t.status === 'BUSY').length;
+  const activeDeliveriesList = deliveries.filter(d => d.status === 'BUSY');
+
+  // Executive Dashboard Insights: Top Selling Items for Today
+  let topSellingItems = [];
+  let topItemPct = 0;
+  try {
+    const rawReport = getItemSalesReport(todayStr, todayStr) || [];
+    const validItems = rawReport
+      .filter(item => (item.quantitySold || 0) > 0 && (item.name || '').trim().toLowerCase() !== 'পানি')
+      .sort((a, b) => (b.quantitySold || 0) - (a.quantitySold || 0));
+
+    topSellingItems = validItems.slice(0, 5);
+    const totalFoodSalesToday = validItems.reduce((sum, it) => sum + (it.totalSales || 0), 0);
+    topItemPct = totalFoodSalesToday > 0 && topSellingItems[0]
+      ? Math.round(((topSellingItems[0].totalSales || 0) / totalFoodSalesToday) * 100)
+      : 0;
+  } catch (err) {
+    console.error("[OwnerDashboard] Error fetching top selling items:", err);
+  }
   const currentMonthPrefix = todayStr.substring(0, 7);
   const thisMonthSubmissions = submissionHistory?.filter(item => item.date && item.date.startsWith(currentMonthPrefix)) || [];
   const monthlyTotalSell = thisMonthSubmissions.reduce((sum, item) => sum + (item.sell || 0), 0) + todaySale;
@@ -554,7 +676,7 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollBody} contentContainerStyle={{ paddingBottom: 110 }}>
-        {/* Horizontal Stats Row */}
+        {/* ── 1. TOP SUMMARY CARDS (Active Tables Card removed) ── */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsContainer}>
           <TodaySalesCard
             todaySale={todaySale}
@@ -569,56 +691,335 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
             nagadSale={nagadSale}
             rocketSale={rocketSale}
           />
-          <ActiveTablesCard
-            activeCount={totalActiveCount}
-            totalTables={tables.length}
-          />
           <MonthlyTotalCard
             monthlyTotalSell={monthlyTotalSell}
           />
         </ScrollView>
 
-        {/* Table Grid */}
-        <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeaderRow}><Text style={styles.sectionTitle}>টেবিল স্ট্যাটাস <Text style={styles.sectionSubtitle}>(রিনেম করতে লং প্রেস)</Text></Text><Text style={styles.infoIcon}>ℹ️</Text></View>
-          <View style={styles.tableGrid}>
-             {tables.map((table) => {
-               const isBusy = table.status === 'BUSY';
-               const amount = table.items?.reduce((sum, i) => sum + (i.price * i.qty), 0) || 0;
-               return (
-                 <TouchableOpacity key={table.id} onPress={() => onTableSelect(table.id)} onLongPress={() => handleTableLongPress(table)} style={[styles.tableCard, isBusy ? styles.tableBusyBorder : styles.tableFreeBorder]}>
-                   <Text style={styles.tableId}>{table.name || table.id}</Text>
-                   <View style={styles.tableStatusRow}><View style={[styles.statusDot, isBusy ? styles.dotOrange : styles.dotGreen]} /><Text style={[styles.tableStatusText, isBusy ? styles.textOrange : styles.textGreen]}>{table.status}</Text></View>
-                   {isBusy ? <Text style={styles.tableAmount}>৳ {amount}</Text> : <View style={{height:10}} />}
-                   <Text style={styles.chairIcon}>🪑</Text>
-                 </TouchableOpacity>
-               );
-             })}
+        {/* ── 2. টাকা কোন পথে এল (Money Source / Income Breakdown) ── */}
+        <View style={styles.paymentSourceCard}>
+          <Text style={styles.sectionHeaderTitle}>টাকা কোন পথে এল</Text>
+          {/* Segmented multi-color horizontal bar */}
+          <View style={styles.segmentedBarTrack}>
+            {cashPct > 0 && <View style={[styles.segmentBar, { width: `${cashPct}%`, backgroundColor: '#10B981' }]} />}
+            {bkashPct > 0 && <View style={[styles.segmentBar, { width: `${bkashPct}%`, backgroundColor: '#E11D48' }]} />}
+            {nagadPct > 0 && <View style={[styles.segmentBar, { width: `${nagadPct}%`, backgroundColor: '#F97316' }]} />}
+            {rocketPct > 0 && <View style={[styles.segmentBar, { width: `${rocketPct}%`, backgroundColor: '#8B5CF6' }]} />}
+            {duePct > 0 && <View style={[styles.segmentBar, { width: `${duePct}%`, backgroundColor: '#64748B' }]} />}
           </View>
-        </View>
-        <View style={styles.sectionContainer}>
-          <Text style={styles.sectionTitle}>সক্রিয় ডেলিভারি ({deliveries.filter(d => d.status === 'BUSY').length})</Text>
-          <View style={{ marginTop: 10 }}>
-             {deliveries.filter(d => d.status === 'BUSY').length > 0 ? (
-               deliveries.filter(d => d.status === 'BUSY').map((delivery) => (
-                   <TouchableOpacity key={delivery.id} style={[styles.deliveryCard, { marginBottom: 10 }]} onPress={() => onTableSelect(delivery.id)}>
-                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                       <View>
-                         <Text style={styles.deliveryTitle}>{delivery.name}</Text>
-                          <Text style={styles.deliveryTime}>শুরু: {formatStartTime(delivery.startTime)}</Text>
-                       </View>
-                       <Text style={styles.deliveryAmount}>৳ {delivery.items.reduce((sum, i) => sum + (i.price * i.qty), 0)}</Text>
-                     </View>
-                   </TouchableOpacity>
-               ))
-             ) : null}
-             <TouchableOpacity style={styles.emptyDeliveryPlaceholder} onPress={onCreateDelivery}>
-               <Text style={styles.emptyDeliveryText}>➕ নতুন ডেলিভারি শুরু করুন</Text>
-             </TouchableOpacity>
+          {/* Breakdown legend */}
+          <View style={styles.paymentLegendGrid}>
+            <View style={styles.paymentLegendItem}>
+              <View style={[styles.legendDot, { backgroundColor: '#10B981' }]} />
+              <Text style={styles.legendLabel}>ক্যাশ</Text>
+              <Text style={styles.legendVal}>৳{cashSale.toLocaleString()}</Text>
+            </View>
+            <View style={styles.paymentLegendItem}>
+              <View style={[styles.legendDot, { backgroundColor: '#E11D48' }]} />
+              <Text style={styles.legendLabel}>বিকাশ</Text>
+              <Text style={styles.legendVal}>৳{bkashSale.toLocaleString()}</Text>
+            </View>
+            <View style={styles.paymentLegendItem}>
+              <View style={[styles.legendDot, { backgroundColor: '#F97316' }]} />
+              <Text style={styles.legendLabel}>নগদ</Text>
+              <Text style={styles.legendVal}>৳{nagadSale.toLocaleString()}</Text>
+            </View>
+            <View style={styles.paymentLegendItem}>
+              <View style={[styles.legendDot, { backgroundColor: '#8B5CF6' }]} />
+              <Text style={styles.legendLabel}>রকেট</Text>
+              <Text style={styles.legendVal}>৳{rocketSale.toLocaleString()}</Text>
+            </View>
+            {dueSale > 0 && (
+              <View style={styles.paymentLegendItem}>
+                <View style={[styles.legendDot, { backgroundColor: '#64748B' }]} />
+                <Text style={styles.legendLabel}>বাকি</Text>
+                <Text style={styles.legendVal}>৳{dueSale.toLocaleString()}</Text>
+              </View>
+            )}
           </View>
         </View>
 
-        {/* Order Log */}
+        {/* ── 3. গত ৭ দিনের বিক্রয় (Last 7 Days Sales — Vertical Bar Chart) ── */}
+        <View style={styles.chartCard}>
+          {/* Header Row */}
+          <View style={styles.chartHeaderRow}>
+            <View>
+              <Text style={styles.chartCardTitle}>গত ৭ দিনের বিক্রয়</Text>
+              <Text style={styles.chartCardSubtitle}>আজ: ৳{(todaySale || 0).toLocaleString()}</Text>
+            </View>
+            <View style={styles.chartHighestBadge}>
+              <Text style={styles.chartHighestBadgeText}>
+                সর্বোচ্চ ৳{highest7DaySale >= 1000 ? (highest7DaySale / 1000).toFixed(1) + 'k' : highest7DaySale}
+              </Text>
+            </View>
+          </View>
+
+          {/* Vertical Bar Chart Container */}
+          <View style={styles.chartBarsRow}>
+            {last7DaysData.map(item => {
+              const barHeight = Math.max(16, Math.round((item.sales / (max7DaySale || 1)) * 105));
+              const isBest = item.dateKey === bestDayKey && item.sales > 0 && !item.isToday;
+              const kVal = (item.sales >= 1000)
+                ? (item.sales / 1000).toFixed(1) + 'k'
+                : (item.sales > 0 ? item.sales.toString() : '0');
+
+              const barColor = item.isToday ? '#4BDD7F' : (isBest ? '#9B702C' : '#575298');
+
+              return (
+                <View key={item.dateKey} style={styles.chartCol}>
+                  <View style={styles.chartBarCol}>
+                    <Text style={[styles.chartBarValueText, item.isToday && styles.chartBarValueTextToday]}>
+                      {kVal}
+                    </Text>
+                    <View style={[styles.chartBarFill, { height: barHeight, backgroundColor: barColor }]} />
+                  </View>
+
+                  <Text style={[styles.chartDayText, item.isToday && styles.chartDayTextToday]}>
+                    {item.dayName}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* ── 4. টেবিল ও সক্রিয় ডেলিভারি (Combined Table & Active Delivery Section) ── */}
+        <View style={styles.tableDeliveryCard}>
+          {/* Header */}
+          <View style={styles.tableDeliveryHeaderRow}>
+            <Text style={styles.tableDeliveryTitle}>টেবিল ও ডেলিভারি</Text>
+            {/* Filter Toggle Pills */}
+            <View style={styles.tableFilterPillGroup}>
+              <TouchableOpacity
+                style={[styles.tableFilterBtn, tableFilter === 'ALL' && styles.tableFilterBtnActive]}
+                onPress={() => setTableFilter('ALL')}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.tableFilterBtnText, tableFilter === 'ALL' && styles.tableFilterBtnTextActive]}>
+                  সব {tables.length}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.tableFilterBtn, tableFilter === 'BUSY' && styles.tableFilterBtnActive]}
+                onPress={() => setTableFilter(tableFilter === 'BUSY' ? 'ALL' : 'BUSY')}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.tableFilterBtnText, tableFilter === 'BUSY' && styles.tableFilterBtnTextActive]}>
+                  চলছে {busyTablesCount}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* 4-Column Responsive Table Grid */}
+          <View style={styles.tableVisualGrid}>
+            {tables.map(t => {
+              if (tableFilter === 'BUSY' && t.status !== 'BUSY') return null;
+
+              const isBusy = t.status === 'BUSY';
+              const m = getTableElapsedMinutes(t);
+              const tblAmt = getTableAmount(t);
+              const tableDisplayId = t.name || String(t.id).replace('table_', 'T-');
+
+              return (
+                <TouchableOpacity
+                  key={t.id}
+                  activeOpacity={0.7}
+                  onPress={() => onTableSelect(t.id)}
+                  onLongPress={() => handleTableLongPress(t)}
+                  style={[
+                    styles.tableGridCard,
+                    isBusy ? styles.tableGridCardBusy : styles.tableGridCardFree
+                  ]}
+                >
+                  <Text style={[styles.tableCardTitle, isBusy ? styles.tableCardTitleBusy : styles.tableCardTitleFree]} numberOfLines={1}>
+                    {tableDisplayId}
+                  </Text>
+
+                  {/* Status Indicator */}
+                  <View style={styles.tableStatusIndicatorRow}>
+                    <View style={[styles.tableStatusDot, { backgroundColor: isBusy ? '#F59E0B' : '#2DD4BF' }]} />
+                    <Text style={[styles.tableStatusLabel, { color: isBusy ? '#F59E0B' : '#2DD4BF' }]}>
+                      {isBusy ? (m !== null ? `${m} min` : 'চলছে') : 'FREE'}
+                    </Text>
+                  </View>
+
+                  {/* Amount Row */}
+                  <Text style={[styles.tableCardAmount, { color: isBusy ? '#F59E0B' : 'transparent' }]} numberOfLines={1}>
+                    {isBusy ? `৳${tblAmt.toLocaleString()}` : '-'}
+                  </Text>
+
+                  {/* Chair Icon */}
+                  <Text style={styles.tableCardChairIcon}>🪑</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* ───── সক্রিয় ডেলিভারি ───── Divider Inside the Same Card */}
+          <View style={styles.deliveryDividerContainer}>
+            <View style={styles.deliveryDividerLine} />
+          </View>
+
+          {/* Active Delivery Section Header */}
+          <View style={styles.activeDeliverySectionHeaderRow}>
+            <Text style={styles.activeDeliverySectionTitle}>সক্রিয় ডেলিভারি</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <TouchableOpacity 
+                style={styles.newDeliveryMiniBtn}
+                onPress={onCreateDelivery}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.newDeliveryMiniBtnText}>➕ নতুন ডেলিভারি</Text>
+              </TouchableOpacity>
+              <View style={[styles.activeDeliveryCountBadge, { marginLeft: 8 }]}>
+                <Text style={styles.activeDeliveryCountBadgeText}>{activeDeliveriesList.length} টি</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Active Deliveries List inside Same Card */}
+          {activeDeliveriesList.length > 0 ? (
+            activeDeliveriesList.map(delivery => {
+              const delAmt = (delivery.amount !== undefined && delivery.amount !== null && Number(delivery.amount) > 0) ? parseFloat(delivery.amount) : ((delivery.items ? delivery.items.reduce((s, i) => s + ((parseFloat(i.price) || 0) * (parseInt(i.qty, 10) || 1)), 0) : 0) + (parseFloat(delivery.deliveryCharge || delivery.delivery_charge) || 0));
+              const delElapsed = getTableElapsedMinutes(delivery);
+              const timeDisplay = delElapsed !== null ? `${delElapsed} মিনিট ধরে · চলমান` : 'চলমান';
+
+              return (
+                <TouchableOpacity
+                  key={delivery.id}
+                  style={styles.activeDeliveryCard}
+                  onPress={() => onTableSelect(delivery.id)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.activeDeliveryHeaderRow}>
+                    <View style={styles.activeDeliveryLeft}>
+                      <View style={styles.deliveryRiderIconWrap}>
+                        <Text style={styles.deliveryRiderIcon}>🛵</Text>
+                      </View>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={styles.activeDeliveryName} numberOfLines={1}>
+                          {delivery.name || 'Delivery'}
+                        </Text>
+                        <Text style={styles.activeDeliverySub}>{timeDisplay}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.activeDeliveryRight}>
+                      <Text style={styles.activeDeliveryAmount}>৳{delAmt.toLocaleString()}</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })
+          ) : (
+            <TouchableOpacity style={styles.emptyDeliveryBox} onPress={onCreateDelivery} activeOpacity={0.7}>
+              <Text style={styles.emptyDeliveryEmoji}>🛵</Text>
+              <Text style={styles.emptyDeliveryText}>বর্তমানে কোনো সক্রিয় ডেলিভারি নেই</Text>
+              <Text style={[styles.emptyDeliveryText, { color: '#FFB703', marginTop: 4, fontWeight: 'bold' }]}>➕ নতুন ডেলিভারি শুরু করতে ট্যাপ করুন</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* ── 5. শীর্ষ বিক্রিত খাবার (Top Selling Food Items) ── */}
+        <View style={styles.card}>
+          <View style={styles.topSellerHeader}>
+            <View>
+              <Text style={styles.sectionHeaderTitle}>শীর্ষ বিক্রিত খাবার</Text>
+              <Text style={styles.topSellerSubtitle}>আজকের সেরা ৫টি আইটেম</Text>
+            </View>
+            <TouchableOpacity 
+              onPress={onNavigateToItemSalesReport} 
+              activeOpacity={0.7}
+              style={styles.topSellerReportBtn}
+            >
+              <Text style={styles.topSellerReportBtnText}>পূর্ণ রিপোর্ট ❯</Text>
+            </TouchableOpacity>
+          </View>
+
+          {topSellingItems.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyStateEmoji}>🍽️</Text>
+              <Text style={styles.emptyStateText}>আজ এখনও কোনো খাবার বিক্রয় হয়নি</Text>
+              <Text style={styles.emptyStateSub}>অর্ডার সম্পন্ন হলে এখানে লাইভ র‍্যাংকিং দেখাবে।</Text>
+            </View>
+          ) : (
+            <>
+              {/* #1 Top Item Hero Banner (Amber/Gold Card) */}
+              {topSellingItems[0] && (
+                <View style={styles.topHeroCard}>
+                  <View style={styles.topHeroDecorCircle} />
+                  
+                  <View style={styles.topHeroBadge}>
+                    <Text style={styles.topHeroBadgeText}>🥇 আজকের সেরা</Text>
+                  </View>
+
+                  <View style={styles.topHeroContentRow}>
+                    <View style={styles.topHeroRankBox}>
+                      <Text style={styles.topHeroRankNum}>1</Text>
+                    </View>
+                    <View style={styles.topHeroInfoCol}>
+                      <Text style={styles.topHeroTitle} numberOfLines={1}>
+                        {topSellingItems[0].name}
+                      </Text>
+                      <Text style={styles.topHeroSub}>
+                        {toBengaliNumber(topSellingItems[0].quantitySold)} পিস · মোট বিক্রির {toBengaliNumber(topItemPct)}%
+                      </Text>
+                      <Text style={styles.topHeroPrice}>
+                        ৳ {toBengaliNumber((topSellingItems[0].totalSales || 0).toLocaleString())}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              )}
+
+              {/* Items #2 to #5 Ranked List */}
+              {topSellingItems.length > 1 && (
+                <View style={styles.rankedListCard}>
+                  {topSellingItems.slice(1, 5).map((item, index) => {
+                    const rankNum = index + 2;
+                    const maxSales = topSellingItems[0]?.totalSales || 1;
+                    const barWidthPct = Math.max(12, Math.min(100, Math.round(((item.totalSales || 0) / maxSales) * 100)));
+                    const isLast = index === topSellingItems.slice(1, 5).length - 1;
+
+                    return (
+                      <View 
+                        key={item.id || item.name || index} 
+                        style={[styles.rankedItemRow, !isLast && styles.rankedItemBorderBottom]}
+                      >
+                        <View style={styles.rankedBadge}>
+                          <Text style={styles.rankedBadgeText}>{rankNum}</Text>
+                        </View>
+
+                        <View style={styles.rankedItemMiddleCol}>
+                          <Text style={styles.rankedItemName} numberOfLines={1}>{item.name}</Text>
+                          <View style={styles.rankedItemSubRow}>
+                            {item.category ? (
+                              <Text style={styles.rankedItemCategory} numberOfLines={1}>{item.category}</Text>
+                            ) : null}
+                            <View style={styles.rankedProgressBarTrack}>
+                              <View style={[styles.rankedProgressBarFill, { width: `${barWidthPct}%` }]} />
+                            </View>
+                          </View>
+                        </View>
+
+                        <View style={styles.rankedItemRightCol}>
+                          <Text style={styles.rankedItemAmount}>
+                            ৳{toBengaliNumber((item.totalSales || 0).toLocaleString())}
+                          </Text>
+                          <Text style={styles.rankedItemQty}>
+                            {toBengaliNumber(item.quantitySold)} পিস
+                          </Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+            </>
+          )}
+        </View>
+
+        {/* ── 6. আজকের অর্ডার লগ (Today's Order Log) ── */}
         <View style={styles.sectionContainer}>
           <View style={styles.sectionHeaderRow}><Text style={styles.sectionTitle}>আজকের অর্ডার লগ</Text></View>
           <View style={styles.orderList}>
@@ -642,6 +1043,15 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
                   <View style={styles.orderItemRight}>
                     <View style={styles.amountCol}><Text style={styles.orderItemAmount}>৳ {order.amount}</Text><Text style={[styles.orderItemStatus, styles.textGreen]}>পেমেন্ট শেষ</Text></View>
                     <View style={styles.actionRow}>
+                      <TouchableOpacity 
+                        style={styles.printBtn} 
+                        onPress={(e) => { 
+                          e.stopPropagation(); 
+                          setPrintOrder(order); 
+                        }}
+                      >
+                        <Text style={styles.btnIcon}>🖨️</Text>
+                      </TouchableOpacity>
                       <TouchableOpacity style={styles.deleteBtn} onPress={(e) => { e.stopPropagation(); onDeleteDoneOrder(order.id); }}>
                         <Text style={styles.btnIcon}>🗑️</Text>
                       </TouchableOpacity>
@@ -660,73 +1070,21 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
         <TouchableOpacity style={[styles.fabItemUnified, styles.fabHighlight]} onPress={onNavigateToSubmit}><Text style={[styles.fabIconSmall, { color: '#000' }]}>📝</Text><Text style={[styles.fabLabelSmall, { color: '#000' }]}>সাবমিট</Text></TouchableOpacity>
       </View>
 
-      {/* ORDER DETAIL MODAL */}
-      <Modal animationType="slide" transparent={true} visible={orderDetailVisible} onRequestClose={() => setOrderDetailVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { width: '90%' }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', alignItems: 'center', marginBottom: 20 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <View style={[styles.modalIconCircle, { marginBottom: 0, width: 40, height: 40, marginRight: 12 }]}><Text style={styles.modalIconEmoji}>📋</Text></View>
-                <Text style={[styles.modalTitle, { marginBottom: 0 }]}>অর্ডার বিস্তারিত</Text>
-              </View>
-              <TouchableOpacity onPress={() => setOrderDetailVisible(false)} style={styles.closeCircle}>
-                <Text style={styles.closeCircleText}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            {selectedOrder && (
-              <View style={{ width: '100%', paddingVertical: 10 }}>
-                <View style={styles.detailRow}><Text style={styles.detailLabel}>টেবিল:</Text><Text style={styles.detailValue}>{selectedOrder.table}</Text></View>
-                <View style={styles.detailRow}><Text style={styles.detailLabel}>সময়:</Text><Text style={styles.detailValue}>{selectedOrder.time}</Text></View>
-                <View style={styles.detailRow}><Text style={styles.detailLabel}>তারিখ:</Text><Text style={styles.detailValue}>{selectedOrder.fullDate ? formatDisplayDate(selectedOrder.fullDate) : 'আজ'}</Text></View>
-                <View style={styles.detailRow}><Text style={styles.detailLabel}>পেমেন্ট মাধ্যম:</Text><Text style={styles.detailValue}>{selectedOrder.method}</Text></View>
-
-                {/* Detailed Payment Breakdown */}
-                <View style={{ marginTop: 8, padding: 8, backgroundColor: '#0A0A0A', borderRadius: 8, borderWidth: 1, borderColor: '#1A1A1A' }}>
-                   <Text style={{ color: '#888', fontSize: 10, marginBottom: 6, fontWeight: 'bold' }}>পেমেন্ট ব্রেকডাউন:</Text>
-                   <View style={styles.detailRow}><Text style={[styles.detailLabel, { fontSize: 11 }]}>💵 ক্যাশ:</Text><Text style={[styles.detailValue, { fontSize: 11 }]}>৳ {selectedOrder.cash_amount || 0}</Text></View>
-                   <View style={styles.detailRow}><Text style={[styles.detailLabel, { fontSize: 11 }]}>🐦 বিকাশ:</Text><Text style={[styles.detailValue, { fontSize: 11 }]}>৳ {selectedOrder.bkash_amount || 0}</Text></View>
-                   <View style={styles.detailRow}><Text style={[styles.detailLabel, { fontSize: 11 }]}>💰 নগদ:</Text><Text style={[styles.detailValue, { fontSize: 11 }]}>৳ {selectedOrder.nagad_amount || 0}</Text></View>
-                   <View style={styles.detailRow}><Text style={[styles.detailLabel, { fontSize: 11 }]}>🚀 রকেট:</Text><Text style={[styles.detailValue, { fontSize: 11 }]}>৳ {selectedOrder.rocket_amount || 0}</Text></View>
-                </View>
-
-                {selectedOrder.deliveryCharge > 0 ? (
-                  <>
-                    <View style={styles.detailRow}><Text style={styles.detailLabel}>অর্ডার টোটাল:</Text><Text style={styles.detailValue}>৳ {selectedOrder.totalAmount}</Text></View>
-                    <View style={styles.detailRow}><Text style={styles.detailLabel}>ডেলিভারি চার্জ:</Text><Text style={styles.detailValue}>৳ {selectedOrder.deliveryCharge}</Text></View>
-                    <View style={styles.detailRow}><Text style={styles.detailLabel}>সর্বমোট পরিমাণ:</Text><Text style={[styles.detailValue, { color: '#34D399', fontWeight: 'bold' }]}>৳ {selectedOrder.grandTotal || selectedOrder.paidAmount}</Text></View>
-                  </>
-                ) : (
-                  <View style={styles.detailRow}><Text style={styles.detailLabel}>মোট পরিমাণ:</Text><Text style={[styles.detailValue, { color: '#34D399', fontWeight: 'bold' }]}>৳ {selectedOrder.amount || selectedOrder.paidAmount}</Text></View>
-                )}
-                <View style={{ marginTop: 10, borderTopWidth: 1, borderColor: '#262626', paddingTop: 10 }}>
-                  <Text style={styles.detailLabel}>আইটেম সমূহ:</Text>
-                  <Text style={[styles.detailValue, { marginTop: 4, color: '#FFB703' }]}>{selectedOrder.items}</Text>
-                </View>
-              </View>
-            )}
-            
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 20 }}>
-              <TouchableOpacity 
-                style={[styles.modalCancelBtn, { width: '48%' }]} 
-                onPress={() => setOrderDetailVisible(false)}
-              >
-                <Text style={styles.modalCancelBtnText}>পিছনে যান</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.modalSaveBtn, { width: '48%', backgroundColor: '#EF4444' }]} 
-                onPress={() => {
-                  const targetId = selectedOrder?.id;
-                  setOrderDetailVisible(false);
-                  if (targetId) onDeleteDoneOrder(targetId);
-                }}
-              >
-                <Text style={[styles.modalSaveBtnText, { color: '#FFF' }]}>🗑️ ডিলিট করুন</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+{/* ORDER DETAIL MODAL (REDESIGNED) */}
+      <OrderDetailModal
+        visible={orderDetailVisible}
+        onClose={() => setOrderDetailVisible(false)}
+        order={selectedOrder}
+        onPrint={(order) => {
+          setOrderDetailVisible(false);
+          setPrintOrder(order);
+        }}
+        onDelete={(targetId) => {
+          setOrderDetailVisible(false);
+          if (targetId) onDeleteDoneOrder(targetId);
+        }}
+        formatDisplayDate={formatDisplayDate}
+      />
 
       {/* RENAME MODAL */}
       <Modal animationType="fade" transparent={true} visible={renameModalVisible} onRequestClose={() => setRenameModalVisible(false)}>
@@ -736,40 +1094,35 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
         </View></View>
       </Modal>
 
-      {/* 3-DOT MENU */}
-      <Modal animationType="fade" transparent={true} visible={menuModalVisible} onRequestClose={() => setMenuModalVisible(false)}>
-        <TouchableOpacity style={styles.menuModalOverlay} activeOpacity={1} onPress={() => setMenuModalVisible(false)}>
-          <View style={styles.menuModalContent}>
-            <View style={styles.syncTimerWrapper}>
-              <Text style={styles.syncTimerText}>Del: {delCountdown}s | Tab: {tabCountdown}s | Full: {fullCountdown}s</Text>
-            </View>
-            <View style={styles.menuSectionHeader}><Text style={styles.menuSectionText}>CORE OPERATIONS</Text></View>
-
-            {dailyExpenses.ijara > 0 ? (
-              <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); Alert.alert("ইতিমধ্যে যোগ করা হয়েছে", "ইজা শুধুমাত্র একবার যোগ করা যাবে এবং এটি আর পরিবর্তন বা এডিট করা সম্ভব নয়!"); }}><Text style={[styles.menuOptionText, { color: '#888' }]}>🔒 ইজা যুক্ত করা হয়েছে</Text></TouchableOpacity>
-            ) : (
-              <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); setTempIjara(''); setIjaraModalVisible(true); }}><Text style={styles.menuOptionText}>➕ Add Ijara</Text></TouchableOpacity>
-            )}
-            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onNavigateToEditMenu(); }}><Text style={styles.menuOptionText}>🍴 Edit Menu</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); if (onNavigateToAnalytics) onNavigateToAnalytics(); }}><Text style={styles.menuOptionText}>📈 Business Analytics</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onNavigateToItemSalesReport(); }}><Text style={styles.menuOptionText}>📊 আইটেম বিক্রয় রিপোর্ট</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.menuOption} onPress={handleOpenPastAccount}><Text style={styles.menuOptionText}>📅 অতীতের হিসাব</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onNavigateToSupplierDue(); }}><Text style={styles.menuOptionText}>📒 সাপ্লায়ার পেমেন্ট</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onNavigateToOwnerFinance(); }}><Text style={styles.menuOptionText}>💼 Owner Finance</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); if (onNavigateToActivityLog) onNavigateToActivityLog(); }}><Text style={styles.menuOptionText}>📜 Activity & Audit Logs</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); setSalesReportVisible(true); }}><Text style={styles.menuOptionText}>📋 Sales Report</Text></TouchableOpacity>
-
-            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); setDepositReportVisible(true); }}><Text style={styles.menuOptionText}>📊 Deposit Report</Text></TouchableOpacity>
-
-            <View style={styles.menuSectionHeader}><Text style={styles.menuSectionText}>SYSTEM TOOLS</Text></View>
-            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onCloudRestore(); }}><Text style={[styles.menuOptionText, { color: '#34D399' }]}>☁️ Cloud Restore</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onMenuRecovery(); }}><Text style={[styles.menuOptionText, { color: '#34D399' }]}>🍴 Recover Menu Items</Text></TouchableOpacity>
-
-            <View style={{ height: 1, backgroundColor: '#262626' }} />
-            <TouchableOpacity style={styles.menuOption} onPress={() => { setMenuModalVisible(false); onLogout(); }}><Text style={[styles.menuOptionText, { color: '#FF4D4D' }]}>Logout</Text></TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      {/* 3-DOT MENU (OWNER SIDE MENU) */}
+      {/* Preserves 3-dot menu options: আজকের ডেটা রিসিন্ক (Same-Day Resync) */}
+      <OwnerSideMenu
+        visible={menuModalVisible}
+        onClose={() => setMenuModalVisible(false)}
+        dailyExpenses={dailyExpenses}
+        onAddIjara={() => {
+          setTempIjara('');
+          setIjaraModalVisible(true);
+        }}
+        onIjaraAlreadyAdded={() => {
+          Alert.alert("ইতিমধ্যে যোগ করা হয়েছে", "ইজা শুধুমাত্র একবার যোগ করা যাবে এবং এটি আর পরিবর্তন বা এডিট করা সম্ভব নয়!");
+        }}
+        onNavigateToEditMenu={onNavigateToEditMenu}
+        onNavigateToAnalytics={onNavigateToAnalytics}
+        onNavigateToItemSalesReport={onNavigateToItemSalesReport}
+        handleOpenPastAccount={handleOpenPastAccount}
+        onNavigateToSupplierDue={onNavigateToSupplierDue}
+        onNavigateToOwnerFinance={onNavigateToOwnerFinance}
+        onNavigateToActivityLog={onNavigateToActivityLog}
+        onOpenSalesReport={() => setSalesReportVisible(true)}
+        onOpenDepositReport={() => setDepositReportVisible(true)}
+        onSameDayResync={onSameDayResync}
+        onCloudRestore={onCloudRestore}
+        onMenuRecovery={onMenuRecovery}
+        onNavigateToPrinterSettings={onNavigateToPrinterSettings}
+        onNavigateToBackupRestore={onNavigateToBackupRestore}
+        onLogout={onLogout}
+      />
 
       {/* IJARA MODAL */}
       <Modal animationType="slide" transparent={true} visible={ijaraModalVisible} onRequestClose={() => setIjaraModalVisible(false)}>
@@ -779,195 +1132,176 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
         </View></View>
       </Modal>
 
-      {/* SALES REPORT */}
-      <Modal animationType="slide" transparent={true} visible={salesReportVisible} onRequestClose={() => setSalesReportVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { width: '98%', maxHeight: '92%', paddingHorizontal: 8 }]}>
-            <View style={styles.modalHeaderRow}>
-              <View style={styles.modalHeaderLeft}><View style={[styles.modalIconCircle, { marginBottom: 0, width: 40, height: 40, marginRight: 10 }]}><Text style={{fontSize:18}}>📋</Text></View>
-              <View><Text style={[styles.modalTitle, { textAlign: 'left', marginBottom: 2, fontSize:15 }]}>বিক্রয় রিপোর্ট (আইটেম ভিত্তিক)</Text><Text style={styles.modalSubtitle}>বিস্তারিত তথ্য</Text></View></View>
-              <TouchableOpacity onPress={() => setSalesReportVisible(false)} style={styles.closeCircle}><Text style={styles.closeCircleText}>✕</Text></TouchableOpacity>
-            </View>
-            <View style={styles.filterSection}><ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterBar}>
-                {['Today', 'Yesterday', 'Last 7 Days', 'Pick Date'].map((f) => (
-                  <TouchableOpacity key={f} style={[styles.filterChip, salesFilter === f && styles.filterChipActive]} onPress={() => setSalesFilter(f)}><Text style={[styles.filterChipText, salesFilter === f && styles.filterChipTextActive]}>{f}</Text></TouchableOpacity>
-                ))}
-              </ScrollView>{salesFilter === 'Pick Date' && (
-                <TouchableOpacity style={styles.pickDateWrapper} onPress={() => { setCalendarTarget('sales'); setCalendarVisible(true); }}>
-                  <Text style={{color:'#FFF', fontSize:12}}>{pickDate}</Text>
-                  <Text style={{color:'#666', fontSize:10, marginLeft:8}}>ক্যালেন্ডার থেকে সিলেক্ট করুন</Text>
-                </TouchableOpacity>
-              )}</View>
-            <View style={styles.sheetContainer}><ScrollView horizontal showsHorizontalScrollIndicator={true}><View>
-                  <View style={styles.sheetHeader}><Text style={[styles.sheetHeaderText, { width: 120, textAlign: 'left' }]}>তারিখ ও সময়</Text><Text style={[styles.sheetHeaderText, { width: 50 }]}>টেবিল</Text><Text style={[styles.sheetHeaderText, { width: 220, textAlign: 'left' }]}>আইটেম ও পরিমাণ</Text><Text style={[styles.sheetHeaderText, { width: 70, textAlign: 'right' }]}>বিক্রয়</Text></View>
-                  <ScrollView style={styles.sheetBody}>
-                    {filteredSalesOrders.length === 0 ? (
-                      <View style={{ width: 460, alignItems: 'center', padding: 40 }}>
-                        <Text style={styles.emptySheetText}>কোনো বিক্রয় ইতিহাস পাওয়া যায়নি।</Text>
-                        <TouchableOpacity 
-                          style={{ marginTop: 20, backgroundColor: '#34D399', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 }}
-                          onPress={handleSalesCheckCloud}
-                        >
-                          <Text style={{ color: '#000', fontWeight: 'bold' }}>☁️ ক্লাউড থেকে ডাটা আনুন</Text>
-                        </TouchableOpacity>
-                      </View>
-                    ) : (
-                      filteredSalesOrders.map((order, idx) => (
-                        <TouchableOpacity 
-                          key={idx} 
-                          style={[styles.sheetRow, idx % 2 === 1 && styles.sheetRowAlt]}
-                          onPress={() => {
-                            setSelectedOrder({
-                              id: order.id,
-                              table: order.tableId,
-                              time: order.time,
-                              fullDate: order.fullDate,
-                              method: order.method || 'Cash',
-                              amount: order.paidAmount || order.totalAmount,
-                              items: order.items,
-                              status: 'Done'
-                            });
-                            setOrderDetailVisible(true);
-                          }}
-                        >
-                          <View style={{ width: 120 }}><Text style={styles.sheetCellTextMain}>{order.fullDate ? formatDisplayDate(order.fullDate) : 'আজ'}</Text><Text style={styles.sheetCellTextSub}>{order.time}</Text></View>
-                          <Text style={[styles.sheetCell, { width: 50 }]}>{order.tableId}</Text>
-                          <Text style={[styles.sheetCell, { width: 220, fontSize: 9, textAlign: 'left', color: '#FFB703' }]} numberOfLines={2}>{order.items}</Text>
-                          <Text style={[styles.sheetCell, { width: 70, textAlign: 'right', color: '#34D399', fontWeight: 'bold' }]}>৳{order.paidAmount}</Text>
-                        </TouchableOpacity>
-                      ))
-                    )}
-                  </ScrollView></View></ScrollView></View>
-            <View style={styles.modalFooterActions}><TouchableOpacity style={styles.exportBtn} onPress={() => exportSalesReportPDF(filteredSalesOrders, salesFilter)}><Text style={styles.exportBtnIcon}>📄</Text><Text style={styles.exportBtnText}>PDF ডাউনলোড</Text></TouchableOpacity><TouchableOpacity style={styles.historyCloseBtn} onPress={() => setSalesReportVisible(false)}><Text style={styles.historyCloseBtnText}>বন্ধ করুন</Text></TouchableOpacity></View>
-          </View>
-        </View>
-      </Modal>
+      {/* SALES REPORT (REDESIGNED) */}
+      <SalesReportModal
+        visible={salesReportVisible}
+        onClose={() => setSalesReportVisible(false)}
+        salesFilter={salesFilter}
+        onSelectFilter={(f) => {
+          setSalesFilter(f);
+          if (f === 'Pick Date') {
+            setCalendarTarget('sales');
+            setCalendarVisible(true);
+          }
+        }}
+        pickDate={pickDate}
+        onOpenDatePicker={() => {
+          setCalendarTarget('sales');
+          setCalendarVisible(true);
+        }}
+        orders={filteredSalesOrders}
+        onSelectOrder={(order) => {
+          setSelectedOrder({
+            id: order.id,
+            table: order.tableId,
+            time: order.time,
+            fullDate: order.fullDate,
+            method: order.method || 'Cash',
+            amount: order.paidAmount || order.totalAmount,
+            items: order.items,
+            status: 'Done'
+          });
+          setOrderDetailVisible(true);
+        }}
+        onPrintOrder={(order) => setPrintOrder(order)}
+        onExportPDF={() => exportSalesReportPDF(filteredSalesOrders, salesFilter)}
+        onCloudCheck={handleSalesCheckCloud}
+        formatDisplayDate={formatDisplayDate}
+      />
 
-      {/* DEPOSIT REPORT */}
-      <Modal animationType="slide" transparent={true} visible={depositReportVisible} onRequestClose={() => setDepositReportVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { width: '98%', maxHeight: '92%', paddingHorizontal: 8 }]}>
-            <View style={styles.modalHeaderRow}>
-              <View style={styles.modalHeaderLeft}><View style={[styles.modalIconCircle, { marginBottom: 0, width: 40, height: 40, marginRight: 10 }]}><Text style={{fontSize:18}}>📊</Text></View>
-              <View><Text style={[styles.modalTitle, { textAlign: 'left', marginBottom: 2, fontSize:15 }]}>জমা রিপোর্ট</Text><Text style={styles.modalSubtitle}>পুরো মাসের দৈনিক হিসাব</Text></View></View>
-              <TouchableOpacity onPress={() => setDepositReportVisible(false)} style={styles.closeCircle}><Text style={styles.closeCircleText}>✕</Text></TouchableOpacity>
-            </View>
-            <View style={{ width: '100%', paddingHorizontal: 12, marginBottom: 12, marginTop: 4 }}>
-              <Text style={{ color: '#888', fontSize: 11, marginBottom: 4 }}>মাস ও বছর নির্বাচন করুন:</Text>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <TouchableOpacity 
-                  style={{ 
-                    flex: 1,
-                    flexDirection: 'row', 
-                    justifyContent: 'space-between', 
-                    alignItems: 'center', 
-                    backgroundColor: '#1E1E1E', 
-                    paddingVertical: 10, 
-                    paddingHorizontal: 14, 
-                    borderRadius: 6,
-                    borderWidth: 1,
-                    borderColor: '#333'
-                  }}
-                  onPress={() => setMonthPickerVisible(true)}
-                >
-                  <Text style={{ color: '#FFF', fontSize: 13, fontWeight: 'bold' }}>{monthNames[selectedMonth]}</Text>
-                  <Text style={{ color: '#FFB703', fontSize: 10 }}>মাস ▼</Text>
-                </TouchableOpacity>
+      {/* DEPOSIT REPORT (REDESIGNED) */}
+      <DepositReportModal
+        visible={depositReportVisible}
+        onClose={() => setDepositReportVisible(false)}
+        selectedMonth={selectedMonth}
+        selectedYear={selectedYear}
+        monthNames={monthNames}
+        onOpenMonthPicker={() => setMonthPickerVisible(true)}
+        onOpenYearPicker={() => setYearPickerVisible(true)}
+        history={filteredHistory}
+        onHistoricalMonthDownload={onHistoricalMonthDownload}
+        activeFilter={activeFilter}
+        onSelectDay={(item) => {
+          setSelectedReportDay(item);
+          setDayDetailModalVisible(true);
+        }}
+        onEditPastAccount={handleEditPastAccount}
+        onExportPDF={() => exportDepositReportPDF(filteredHistory, activeFilter)}
+        isAdmin={false}
+        breakdownSummary={true}
+      />
 
-                <TouchableOpacity 
-                  style={{ 
-                    flex: 1,
-                    flexDirection: 'row', 
-                    justifyContent: 'space-between', 
-                    alignItems: 'center', 
-                    backgroundColor: '#1E1E1E', 
-                    paddingVertical: 10, 
-                    paddingHorizontal: 14, 
-                    borderRadius: 6,
-                    borderWidth: 1,
-                    borderColor: '#333'
-                  }}
-                  onPress={() => setYearPickerVisible(true)}
-                >
-                  <Text style={{ color: '#FFF', fontSize: 13, fontWeight: 'bold' }}>{selectedYear}</Text>
-                  <Text style={{ color: '#FFB703', fontSize: 10 }}>বছর ▼</Text>
-                </TouchableOpacity>
+      {/* DAY DETAIL POPUP (From Monthly Report) */}
+      <Modal animationType="slide" transparent={true} visible={dayDetailModalVisible} onRequestClose={() => setDayDetailModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { width: '92%', maxHeight: '85%', padding: 16 }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', alignItems: 'center', marginBottom: 12 }}>
+              <View>
+                <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#FFF' }}>📅 দৈনিক অর্ডার বিস্তারিত</Text>
+                <Text style={{ fontSize: 12, color: '#FFB703', marginTop: 2 }}>{selectedReportDay ? formatDisplayDate(selectedReportDay.date) : ''}</Text>
               </View>
+              <TouchableOpacity onPress={() => setDayDetailModalVisible(false)} style={styles.closeCircle}>
+                <Text style={styles.closeCircleText}>✕</Text>
+              </TouchableOpacity>
             </View>
-            <View style={styles.sheetContainer}><ScrollView horizontal showsHorizontalScrollIndicator={true}><View>
-                  <View style={styles.sheetHeader}>
-                    <Text style={[styles.sheetHeaderText, { width: 100, textAlign: 'left' }]}>তারিখ</Text>
-                    <Text style={[styles.sheetHeaderText, { width: 80 }]}>মোট বিক্রয়</Text>
-                    <Text style={[styles.sheetHeaderText, { width: 70 }]}>bKash</Text>
-                    <Text style={[styles.sheetHeaderText, { width: 70 }]}>Nagad</Text>
-                    <Text style={[styles.sheetHeaderText, { width: 70 }]}>Cash</Text>
-                    <Text style={[styles.sheetHeaderText, { width: 70 }]}>🏛️ ইজা</Text>
-                    <Text style={[styles.sheetHeaderText, { width: 80 }]}>মোট খরচ</Text>
-                    <Text style={[styles.sheetHeaderText, { width: 80 }]}>জমা</Text>
-                  </View>
-                  <ScrollView style={styles.sheetBody}>
-                    {filteredHistory.length === 0 ? (
-                      <View style={{ width: 690, alignItems: 'center', padding: 40 }}>
-                        <Text style={styles.emptySheetText}>কোনো জমা ইতিহাস পাওয়া যায়নি।</Text>
-                        <TouchableOpacity 
-                          style={{ marginTop: 20, backgroundColor: '#34D399', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 }}
-                          onPress={() => {
-                            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-                            const activeFilter = `${monthNames[selectedMonth]} ${selectedYear}`;
-                            const monthStr = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
-                            onHistoricalMonthDownload(monthStr, activeFilter);
-                          }}
-                        >
-                          <Text style={{ color: '#000', fontWeight: 'bold' }}>☁️ ক্লাউড থেকে ডাটা আনুন</Text>
-                        </TouchableOpacity>
-                      </View>
-                    ) : (
-                      filteredHistory.map((item, index) => (
-                        <View key={index} style={[styles.sheetRow, index % 2 === 1 && styles.sheetRowAlt]}>
-                          <View style={{ width: 100, flexDirection: 'row', alignItems: 'center' }}>
-                            <Text style={[styles.sheetCell, { textAlign: 'left' }]}>{formatDisplayDate(item.date)}</Text>
-                            {item.isManualEntry && <View style={styles.manualBadge}><Text style={styles.manualBadgeText}>M</Text></View>}
-                            <TouchableOpacity onPress={() => handleEditPastAccount(item)} style={{ marginLeft: 6, padding: 4 }}>
-                              <Text style={{ fontSize: 10 }}>✏️</Text>
-                            </TouchableOpacity>
-                          </View>
-                          <Text style={[styles.sheetCell, { width: 80, fontWeight: 'bold' }]}>৳{item.sell.toLocaleString()}</Text>
-                          <Text style={[styles.sheetCell, { width: 70 }]}>৳{item.breakdown?.bkash || 0}</Text>
-                          <Text style={[styles.sheetCell, { width: 70 }]}>৳{item.breakdown?.nagad || 0}</Text>
-                          <Text style={[styles.sheetCell, { width: 70 }]}>৳{item.breakdown?.cash || 0}</Text>
-                          <Text style={[styles.sheetCell, { width: 70 }]}>৳{item.breakdown?.ijara || 0}</Text>
-                          <Text style={[styles.sheetCell, { width: 80, color: '#EF4444' }]}>৳{item.expense.toLocaleString()}</Text>
-                          <Text style={[styles.sheetCell, { width: 80, color: '#34D399', fontWeight: 'bold' }]}>৳{item.deposit.toLocaleString()}</Text>
-                        </View>
-                      ))
-                    )}
-                    {filteredHistory.length > 0 && (
-                      <View style={styles.sheetFooter}>
-                        <Text style={[styles.sheetFooterText, { width: 100, textAlign: 'left' }]}>মোট (Total)</Text>
-                        <Text style={[styles.sheetFooterText, { width: 80 }]}>৳{filteredHistory.reduce((sum, i) => sum + i.sell, 0).toLocaleString()}</Text>
-                        <Text style={[styles.sheetFooterText, { width: 70 }]}>৳{filteredHistory.reduce((sum, i) => sum + (i.breakdown?.bkash || 0), 0).toLocaleString()}</Text>
-                        <Text style={[styles.sheetFooterText, { width: 70 }]}>৳{filteredHistory.reduce((sum, i) => sum + (i.breakdown?.nagad || 0), 0).toLocaleString()}</Text>
-                        <Text style={[styles.sheetFooterText, { width: 70 }]}>৳{filteredHistory.reduce((sum, i) => sum + (i.breakdown?.cash || 0), 0).toLocaleString()}</Text>
-                        <Text style={[styles.sheetFooterText, { width: 70 }]}>৳{filteredHistory.reduce((sum, i) => sum + (i.breakdown?.ijara || 0), 0).toLocaleString()}</Text>
-                        <Text style={[styles.sheetFooterText, { width: 80 }]}>৳{filteredHistory.reduce((sum, i) => sum + i.expense, 0).toLocaleString()}</Text>
-                        <Text style={[styles.sheetFooterText, { width: 80, color: '#34D399' }]}>৳{filteredHistory.reduce((sum, i) => sum + i.deposit, 0).toLocaleString()}</Text>
-                      </View>
-                    )}
-                  </ScrollView></View></ScrollView></View>
 
-            {filteredHistory.length > 0 && (
-              <View style={styles.breakdownSummaryCard}>
-                <Text style={styles.breakdownTitle}>📉 মাসিক খরচের বিবরণ (Breakdown)</Text>
-                <View style={styles.breakdownGrid}>
-                  <View style={styles.breakdownItem}><Text style={styles.breakdownLabel}>🛍️ দুদু মিয়া:</Text><Text style={styles.breakdownValue}>৳{filteredHistory.reduce((sum, i) => sum + (i.breakdown?.dudu || 0), 0).toLocaleString()}</Text></View>
-                  <View style={styles.breakdownItem}><Text style={styles.breakdownLabel}>🐔 আকাশ মুরগী:</Text><Text style={styles.breakdownValue}>৳{filteredHistory.reduce((sum, i) => sum + (i.breakdown?.akash || 0), 0).toLocaleString()}</Text></View>
-                  <View style={styles.breakdownItem}><Text style={styles.breakdownLabel}>🍔 বার্গার বান:</Text><Text style={styles.breakdownValue}>৳{filteredHistory.reduce((sum, i) => sum + (i.breakdown?.burger || 0), 0).toLocaleString()}</Text></View>
-                  <View style={styles.breakdownItem}><Text style={styles.breakdownLabel}>🛒 বাজার খরচ:</Text><Text style={styles.breakdownValue}>৳{filteredHistory.reduce((sum, i) => sum + (i.breakdown?.bazar || 0), 0).toLocaleString()}</Text></View>
-                  <View style={styles.breakdownItem}><Text style={styles.breakdownLabel}>📦 অন্যান্য:</Text><Text style={styles.breakdownValue}>৳{filteredHistory.reduce((sum, i) => sum + (i.breakdown?.others || 0), 0).toLocaleString()}</Text></View>
-                </View>
+            {selectedReportDay && (
+              <View style={{ width: '100%', flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#181E25', padding: 10, borderRadius: 10, marginBottom: 14 }}>
+                <View><Text style={{ color: '#888', fontSize: 10 }}>মোট বিক্রি</Text><Text style={{ color: '#FFF', fontWeight: 'bold', fontSize: 13 }}>৳{selectedReportDay.sell?.toLocaleString()}</Text></View>
+                <View><Text style={{ color: '#888', fontSize: 10 }}>মোট খরচ</Text><Text style={{ color: '#EF4444', fontWeight: 'bold', fontSize: 13 }}>৳{selectedReportDay.expense?.toLocaleString()}</Text></View>
+                <View><Text style={{ color: '#888', fontSize: 10 }}>জমা</Text><Text style={{ color: '#34D399', fontWeight: 'bold', fontSize: 13 }}>৳{selectedReportDay.deposit?.toLocaleString()}</Text></View>
               </View>
             )}
-            <View style={styles.modalFooterActions}><TouchableOpacity style={styles.exportBtn} onPress={() => exportDepositReportPDF(filteredHistory, activeFilter)}><Text style={styles.exportBtnIcon}>📄</Text><Text style={styles.exportBtnText}>PDF ডাউনলোড</Text></TouchableOpacity><TouchableOpacity style={styles.historyCloseBtn} onPress={() => setDepositReportVisible(false)}><Text style={styles.historyCloseBtnText}>বন্ধ করুন</Text></TouchableOpacity></View>
+
+            <ScrollView style={{ width: '100%' }} showsVerticalScrollIndicator={false}>
+              {(() => {
+                const targetDate = selectedReportDay?.date;
+                const dayOrders = (completedOrders || []).filter(o => {
+                  const oDate = o.fullDate || (o.created_at ? o.created_at.substring(0, 10) : '');
+                  return oDate === targetDate;
+                });
+
+                if (dayOrders.length === 0) {
+                  return (
+                    <View style={{ alignItems: 'center', paddingVertical: 30 }}>
+                      <Text style={{ color: '#888', textAlign: 'center', marginBottom: 14 }}>এই তারিখের কোনো পৃথক অর্ডার ডাটা পাওয়া যায়নি।</Text>
+                      {selectedReportDay && (
+                        <TouchableOpacity 
+                          style={{ width: '85%', backgroundColor: '#1E293B', borderWidth: 1, borderColor: '#3B82F6', borderRadius: 10, paddingVertical: 12, alignItems: 'center' }}
+                          onPress={() => {
+                            const summaryOrder = {
+                              tableId: 'দৈনিক সারাংশ',
+                              fullDate: selectedReportDay.date,
+                              time: 'Day Summary',
+                              items: [
+                                { name: 'মোট বিক্রয়', qty: 1, price: selectedReportDay.sell || 0, total: selectedReportDay.sell || 0 },
+                                { name: 'মোট খরচ', qty: 1, price: selectedReportDay.expense || 0, total: selectedReportDay.expense || 0 },
+                                { name: 'মালিকের জমা (Deposit)', qty: 1, price: selectedReportDay.deposit || 0, total: selectedReportDay.deposit || 0 }
+                              ],
+                              totalAmount: selectedReportDay.sell || 0,
+                              paidAmount: selectedReportDay.deposit || 0,
+                              paymentMethod: `Cash: ${selectedReportDay.breakdown?.cash || 0} | bKash: ${selectedReportDay.breakdown?.bkash || 0}`
+                            };
+                            setPrintOrder(summaryOrder);
+                          }}
+                        >
+                          <Text style={{ color: '#60A5FA', fontSize: 13, fontWeight: 'bold' }}>🖨️ দৈনিক সারাংশ রসিদ প্রিন্ট করুন</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  );
+                }
+
+                return dayOrders.map((order, idx) => (
+                  <View 
+                    key={order.id || idx}
+                    style={{ 
+                      flexDirection: 'row', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center', 
+                      backgroundColor: '#161B22', 
+                      padding: 12, 
+                      borderRadius: 10, 
+                      marginBottom: 8,
+                      borderWidth: 1,
+                      borderColor: '#262D38'
+                    }}
+                  >
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                        <Text style={{ color: '#FFB703', fontWeight: 'bold', fontSize: 13, marginRight: 8 }}>{order.tableId || order.table}</Text>
+                        <Text style={{ color: '#888', fontSize: 11 }}>{order.time}</Text>
+                      </View>
+                      <Text style={{ color: '#CBD5E1', fontSize: 11 }} numberOfLines={1}>{order.items}</Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end', marginRight: 10 }}>
+                      <Text style={{ color: '#34D399', fontWeight: 'bold', fontSize: 13 }}>৳{order.paidAmount || order.grandTotal || order.totalAmount}</Text>
+                      <Text style={{ color: '#888', fontSize: 10 }}>{order.method || order.paymentMethod || 'Paid'}</Text>
+                    </View>
+                    <TouchableOpacity 
+                      style={{ 
+                        backgroundColor: 'rgba(59, 130, 246, 0.15)', 
+                        width: 36, 
+                        height: 36, 
+                        borderRadius: 8, 
+                        justifyContent: 'center', 
+                        alignItems: 'center' 
+                      }}
+                      onPress={() => setPrintOrder(order)}
+                    >
+                      <Text style={{ fontSize: 16 }}>🖨️</Text>
+                    </TouchableOpacity>
+                  </View>
+                ));
+              })()}
+            </ScrollView>
+
+            <TouchableOpacity 
+              style={[styles.modalCancelBtn, { width: '100%', marginTop: 14 }]} 
+              onPress={() => setDayDetailModalVisible(false)}
+            >
+              <Text style={styles.modalCancelBtnText}>বন্ধ করুন</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -1039,63 +1373,56 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
       </Modal>
 
       {/* PAST ACCOUNT MODAL */}
-      <Modal animationType="slide" transparent={true} visible={pastAccountModalVisible} onRequestClose={() => setPastAccountModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { width: '90%', maxHeight: '85%' }]}>
-            <View style={styles.modalIconCircle}><Text style={styles.modalIconEmoji}>📅</Text></View>
-            <Text style={styles.modalTitle}>অতীতের হিসাব যোগ করুন</Text>
-            <ScrollView style={{ width: '100%' }} contentContainerStyle={{ paddingBottom: 20 }} showsVerticalScrollIndicator={false}>
-              <TouchableOpacity style={styles.expenseInputGroup} onPress={() => { setCalendarTarget('past'); setCalendarVisible(true); }}>
-                <Text style={styles.inputLabel}>তারিখ</Text>
-                <View style={[styles.modalInput, { justifyContent: 'center' }]}>
-                  <Text style={{color:'#FFF'}}>{pastDate ? formatDisplayDate(pastDate) : "তারিখ সিলেক্ট করুন"}</Text>
-                </View>
-              </TouchableOpacity>
-              <View style={styles.expenseInputGroup}><Text style={styles.inputLabel}>মোট বিক্রয়</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastTotalSell} onChangeText={setPastTotalSell}/></View>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>bKash</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastBkash} onChangeText={setPastBkash}/></View>
-                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>Nagad</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastNagad} onChangeText={setPastNagad}/></View>
-              </View>
+      <PastAccountModal
+        visible={pastAccountModalVisible}
+        onClose={() => setPastAccountModalVisible(false)}
+        isEditingPast={isEditingPast}
+        pastDate={pastDate}
+        onOpenDatePicker={() => {
+          setCalendarTarget('past');
+          setCalendarVisible(true);
+        }}
+        pastTotalSell={pastTotalSell}
+        setPastTotalSell={setPastTotalSell}
+        pastBkash={pastBkash}
+        setPastBkash={setPastBkash}
+        pastNagad={pastNagad}
+        setPastNagad={setPastNagad}
+        pastRocket={pastRocket}
+        setPastRocket={setPastRocket}
+        pastCash={pastCash}
+        setPastCash={setPastCash}
+        pastDeliverySell={pastDeliverySell}
+        setPastDeliverySell={setPastDeliverySell}
+        pastDeliveryCharge={pastDeliveryCharge}
+        setPastDeliveryCharge={setPastDeliveryCharge}
+        pastDudu={pastDudu}
+        setPastDudu={setPastDudu}
+        pastAkash={pastAkash}
+        setPastAkash={setPastAkash}
+        pastBurger={pastBurger}
+        setPastBurger={setPastBurger}
+        pastBazar={pastBazar}
+        setPastBazar={setPastBazar}
+        pastOthers={pastOthers}
+        setPastOthers={setPastOthers}
+        pastIjara={pastIjara}
+        setPastIjara={setPastIjara}
+        pastNetCash={pastNetCash}
+        setPastNetCash={setPastNetCash}
+        pastDeposit={pastDeposit}
+        setPastDeposit={setPastDeposit}
+        pastNote={pastNote}
+        setPastNote={setPastNote}
+        onSave={handleSavePastEntry}
+        formatDisplayDate={formatDisplayDate}
+      />
 
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>Rocket</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastRocket} onChangeText={setPastRocket}/></View>
-                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>Cash</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastCash} onChangeText={setPastCash}/></View>
-              </View>
-
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>🛵 Delivery Sell</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastDeliverySell} onChangeText={setPastDeliverySell}/></View>
-                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>🏷️ Delivery Charge</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastDeliveryCharge} onChangeText={setPastDeliveryCharge}/></View>
-              </View>
-              
-              <View style={{ marginTop: 10, marginBottom: 5 }}><Text style={{ color: '#FFB703', fontSize: 12, fontWeight: 'bold' }}>খরচসমূহ (Expenses)</Text></View>
-              
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>🛍️ দুদু মিয়া</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastDudu} onChangeText={setPastDudu}/></View>
-                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>🐔 আকাশ মুরগী</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastAkash} onChangeText={setPastAkash}/></View>
-              </View>
-              
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>🍔 বার্গার বান</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastBurger} onChangeText={setPastBurger}/></View>
-                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>🛒 বাজার খরচ</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastBazar} onChangeText={setPastBazar}/></View>
-              </View>
-              
-              <View style={styles.expenseInputGroup}><Text style={styles.inputLabel}>📦 অন্যান্য খরচ</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastOthers} onChangeText={setPastOthers}/></View>
-
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>🏛️ ইজা (Ijara)</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastIjara} onChangeText={setPastIjara}/></View>
-                <View style={[styles.expenseInputGroup, { width: '48%' }]}><Text style={styles.inputLabel}>💵 নেট ক্যাশ (Net Cash)</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} keyboardType="numeric" value={pastNetCash} onChangeText={setPastNetCash}/></View>
-              </View>
-
-              <View style={[styles.expenseInputGroup, { backgroundColor: 'rgba(52, 211, 153, 0.05)', padding: 10, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(52, 211, 153, 0.2)' }]}>
-                <Text style={[styles.inputLabel, { color: '#34D399' }]}>👤 Owner কে জমা (Deposit)</Text>
-                <TextInput style={[styles.modalInput, { color: '#34D399', fontWeight: 'bold', borderColor: 'rgba(52, 211, 153, 0.4)' }]} keyboardType="numeric" value={pastDeposit} onChangeText={setPastDeposit} placeholder="0"/>
-              </View>
-
-              <View style={styles.expenseInputGroup}><Text style={styles.inputLabel}>নোট (ঐচ্ছিক)</Text><TextInput style={[styles.modalInput, { color: '#FFF' }]} value={pastNote} onChangeText={setPastNote} placeholder="অতিরিক্ত তথ্য..."/></View>
-            </ScrollView>
-            <View style={styles.modalBtnRow}><TouchableOpacity style={styles.modalCancelBtn} onPress={() => setPastAccountModalVisible(false)}><Text style={styles.modalCancelBtnText}>বাতিল</Text></TouchableOpacity><TouchableOpacity style={styles.modalSaveBtn} onPress={handleSavePastEntry}><Text style={styles.modalSaveBtnText}>সেভ করুন</Text></TouchableOpacity></View>
-        </View></View>
-      </Modal>
+      <PrintReceiptModal
+        visible={!!printOrder}
+        order={printOrder}
+        onClose={() => setPrintOrder(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -1173,6 +1500,9 @@ const styles = StyleSheet.create({
   orderItemAmount: { fontSize: 13, fontWeight: 'bold', color: '#FFF' },
   orderItemStatus: { fontSize: 10, marginTop: 2 },
   actionRow: { flexDirection: 'row' },
+  printBtn: { backgroundColor: 'rgba(59, 130, 246, 0.15)', width: 28, height: 28, borderRadius: 6, justifyContent: 'center', alignItems: 'center', marginRight: 4 },
+  modalPrintBtn: { backgroundColor: '#1E293B', borderWidth: 1, borderColor: '#3B82F6', borderRadius: 10, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
+  modalPrintBtnText: { color: '#60A5FA', fontSize: 14, fontWeight: 'bold' },
   editBtn: { backgroundColor: 'rgba(255, 183, 3, 0.15)', width: 28, height: 28, borderRadius: 6, justifyContent: 'center', alignItems: 'center', marginRight: 4 },
   deleteBtn: { backgroundColor: 'rgba(255, 77, 77, 0.15)', width: 28, height: 28, borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
   btnIcon: { fontSize: 12 },
@@ -1263,4 +1593,383 @@ const styles = StyleSheet.create({
   calCloseBtnText: { color: '#888', fontSize: 14 },
   syncTimerWrapper: { paddingVertical: 4, paddingHorizontal: 12, backgroundColor: '#161616', borderRadius: 8, marginHorizontal: 16, marginTop: 4, marginBottom: 4, alignItems: 'center', borderWidth: 1, borderColor: '#222' },
   syncTimerText: { color: '#FFB703', fontSize: 8, fontWeight: '600', marginVertical: 1 },
+
+  // ── REUSED ADMIN DASHBOARD STYLES ──
+  card: {
+    backgroundColor: '#181E25',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#242C37',
+    padding: 16,
+    marginBottom: 16,
+    marginHorizontal: 16,
+  },
+  sectionHeaderTitle: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+    marginBottom: 6,
+  },
+  paymentSourceCard: {
+    backgroundColor: '#181E25',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#242C37',
+    padding: 16,
+    marginBottom: 16,
+    marginHorizontal: 16,
+  },
+  segmentedBarTrack: { height: 16, borderRadius: 8, flexDirection: 'row', overflow: 'hidden', backgroundColor: '#111417', marginBottom: 14 },
+  segmentBar: { height: '100%' },
+  paymentLegendGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 8 },
+  paymentLegendItem: { width: '48%', flexDirection: 'row', alignItems: 'center' },
+  legendDot: { width: 10, height: 10, borderRadius: 3, marginRight: 8 },
+  legendLabel: { color: '#E2E8F0', fontSize: 12, fontWeight: '600', flex: 1 },
+  legendVal: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
+
+  // Last 7 Days Chart
+  chartCard: {
+    backgroundColor: '#181E25',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#242C37',
+    padding: 18,
+    marginBottom: 16,
+    marginHorizontal: 16,
+  },
+  chartHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  chartCardTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  chartCardSubtitle: {
+    color: '#8B95A5',
+    fontSize: 13,
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  chartHighestBadge: {
+    backgroundColor: 'rgba(217, 119, 6, 0.18)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chartHighestBadgeText: {
+    color: '#F59E0B',
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
+  chartBarsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    height: 155,
+    paddingTop: 8,
+  },
+  chartCol: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    height: '100%',
+  },
+  chartBarCol: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    height: 125,
+  },
+  chartBarValueText: {
+    color: '#8B95A5',
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 5,
+  },
+  chartBarValueTextToday: {
+    color: '#FFFFFF',
+    fontSize: 12.5,
+    fontWeight: '800',
+  },
+  chartBarFill: {
+    width: '84%',
+    maxWidth: 42,
+    borderRadius: 8,
+  },
+  chartDayText: {
+    color: '#8B95A5',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  chartDayTextToday: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '900',
+  },
+
+  // Table + Delivery Section
+  tableDeliveryCard: {
+    backgroundColor: '#181E25',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#242C37',
+    padding: 16,
+    marginBottom: 16,
+    marginHorizontal: 16,
+  },
+  tableDeliveryHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  tableDeliveryTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  tableFilterPillGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#111417',
+    borderRadius: 18,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: '#242C37',
+  },
+  tableFilterBtn: {
+    paddingHorizontal: 11,
+    paddingVertical: 4.5,
+    borderRadius: 14,
+  },
+  tableFilterBtnActive: {
+    backgroundColor: '#242D38',
+  },
+  tableFilterBtnText: {
+    color: '#8B95A5',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  tableFilterBtnTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  tableVisualGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: 10,
+  },
+  tableGridCard: {
+    width: '23.5%',
+    aspectRatio: 0.72,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 10,
+    paddingBottom: 8,
+    paddingHorizontal: 4,
+  },
+  tableGridCardBusy: {
+    backgroundColor: '#272015',
+    borderColor: '#F59E0B',
+  },
+  tableGridCardFree: {
+    backgroundColor: '#141A22',
+    borderColor: '#1D5A56',
+  },
+  tableCardTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+  tableCardTitleBusy: {
+    color: '#F59E0B',
+  },
+  tableCardTitleFree: {
+    color: '#FFFFFF',
+  },
+  tableStatusIndicatorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  tableStatusDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    marginRight: 4,
+  },
+  tableStatusLabel: {
+    fontSize: 10.5,
+    fontWeight: '700',
+  },
+  tableCardAmount: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    textAlign: 'center',
+    minHeight: 16,
+  },
+  tableCardChairIcon: {
+    fontSize: 15,
+    opacity: 0.35,
+    textAlign: 'center',
+  },
+  deliveryDividerContainer: {
+    marginVertical: 12,
+  },
+  deliveryDividerLine: {
+    height: 1,
+    backgroundColor: '#242C37',
+    width: '100%',
+  },
+  activeDeliverySectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  activeDeliverySectionTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  activeDeliveryCountBadge: {
+    backgroundColor: '#342410',
+    paddingHorizontal: 10,
+    paddingVertical: 3.5,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.25)',
+  },
+  activeDeliveryCountBadgeText: {
+    color: '#F59E0B',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  newDeliveryMiniBtn: {
+    backgroundColor: 'rgba(255, 183, 3, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 183, 3, 0.35)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+  },
+  newDeliveryMiniBtnText: {
+    color: '#FFB703',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  activeDeliveryCard: {
+    backgroundColor: '#111417',
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#222834',
+    marginBottom: 8,
+  },
+  activeDeliveryHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  activeDeliveryLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
+    minWidth: 0,
+  },
+  deliveryRiderIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#282314',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    flexShrink: 0,
+  },
+  deliveryRiderIcon: {
+    fontSize: 22,
+  },
+  activeDeliveryName: {
+    color: '#FFFFFF',
+    fontSize: 14.5,
+    fontWeight: '700',
+  },
+  activeDeliverySub: {
+    color: '#8B95A5',
+    fontSize: 11.5,
+    marginTop: 3,
+  },
+  activeDeliveryRight: {
+    alignItems: 'flex-end',
+    flexShrink: 0,
+  },
+  activeDeliveryAmount: {
+    color: '#F59E0B',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  emptyDeliveryBox: {
+    alignItems: 'center',
+    paddingVertical: 18,
+  },
+  emptyDeliveryEmoji: {
+    fontSize: 26,
+    marginBottom: 4,
+  },
+  emptyDeliveryText: {
+    color: '#8E8E93',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+
+  // Top Selling Items
+  topSellerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 },
+  topSellerSubtitle: { color: '#CBD5E1', fontSize: 12, marginTop: 2 },
+  topSellerReportBtn: { paddingVertical: 4, paddingHorizontal: 6 },
+  topSellerReportBtnText: { color: '#FFB703', fontSize: 12, fontWeight: '700' },
+  topHeroCard: { backgroundColor: '#13181F', borderRadius: 16, borderWidth: 1, borderColor: '#242C37', padding: 16, marginBottom: 12, position: 'relative', overflow: 'hidden' },
+  topHeroDecorCircle: { position: 'absolute', right: -25, top: -25, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(255, 183, 3, 0.04)' },
+  topHeroBadge: { backgroundColor: 'rgba(255, 183, 3, 0.12)', borderWidth: 1, borderColor: 'rgba(255, 183, 3, 0.25)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, alignSelf: 'flex-start', marginBottom: 10 },
+  topHeroBadgeText: { color: '#FFB703', fontSize: 11, fontWeight: '700' },
+  topHeroContentRow: { flexDirection: 'row', alignItems: 'center' },
+  topHeroRankBox: { width: 50, height: 50, borderRadius: 14, backgroundColor: 'rgba(255, 183, 3, 0.1)', borderWidth: 1, borderColor: 'rgba(255, 183, 3, 0.2)', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  topHeroRankNum: { color: '#FFB703', fontSize: 24, fontWeight: '900' },
+  topHeroInfoCol: { flex: 1, minWidth: 0 },
+  topHeroTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '800' },
+  topHeroSub: { color: '#E2E8F0', fontSize: 12, fontWeight: '600', marginTop: 2, marginBottom: 4 },
+  topHeroPrice: { color: '#FFB703', fontSize: 20, fontWeight: '900' },
+  rankedListCard: { backgroundColor: '#13181F', borderRadius: 14, borderWidth: 1, borderColor: '#242C37', marginBottom: 0, overflow: 'hidden' },
+  rankedItemRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 12 },
+  rankedItemBorderBottom: { borderBottomWidth: 1, borderColor: '#1E2632' },
+  rankedBadge: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#1E2632', justifyContent: 'center', alignItems: 'center', marginRight: 10, flexShrink: 0 },
+  rankedBadgeText: { color: '#E2E8F0', fontSize: 11, fontWeight: '800' },
+  rankedItemMiddleCol: { flex: 1, marginRight: 12, minWidth: 0 },
+  rankedItemName: { color: '#FFFFFF', fontSize: 13, fontWeight: '700', marginBottom: 4 },
+  rankedItemSubRow: { flexDirection: 'row', alignItems: 'center' },
+  rankedItemCategory: { color: '#94A3B8', fontSize: 10, marginRight: 8, maxWidth: 65 },
+  rankedProgressBarTrack: { flex: 1, height: 5, borderRadius: 2.5, backgroundColor: '#1E2632', overflow: 'hidden' },
+  rankedProgressBarFill: { height: '100%', borderRadius: 2.5, backgroundColor: '#FFB703' },
+  rankedItemRightCol: { alignItems: 'flex-end', flexShrink: 0 },
+  rankedItemAmount: { color: '#FFFFFF', fontSize: 13, fontWeight: '800' },
+  rankedItemQty: { color: '#10B981', fontSize: 11, fontWeight: '600', marginTop: 2 },
+  emptyState: { alignItems: 'center', paddingVertical: 20 },
+  emptyStateEmoji: { fontSize: 28, marginBottom: 8 },
+  emptyStateText: { color: '#8E8E93', fontSize: 12, fontWeight: '600', marginBottom: 3 },
+  emptyStateSub: { color: '#666666', fontSize: 10, textAlign: 'center', paddingHorizontal: 20 },
 });

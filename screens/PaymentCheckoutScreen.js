@@ -14,11 +14,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { formatDisplayDate } from '../database';
+import PrintReceiptModal from '../components/PrintReceiptModal';
+import PrinterStatusBanner from '../components/PrinterStatusBanner';
 
 export default function PaymentCheckoutScreen({
   tableId,
   totalAmount,
   totalItems,
+  items = [],
   deliveryCharge = 0,
   changeMoneyGiven = 0,
   userRole,
@@ -88,8 +91,33 @@ export default function PaymentCheckoutScreen({
     setBreakdown(prev => ({ ...prev, [key]: parseFloat(val) || 0 }));
   };
 
+  const [printOrder, setPrintOrder] = useState(null);
+
   const handlePrint = () => {
-    Alert.alert("প্রিন্ট করুন", "রসিদ প্রিন্টারে পাঠানো হয়েছে...");
+    const parsedAmount = isSplitMode
+      ? totalEntered
+      : (parseFloat(amountInput) || grandTotal);
+
+    const receiptOrder = {
+      tableId,
+      fullDate: new Date().toISOString().substring(0, 10),
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      items,
+      totalAmount,
+      deliveryCharge,
+      changeMoneyGiven,
+      paidAmount: parsedAmount,
+      grandTotal,
+      discount: Math.max(0, grandTotal - parsedAmount),
+      method: isSplitMode ? 'Split' : selectedMethod,
+      cashAmount: isSplitMode ? (breakdown.cash || 0) : (selectedMethod === 'ক্যাশ' ? parsedAmount : 0),
+      bkashAmount: isSplitMode ? (breakdown.bkash || 0) : (selectedMethod === 'বিকাশ' ? parsedAmount : 0),
+      nagadAmount: isSplitMode ? (breakdown.nagad || 0) : (selectedMethod === 'নগদ' ? parsedAmount : 0),
+      rocketAmount: isSplitMode ? (breakdown.rocket || 0) : (selectedMethod === 'রকেট' ? parsedAmount : 0),
+      breakdown: isSplitMode ? breakdown : null
+    };
+
+    setPrintOrder(receiptOrder);
   };
 
   // Payment methods configuration (Due removed)
@@ -115,6 +143,8 @@ export default function PaymentCheckoutScreen({
           </View>
         </View>
       </View>
+
+      <PrinterStatusBanner compact />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -256,6 +286,11 @@ export default function PaymentCheckoutScreen({
 
         {/* Action Buttons */}
         <View style={styles.actionBtnRow}>
+          <TouchableOpacity style={styles.printBtn} onPress={handlePrint} activeOpacity={0.8}>
+            <Text style={styles.printerIcon}>🖨️</Text>
+            <Text style={styles.printBtnText}>প্রিন্ট করুন</Text>
+          </TouchableOpacity>
+
           <TouchableOpacity 
             style={styles.completeBtn} 
             onPress={handleComplete} 
@@ -265,11 +300,6 @@ export default function PaymentCheckoutScreen({
               <Text style={styles.btnCheckText}>✓</Text>
             </View>
             <Text style={styles.completeBtnText}>পেমেন্ট সম্পন্ন করুন</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.printBtn} onPress={handlePrint} activeOpacity={0.8}>
-            <Text style={styles.printerIcon}>🖨️</Text>
-            <Text style={styles.printBtnText}>প্রিন্ট</Text>
           </TouchableOpacity>
         </View>
 
@@ -284,6 +314,12 @@ export default function PaymentCheckoutScreen({
 
       </ScrollView>
     </KeyboardAvoidingView>
+
+    <PrintReceiptModal
+      visible={!!printOrder}
+      order={printOrder}
+      onClose={() => setPrintOrder(null)}
+    />
   </SafeAreaView>
   );
 }

@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   Text,
   View,
   TouchableOpacity,
   ActivityIndicator,
+  AppState,
   StatusBar as RNStatusBar
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,8 +16,12 @@ import { ACTIVE_APP_PROFILE } from '../database';
 export default function DevicePendingScreen({ deviceId, onApproved, onExit }) {
   const [checking, setChecking] = useState(false);
   const [msg, setMsg] = useState('');
+  const inFlightRef = useRef(false);
+  const stoppedRef = useRef(false);
 
   const handleRefresh = async () => {
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     setChecking(true);
     setMsg('');
     try {
@@ -67,6 +72,7 @@ export default function DevicePendingScreen({ deviceId, onApproved, onExit }) {
       const status = remoteStatus || String(updatedRecord?.status || 'PENDING').toUpperCase().trim();
 
       if (status === 'ACTIVE') {
+        stoppedRef.current = true;
         if (onApproved) {
           onApproved();
         }
@@ -80,8 +86,19 @@ export default function DevicePendingScreen({ deviceId, onApproved, onExit }) {
       setMsg('স্ট্যাটাস পরীক্ষা করতে ব্যর্থ হয়েছে।');
     } finally {
       setChecking(false);
+      inFlightRef.current = false;
     }
   };
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (stoppedRef.current) return;
+      if (AppState.currentState !== 'active') return;
+      if (inFlightRef.current) return;
+      handleRefresh();
+    }, 10000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <SafeAreaView style={styles.container}>

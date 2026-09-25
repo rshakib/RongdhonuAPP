@@ -446,9 +446,9 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
         {
           text: 'হ্যাঁ',
           style: newStatus === 'BLOCKED' ? 'destructive' : 'default',
-          onPress: () => {
-            const success = updateDeviceStatus(deviceId, newStatus, 'admin');
-            if (success) {
+          onPress: async () => {
+            const result = await updateDeviceStatus(deviceId, newStatus, 'admin');
+            if (result && result.success) {
               try {
                 const { logActivity, ACTION_TYPES } = require('../services/activityLogger');
                 logActivity({
@@ -484,9 +484,9 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
         { text: 'বাতিল', style: 'cancel' },
         {
           text: 'হ্যাঁ',
-          onPress: () => {
-            const success = updateDeviceOfflinePermission(device.device_id, nextAllowed, 'admin');
-            if (success) {
+          onPress: async () => {
+            const result = await updateDeviceOfflinePermission(device.device_id, nextAllowed, 'admin');
+            if (result && result.success) {
               try {
                 const { logActivity, ACTION_TYPES } = require('../services/activityLogger');
                 logActivity({
@@ -872,7 +872,7 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
 
                 return (
                   <TouchableOpacity
-                    key={item.id || item.device_id}
+                    key={`${item.device_id || item.id || "dev"}-${index}`}
                     style={styles.deviceCard}
                     activeOpacity={0.95}
                     onLongPress={() => handleLongPressDevice(item)}
@@ -933,7 +933,7 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
                         <View style={[styles.specsCol, styles.specsColVersion]}>
                           <Text style={styles.specsLabel}>অ্যাপ ভার্সন</Text>
                           <Text style={styles.specsValue} numberOfLines={1}>
-                            v{item.app_version || APP_VERSION || '1.0.3'}
+                            v{item.app_version || APP_VERSION || '1.0.4'}
                           </Text>
                         </View>
                         <View style={[styles.specsCol, styles.specsColStatus]}>
@@ -1141,7 +1141,7 @@ export default function DeviceManagementScreen({ onBack, userRole = 'ADMIN' }) {
               </View>
             ) : (
               deletedDevices.map((item) => (
-                <View key={item.id || item.device_id} style={styles.deviceCard}>
+                <View key={`${item.device_id || item.id || "dev"}-${index}`} style={styles.deviceCard}>
                   <View style={styles.cardHeader}>
                     <View style={styles.deviceIdentityGroup}>
                       <View style={[styles.deviceIconBox, { backgroundColor: 'rgba(239, 68, 68, 0.12)' }]}>

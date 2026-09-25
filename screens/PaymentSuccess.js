@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
    StyleSheet,
    Text,
@@ -10,8 +10,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatDisplayDate } from '../database';
+import PrintReceiptModal from '../components/PrintReceiptModal';
+import PrinterStatusBanner from '../components/PrinterStatusBanner';
 
-export default function PaymentSuccess({ tableId, totalAmount, paidAmount, paymentMethod, onReturnHome }) {
+export default function PaymentSuccess({ tableId, totalAmount, paidAmount, paymentMethod, order, items, onReturnHome }) {
   const orderId = `#ORD-000${Math.floor(100000 + Math.random() * 900000)}`;
   const discountAmount = Math.max(0, totalAmount - paidAmount);
   const changeAmount = Math.max(0, paidAmount - totalAmount);
@@ -46,6 +48,29 @@ export default function PaymentSuccess({ tableId, totalAmount, paidAmount, payme
 
   const transactionTime = getFormattedTime();
 
+  const [printOrder, setPrintOrder] = useState(null);
+
+  const handlePrint = () => {
+    const paymentDoneTime = (order && (order.time || order.paymentTime))
+      ? (order.time || order.paymentTime)
+      : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    const receiptOrder = {
+      ...(order || {}),
+      tableId: (order && order.tableId) || tableId,
+      fullDate: (order && (order.fullDate || order.date)) || new Date().toISOString().substring(0, 10),
+      time: paymentDoneTime,
+      paymentTime: paymentDoneTime,
+      items: (order && order.items) || items || [],
+      totalAmount: (order && (order.totalAmount ?? order.grandTotal)) || totalAmount,
+      paidAmount: (order && order.paidAmount) || paidAmount,
+      grandTotal: (order && order.grandTotal) || totalAmount,
+      discount: (order && order.discount !== undefined) ? order.discount : discountAmount,
+      paymentMethod: (order && (order.paymentMethod || order.method)) || paymentMethod
+    };
+    setPrintOrder(receiptOrder);
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -60,6 +85,8 @@ export default function PaymentSuccess({ tableId, totalAmount, paidAmount, payme
           </View>
         </View>
       </View>
+
+      <PrinterStatusBanner compact />
 
       <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollBody} contentContainerStyle={styles.scrollContent}>
         {/* Success Alert Box */}
@@ -111,7 +138,12 @@ export default function PaymentSuccess({ tableId, totalAmount, paidAmount, payme
 
 
 
-        {/* Action Button */}
+        {/* Action Buttons */}
+        <TouchableOpacity style={styles.printBtn} onPress={handlePrint} activeOpacity={0.85}>
+          <Text style={styles.printIcon}>🖨️</Text>
+          <Text style={styles.printBtnText}>রসিদ প্রিন্ট করুন</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity style={styles.homeBtn} onPress={onReturnHome} activeOpacity={0.85}>
           <Text style={styles.homeIcon}>🏠</Text>
           <Text style={styles.homeBtnText}>হোমে ফিরে যান</Text>
@@ -124,6 +156,12 @@ export default function PaymentSuccess({ tableId, totalAmount, paidAmount, payme
           </Text>
         </View>
       </ScrollView>
+
+      <PrintReceiptModal
+        visible={!!printOrder}
+        order={printOrder}
+        onClose={() => setPrintOrder(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -278,6 +316,26 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 
+  printBtn: {
+    flexDirection: 'row',
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#3B82F6',
+    height: 52,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  printIcon: {
+    fontSize: 18,
+    marginRight: 8,
+  },
+  printBtnText: {
+    color: '#60A5FA',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
   homeBtn: {
     flexDirection: 'row',
     backgroundColor: '#FFB703',

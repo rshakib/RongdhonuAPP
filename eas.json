@@ -10,34 +10,82 @@
     "admin": {
       "environment": "production",
       "env": {
-        "EXPO_PUBLIC_APP_PROFILE": "ADMIN"
+        "EXPO_PUBLIC_APP_PROFILE": "ADMIN",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://zdruassdewwjbexximkj.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpkcnVhc3NkZXd3amJleHhpbWtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2NjQ4MzQsImV4cCI6MjEwNTI0MDgzNH0.LNR2SmBq5j3HZy624OMVBaiHH4I-EU4WNKAYAEMv6_A",
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyDeRLnma3Z-VC_gJi37fLDJ4_4FLFbq8Oc",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "rongdhonu-83b3d.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "rongdhonu-83b3d",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "rongdhonu-83b3d.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "931678906315",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:931678906315:web:ad477d7894b0bbfe56384e",
+        "EXPO_PUBLIC_AI_DATASET_ENABLED": "false",
+        "EXPO_PUBLIC_WEATHER_WEBAPP_URL": "https://script.google.com/macros/s/AKfycby3hT9OTujiMFgXUQIhUNQa5cepBYy3nBnuownUVuOlGsWtt3ZkbEEh40D32X3WIRnWtA/exec",
+        "EXPO_PUBLIC_GOOGLE_SHEETS_WEBAPP_URL": "https://script.google.com/macros/s/AKfycby3hT9OTujiMFgXUQIhUNQa5cepBYy3nBnuownUVuOlGsWtt3ZkbEEh40D32X3WIRnWtA/exec"
       },
       "channel": "admin",
       "android": {
         "buildType": "apk"
-      }
+      },
+      "credentialsSource": "local"
     },
     "owner": {
       "environment": "production",
       "env": {
-        "EXPO_PUBLIC_APP_PROFILE": "OWNER"
+        "EXPO_PUBLIC_APP_PROFILE": "OWNER",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://zdruassdewwjbexximkj.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpkcnVhc3NkZXd3amJleHhpbWtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2NjQ4MzQsImV4cCI6MjEwNTI0MDgzNH0.LNR2SmBq5j3HZy624OMVBaiHH4I-EU4WNKAYAEMv6_A",
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyDeRLnma3Z-VC_gJi37fLDJ4_4FLFbq8Oc",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "rongdhonu-83b3d.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "rongdhonu-83b3d",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "rongdhonu-83b3d.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "931678906315",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:931678906315:web:ad477d7894b0bbfe56384e",
+        "EXPO_PUBLIC_AI_DATASET_ENABLED": "false",
+        "EXPO_PUBLIC_WEATHER_WEBAPP_URL": "https://script.google.com/macros/s/AKfycby3hT9OTujiMFgXUQIhUNQa5cepBYy3nBnuownUVuOlGsWtt3ZkbEEh40D32X3WIRnWtA/exec",
+        "EXPO_PUBLIC_GOOGLE_SHEETS_WEBAPP_URL": "https://script.google.com/macros/s/AKfycby3hT9OTujiMFgXUQIhUNQa5cepBYy3nBnuownUVuOlGsWtt3ZkbEEh40D32X3WIRnWtA/exec"
       },
       "channel": "owner",
       "android": {
         "buildType": "apk"
-      }
+      },
+      "credentialsSource": "local"
     },
     "manager": {
       "environment": "production",
       "env": {
-        "EXPO_PUBLIC_APP_PROFILE": "MANAGER"
+        "EXPO_PUBLIC_APP_PROFILE": "MANAGER",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://zdruassdewwjbexximkj.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpkcnVhc3NkZXd3amJleHhpbWtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2NjQ4MzQsImV4cCI6MjEwNTI0MDgzNH0.LNR2SmBq5j3HZy624OMVBaiHH4I-EU4WNKAYAEMv6_A",
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyDeRLnma3Z-VC_gJi37fLDJ4_4FLFbq8Oc",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "rongdhonu-83b3d.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "rongdhonu-83b3d",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "rongdhonu-83b3d.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "931678906315",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:931678906315:web:ad477d7894b0bbfe56384e",
+        "EXPO_PUBLIC_AI_DATASET_ENABLED": "false",
+        "EXPO_PUBLIC_WEATHER_WEBAPP_URL": "https://script.google.com/macros/s/AKfycby3hT9OTujiMFgXUQIhUNQa5cepBYy3nBnuownUVuOlGsWtt3ZkbEEh40D32X3WIRnWtA/exec",
+        "EXPO_PUBLIC_GOOGLE_SHEETS_WEBAPP_URL": "https://script.google.com/macros/s/AKfycby3hT9OTujiMFgXUQIhUNQa5cepBYy3nBnuownUVuOlGsWtt3ZkbEEh40D32X3WIRnWtA/exec"
       },
       "channel": "manager",
       "android": {
         "buildType": "apk"
-      }
+      },
+      "credentialsSource": "local"
     },
-    "production": {}
+    "production": {
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://zdruassdewwjbexximkj.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpkcnVhc3NkZXd3amJleHhpbWtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2NjQ4MzQsImV4cCI6MjEwNTI0MDgzNH0.LNR2SmBq5j3HZy624OMVBaiHH4I-EU4WNKAYAEMv6_A",
+        "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyDeRLnma3Z-VC_gJi37fLDJ4_4FLFbq8Oc",
+        "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "rongdhonu-83b3d.firebaseapp.com",
+        "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "rongdhonu-83b3d",
+        "EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET": "rongdhonu-83b3d.firebasestorage.app",
+        "EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID": "931678906315",
+        "EXPO_PUBLIC_FIREBASE_APP_ID": "1:931678906315:web:ad477d7894b0bbfe56384e",
+        "EXPO_PUBLIC_AI_DATASET_ENABLED": "false"
+      }
+    }
   },
   "submit": {
     "production": {}
