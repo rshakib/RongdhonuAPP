@@ -44,7 +44,6 @@ import {
   pickAndValidateBackup,
   restoreBackup,
   getBackupStatus,
-  cleanupInspectBackup,
 } from '../services/backupRestore';
 
 export default function BackupRestoreScreen({ onBack, onRefreshAppState }) {
@@ -134,14 +133,6 @@ export default function BackupRestoreScreen({ onBack, onRefreshAppState }) {
   };
 
   // ─── 3. CONFIRM & EXECUTE ATOMIC RESTORE ───────────────────────────────────
-
-  const handleCancelModal = () => {
-    if (validatedData && validatedData.inspectDbName) {
-      cleanupInspectBackup(validatedData.inspectDbName).catch(() => {});
-    }
-    setPreviewModalVisible(false);
-    setValidatedData(null);
-  };
 
   const handleConfirmRestore = async () => {
     if (!validatedData || !validatedData.inspectDbName) return;
@@ -349,7 +340,7 @@ export default function BackupRestoreScreen({ onBack, onRefreshAppState }) {
                 </View>
               </View>
               <TouchableOpacity
-                onPress={handleCancelModal}
+                onPress={() => setPreviewModalVisible(false)}
                 style={styles.modalCloseBtn}
                 activeOpacity={0.7}
               >
@@ -413,7 +404,7 @@ export default function BackupRestoreScreen({ onBack, onRefreshAppState }) {
                 <View style={styles.modalBtnRow}>
                   <TouchableOpacity
                     style={styles.cancelBtn}
-                    onPress={handleCancelModal}
+                    onPress={() => setPreviewModalVisible(false)}
                     activeOpacity={0.8}
                   >
                     <Text style={styles.cancelBtnText}>বাতিল করুন</Text>
