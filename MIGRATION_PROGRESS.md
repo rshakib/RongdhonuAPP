@@ -2,7 +2,7 @@
 
 > **Purpose:** Persistent session-memory file. Update after every meaningful step so a session reset never loses context.
 > **Full plan:** [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) · supporting research: [`ARCHITECTURE_CURRENT_STATE.md`](ARCHITECTURE_CURRENT_STATE.md), [`ARCHITECTURE_QUERY_PATTERNS.md`](ARCHITECTURE_QUERY_PATTERNS.md), [`DATE_FIELD_ANALYSIS.md`](DATE_FIELD_ANALYSIS.md), [`VERSION_CONTROL_MIGRATION_NOTES.md`](VERSION_CONTROL_MIGRATION_NOTES.md), [`RLS_IMPLEMENTATION_PLAN.md`](RLS_IMPLEMENTATION_PLAN.md).
-> **Last updated:** 2026-09-27 (Phases 1–7 complete; Supabase intervals tuned; **Firebase reads now gated — Supabase-only while healthy, Firebase only on failure / >31-day**; Device Control stays 100% Supabase-only — Firebase fallback DECLINED) · Branch: `feature/admin-dashboard-redesign`
+> **Last updated:** 2026-09-27 (Phases 1–7 complete · Firebase reads gated + live-verified ≈0 when Supabase healthy · fresh-install restore scope fixed for Manager/Admin · build profiles fixed · 4 resilience items DEFERRED) · Branch: `feature/admin-dashboard-redesign`
 
 ---
 
@@ -15,6 +15,55 @@
 3. ✅ **Phase 7 (RLS) COMPLETE — 27/27 gated.** All rollout stages (1–7) **plus the Stage 1 remainder** (`weather_data`, `eja_history`) were applied and verified on-device. Core POS flow (orders → items → payments → deliveries) verified: **no flicker, no duplicates, clean SQL spot-checks** (no duplicate/orphan `order_items`/`payments`).
    - **Four bugs were found and fixed during the rollout — see §1b.**
 4. ℹ️ **Only remaining action = optional final confirmation:** run the §4 (c) policy-inventory query to confirm **every** gated table shows only `"Device active gate"` and no leftover `"Permissive anon access (Phase 1)"`. Deferred (out-of-scope) items are listed in §1b.
+
+---
+
+## 0b. 📌 FINAL SNAPSHOT — current project state (2026-09-27)
+
+**One-screen summary. Everything below is committed on `feature/admin-dashboard-redesign` (not pushed).**
+
+**Build / release**
+- App **1.0.7**, Android **versionCode 10** (`app.json`, `app.config.js`, `package.json`+lock root, `supabase_full_setup.sql` seed, docs).
+- `eas.json` profiles: `admin`/`owner`/`manager` (+ `development`, `production`) — **all now set `EXPO_PUBLIC_APP_PROFILE`** (dev/production = ADMIN). The broken `build:apk`/`build:previe` scripts (referencing non-existent profiles) were **removed**.
+- ⚠️ `android/app/build.gradle` still shows `1.0.4`/`6` — prebuild artifact, intentionally not hand-edited (EAS regenerates).
+
+**Architecture**
+- **Writes = dual** (Firebase `sync_queue` + Supabase `sync_queue_supabase`), independent queues, per-backend retry.
+- **Reads = Supabase-primary**: tables 2s · high 5s · deletions 15s · low 45s · menu 45s.
+- **Firebase reads are health-gated** — skipped when Supabase is healthy (**live-verified ≈0/hr**), run only on Supabase failure / unconfigured / kill-switch / Supabase-write-FAILED (stale-read guard). Diagnostics: `[Firebase-Read] … reason=killswitch|unconfigured|read-failed|failed-writes:<n>|healthy`.
+- **RLS**: `is_device_active()` gate on **27/27 POS tables**; `devices`, `device_app_usage`, `app_version_policy` intentionally never device-gated.
+- **Retention**: `pg_cron` `rongdhonu_retention_31d` = `0 19 * * *` (01:00 Dhaka) prunes >31 d from the 13 rolling tables.
+- **Fresh-install restore scope** (fixed this session): `getRestoreMode()` — **MANAGER = running day · ADMIN/OWNER = 31 days · unresolved profile = running day (fail-conservative)**. Master data (`restaurant_tables`/`menu_items`/`menu_categories`) unbounded; `daily_submit`/`daily_summary` now **windowed**; Supabase cursors stamped for the whole profile set; `users` restored separately (`restoreUsersOnlyForProfile`).
+- **Device control = 100% Supabase-only** (Firebase fallback declined — permanent). Version control = Supabase-first → Firebase → SQLite cache → DEFAULT.
+
+**Bugs fixed (7)**
+| # | Bug | Status |
+|---|---|---|
+| 1 | `x-device-id` header never sent (no-op on `Headers`) | ✅ fixed (Stage 2) |
+| 2 | Pre-Phase-2 backfill gap → FK violation | ✅ fixed (Stage 3; tool later removed) |
+| 3 | Tombstone resurrection (deletes reappearing) | ✅ fixed (Stage 5) |
+| 4 | Shared `is_synced` → cross-backend flicker | ✅ fixed (Phase 7.2) |
+| 5 | `updateCompletedOrder` tombstone-free wipe | ✅ fixed |
+| 6 | Supabase **write-failure** → stale reads | ✅ fixed (write-failure guard) |
+| 7 | **Fresh-install restore scope wrong (Manager got ADMIN 31-day scope)** + `daily_*` unbounded | ✅ fixed + row-count-verified |
+
+**Tests:** `npm run test:all` → **511 assertions, EXIT 0** (50 test files; `tests/` is gitignored). New this session: `phase8ManualCloudSupabaseFirst` (11), `phase9RestoreScope` (5), `phase10AdminRestoreScope` (5). 3 fully-dead test files (referencing non-existent modules) deleted.
+
+**Row-count proofs (simulated, real functions):** MANAGER **1879 → 361**; ADMIN **16,307** vs **66,448** full-history (⇒ >31-day rows excluded); unresolved profile → today-only.
+
+**Deferred / out of scope (see §1b for full detail)**
+- 3 pre-existing race conditions (`expenses` stable-ID, `supplier_payment_ledger` INSERT-OR-REPLACE, `supplier_due` running-balance).
+- **Device Control Firebase fallback — DECLINED (permanent).**
+- **4 resilience trade-offs DEFERRED:** (1) device-control offline gate blocks non-ADMIN w/ `allow_offline=0` when Supabase is down; (2) Admin/Owner Firebase-fallback install is today-only (self-heals); (3) double Firebase reads while Supabase is down; (4) empty-Supabase install → Firebase today-only. Plus gap-2 de-dup + a resilience wiring test → **later, not now.**
+- 3 UX bugs (silent/false-success on `recoverMenuFromCloud`, month/date history downloads) — pre-existing, not addressed.
+
+**Manual / optional remaining**
+1. Re-run `supabase_cron.sql` in the Supabase SQL Editor if the `0 19 * * *` schedule isn't applied yet.
+2. Optional: update the live `app_version_policy` row to 1.0.7 (seed uses `ON CONFLICT DO NOTHING`).
+3. Build + distribute the 1.0.7 APKs; verify the startup line `AppProfile: MANAGER|ADMIN|OWNER`.
+4. Optional: run the §4(c) RLS policy-inventory query for final confirmation.
+
+**Recent commits:** `f3f736a` ADMIN scope audit · `7cf5669` build-config + dead tests · `c06b97f` restore-scope fix (critical) · `8d63264` resync/Cloud-Restore Supabase-first · `59e8be0` phases 6–7 + read-gating + v1.0.7.
 
 ---
 
@@ -48,6 +97,15 @@
 - **`supplier_due` read-modify-write running-balance race** — deferred (Phase 4 §4.3).
 - ~~**`updateCompletedOrder` tombstone-free wipe**~~ — **FIXED (2026-09-27).** `DELETE FROM order_items WHERE order_id = ?` + new `_rev` ids now **tombstones each wiped row (`recordDeletion`) BEFORE the delete**, so the pull engines can't resurrect duplicates on completed-order edits.
 - ❌ **Device Control Firebase fallback — DECLINED / OUT OF SCOPE (final, permanent).** The app owner has decided **Device Control stays 100% Supabase-only, by design**. No Firebase fallback will be built; the earlier plan is **withdrawn** and any partial work reverted. Do NOT re-raise this in future sessions.
+
+### DEFERRED — resilience / restore trade-offs (2026-09-27 · accepted, KNOWN TRADE-OFFS, not bugs)
+> Decision taken after the final resilience audit. **Do NOT implement without a fresh owner decision.** Listed here so they are not forgotten.
+1. **🔴 Device-control offline gate blocks non-ADMIN devices when Supabase is down (DEFERRED, accepted).** `services/deviceRegistry.js verifyDeviceAccessOnStartupOrResume` (L1201–1237) allows offline only when the local `allow_offline = 1` **or** role is **ADMIN** (L1218–1227); otherwise it **fails closed** (`verificationRequired`) → `App.js` L558–561 → `OFFLINE_VERIFICATION` screen. Consequently, **on a MANAGER/OWNER device with `allow_offline = 0`, the app cannot get past the gate while Supabase is unreachable — even though orders/menu/tables/version-check/sync would all run fine on Firebase.** This is the accepted cost of the "device control stays 100% Supabase-only" decision above. *Mitigation available if ever wanted:* grant `allow_offline = 1` per device, or add a Firebase device-control fallback (explicitly declined).
+2. **🟡 ADMIN/OWNER Firebase-fallback fresh-install restore is TODAY-ONLY (DEFERRED, self-healing).** If Supabase is down/unreachable at install, `getSupabaseCoverageDays()` returns `0` ⇒ the transition branch (`supabaseSync.js` L670–674) runs `restoreDatabaseFromCloud({mode:'today'})` for **every** profile — i.e. Admin/Owner get the running day, **not** a 31-day window, and there is **no Firebase-side 31-day restore**. *Self-heals:* that path stamps only the **Firebase** cursors, so when Supabase becomes reachable the first Supabase pull has no `last_sync_time_supabase_*` → full (retention-bounded) fetch backfills the window. Deferred rather than building a 31-day Firebase-side restore.
+3. **🟡 GAP 2 — double Firebase reads while Supabase is down (DEFERRED, low priority).** In the degraded state each table is pulled twice: once by the un-gated Supabase syncer's same-tick `callFirebaseFallback`, and again by the health-gated Firebase timer (`App.js` L667/682/697/713). **Correctness is unaffected** (idempotent merges + per-sync concurrency guards), but it roughly doubles Firebase read cost exactly when quota may be strained. *Cheap fix when wanted:* skip the gated Firebase timer for a group that already fell back in the same tick. Explicitly **not** implemented now.
+4. **🟡 GAP 4 — a legitimately-empty Supabase install falls back to Firebase today-only (DEFERRED, harmless).** `restoreHybridDatabaseFromCloud` requires `res.rowsWritten > 0` to accept the Supabase result (`supabaseSync.js` L691); a brand-new shop with an empty Supabase therefore takes the Firebase today-only path. Behaviorally harmless; noted for completeness.
+
+> Also deferred (not re-raised): **gap-2 de-dup** and a **resilience wiring test** — owner decision 2026-09-27: *later, not now.*
 
 ### Firebase-untouched — final sanity check (vs pre-migration reference `/run/media/shaki/2472D89F72D87750/Apps/rong`)
 - **Byte-identical:** `services/firebaseAuth.js`, `services/deviceRegistry.js`, `services/appUsageTracker.js`, `services/printerService.js`, `services/analyticsService.js`, `services/analyticsHelper.js`, `services/backupRestore.js`.
@@ -118,7 +176,7 @@ Implemented:
 - **RLS = Option B** (`is_device_active()` SECURITY DEFINER function + `X-Device-Id` header). **`devices` and `device_app_usage` are intentionally EXCLUDED** from gating (permissive RLS — owner decision, do not re-flag). This is Phase 7.
 - **`users.pin` syncs as-is plaintext** (mirrors Firestore 1:1; login verification stays entirely local SQLite PIN check).
 - **`restaurant_tables` uses 1–2s POLLING, not Realtime**, in the migration phases (no POS table added to the `supabase_realtime` publication).
-- **`is_synced` is omitted from Supabase** (SQLite-local only). **No `is_synced_supabase` column** — the queue is the source of truth for unsynced Supabase writes.
+- **`is_synced` / `is_synced_supabase` are SQLite-LOCAL only** (stripped from every Firestore + Supabase payload). **`is_synced_supabase` EXISTS** — added in Phase 7.2, **reversing** the earlier "not needed" note: it is the per-backend flag that fixed the cross-backend flicker (reset to 0 on local edit in `enqueueSync`; set to 1 on Supabase push success; the Supabase merge guards on it). `is_synced` remains the Firebase-side flag.
 - **Correctness fixes (Phase 4) precede retention (Phase 5)** because the `activity_logs` retention cutoff depends on the Dhaka-aware business-date fix.
 - **Deferred / OUT OF SCOPE (documented, do NOT touch):** `expenses` stable-ID overwrite race; `supplier_payment_ledger` INSERT OR REPLACE overwrite; `supplier_due` read-modify-write running-balance race.
 - **`supabase_schema.sql` deleted**; all references repointed to `supabase_full_setup.sql` (consolidated, idempotent).
@@ -432,6 +490,7 @@ This **reverses the Phase 2 decision §2.7** ("`is_synced_supabase` not needed")
 ---
 
 ## Changelog
+- **2026-09-27 (Docs — deferred resilience items + FINAL SNAPSHOT)** — Recorded the 4 accepted trade-offs from the final resilience audit as explicit **DEFERRED** items (§1b): (1) 🔴 device-control offline gate blocks **non-ADMIN** devices with `allow_offline=0` when Supabase is down (accepted cost of the "device control stays 100% Supabase-only" decision); (2) 🟡 Admin/Owner **Firebase-fallback** fresh-install restore is **today-only** (self-heals when Supabase returns; no Firebase-side 31-day restore built); (3) 🟡 **double Firebase reads** while Supabase is down (correctness fine; cheap de-dup deferred); (4) 🟡 **empty-Supabase install** → Firebase today-only (harmless). Also deferred by owner decision: the gap-2 de-dup implementation **and** a resilience wiring test — *later, not now*. Added **§0b FINAL SNAPSHOT** (one-screen current state: build/version, architecture, 7 bugs fixed, tests, row-count proofs, deferred list, manual steps, recent commits). Fixed a stale decision-log line (`is_synced_supabase` **does** exist — Phase 7.2). **Docs only — no code change.** `npm run test:all` **green (511 assertions, EXIT 0)**.
 - **2026-09-27 (ADMIN fresh-install scope audited — 31 days, NOT full history)** — Verified with new `tests/phase10AdminRestoreScope.test.js` (5 tests; uses the **REAL** ADMIN profile lists extracted + drift-guarded from `database.js`). `getRestoreMode('ADMIN') === '31d'`. **Scope:** master/unbounded = `restaurant_tables`, `menu_items`, `menu_categories`; windowed/31-day = `orders, order_items, payments, expenses, deliveries, due_payments, eja_history, off_days, weather_data, supplier_payment_ledger, owner_expenses` **+ `daily_submit`, `daily_summary`**. **Corrections to the assumed list:** `supplier_due_history` is **not** restored on fresh install (it lives only in `skipRestoreMarkers`); `activity_logs` is **not** part of the restore at all; **`users` are restored separately** by `restoreUsersOnlyForProfile()` (Firebase, role-filtered) before login — *not* by the Supabase window. **Row-count proof** (120-day busy-shop dataset, ages gapped around the boundary): ADMIN = **16,307** rows (master 328 + 31-day window 15,979) vs **66,448** for a full-history restore ⇒ **>31-day rows are provably excluded**. Transition fallback (Supabase coverage <31d) → **running-day-only Firebase**, verified intact. `npm run test:all` **green (511 assertions, EXIT 0)**.
   - **Expected live numbers:** the earlier "Manager ~18–19k" install was in fact running the **ADMIN** scope — so a **correct ADMIN** fresh install should land in the **same ballpark (~15–20k for a busy shop, driven by `order_items`)**, while a **correct MANAGER** install should be **~hundreds–1.5k**.
 - **2026-09-27 (Build-config fix + dead-test cleanup)** — `eas.json`: added **`EXPO_PUBLIC_APP_PROFILE`** to the `development` and `production` profiles (both set to **`ADMIN`**, matching `app.config.js`'s own `|| 'ADMIN'` fallback; flagged as an assumption because those two profiles are role-ambiguous) so **no build can ship with an unresolved profile**. Removed the two **broken** npm scripts `build:apk` (`--profile preview`) and `build:previe` (`--profile previe`) — neither profile exists in `eas.json` and nothing else (CI/docs/team workflow) referenced them; they could only ever have produced an ADMIN-scoped app. Deleted **3 fully-dead test files** (`initialRestoreSupabase31Day`, `menuRealtimeConsistency`, `supabasePrimarySync`) — each `require`s **3 non-existent modules** (`supabaseInitialRestore.js`, `supabasePrimarySync.js`, `historicalDataRouter.js`) and crashes on load; none were in `test:all`. ⚠️ Their *intended* coverage (menu realtime consistency, primary-sync, 31-day restore) is consequently **absent** — a real test gap worth filling later. Test files 53 → 50; `npm run test:all` **green (506 assertions, EXIT 0)**.
