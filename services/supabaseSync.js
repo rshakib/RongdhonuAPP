@@ -20,7 +20,7 @@ import {
   isSupabaseSyncEnabled,
   withTimeout
 } from './supabaseClient.js';
-import { isTombstoned } from './tombstoneStore.js';
+import { isTombstoned, isResurrectBlocked } from './tombstoneStore.js';
 import { recordSyncHeartbeat } from './supabaseHeartbeat.js';
 
 const OVERLAP_MS = 60000;          // re-read window to absorb clock drift / eventual consistency
@@ -214,9 +214,11 @@ export function mergeSupabaseRows(db, table, rows) {
       deleteTargetRow(db, row.table_name, row.record_id);
     }
 
-    // R3/R4 fix: never resurrect a locally-deleted record. Identical to the
-    // Firebase merge loop — if a local tombstone exists, skip the pull-insert.
-    if (table !== 'deletions' && isTombstoned(db, table, docId)) {
+    // R3/R4 fix (time-aware, FINAL-RESURRECT-2): never resurrect a locally-deleted
+    // record — UNLESS the cloud row is strictly newer than the tombstone (i.e. the
+    // record was legitimately re-created after the delete), in which case the stale
+    // tombstone is cleared and the insert proceeds.
+    if (table !== 'deletions' && isResurrectBlocked(db, table, docId, row.updated_at || row.created_at)) {
       console.log(`[Sync] Skipped resurrect: ${table}/${docId}, tombstone present`);
       continue;
     }

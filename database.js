@@ -9,7 +9,7 @@ import {
 } from './services/aiDataset/transport/googleSheets';
 import { getFirestoreAuthHeaders, invalidateCurrentToken, isAuthCredentialKey } from './services/firebaseAuth.js';
 import { getRolePriority, remotePriorityWins } from './services/dailySubmitPriority.js';
-import { isTombstoned, clearTombstone } from './services/tombstoneStore.js';
+import { isTombstoned, clearTombstone, isResurrectBlocked } from './services/tombstoneStore.js';
 
 let dbInstance = null;
 
@@ -2219,9 +2219,10 @@ async function syncCollections(collectionsList, cycleName = 'Unnamed Cycle') {
           continue;
         }
 
-        // R3/R4 fix: never resurrect a locally-deleted record. If a local
-        // tombstone exists for this (table, id), skip the pull-insert.
-        if (table !== 'deletions' && isTombstoned(db, table, docId)) {
+        // R3/R4 fix (time-aware, FINAL-RESURRECT-2): never resurrect a locally-deleted
+        // record — UNLESS the cloud row is strictly newer than the tombstone (legitimate
+        // re-create after a delete), in which case the stale tombstone is cleared.
+        if (table !== 'deletions' && isResurrectBlocked(db, table, docId, row.updated_at || row.created_at)) {
           console.log(`[Sync] Skipped resurrect: ${table}/${docId}, tombstone present`);
           continue;
         }

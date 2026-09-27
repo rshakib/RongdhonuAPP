@@ -36,3 +36,45 @@ export function clearTombstone(db, tableName, recordId) {
     );
   } catch (_) {}
 }
+
+/**
+ * Timestamp of the tombstone for (table, id), or null when there is none.
+ */
+export function getTombstoneTime(db, tableName, recordId) {
+  if (!db || !tableName || recordId === null || recordId === undefined) return null;
+  try {
+    const row = db.getFirstSync(
+      'SELECT updated_at, created_at FROM deletions WHERE table_name = ? AND record_id = ?',
+      [String(tableName), String(recordId)]
+    );
+    if (!row) return null;
+    return String(row.updated_at || row.created_at || '') || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * FINAL-RESURRECT-2 fix: a tombstone must not block a LEGITIMATE RE-CREATE.
+ *
+ * Returns true when the pull-insert should be SKIPPED. It skips only while the
+ * tombstone is at least as new as the incoming cloud row. If the cloud row is
+ * STRICTLY NEWER than its tombstone, the record was deleted and then re-created
+ * (e.g. Daily Submit for a date that was deleted, then submitted again by another
+ * device) → the stale tombstone is cleared and the insert is allowed.
+ *
+ * Missing/unparseable cloud timestamps keep the old (safe) behavior: block.
+ */
+export function isResurrectBlocked(db, tableName, recordId, cloudTimestamp) {
+  if (!isTombstoned(db, tableName, recordId)) return false; // no tombstone → allow
+  const tomb = getTombstoneTime(db, tableName, recordId);
+  // A tombstone WITHOUT a usable timestamp keeps the old, safe behavior: block.
+  if (!tomb) return true;
+  const cloud = String(cloudTimestamp || '');
+  if (cloud && cloud > tomb) {
+    clearTombstone(db, tableName, recordId);
+    console.log(`[Sync] Stale tombstone cleared (cloud re-created after delete): ${tableName}/${recordId} tomb=${tomb} cloud=${cloud}`);
+    return false;
+  }
+  return true;
+}
