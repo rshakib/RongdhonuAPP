@@ -440,6 +440,19 @@ export default function App() {
           initAppUsageTable();
           const coldStartEventId = 'cold_start_' + Date.now();
           await registerDeviceIfNeeded({ eventId: coldStartEventId, isColdStart: true });
+
+          // PHASE 2: inject X-Device-Id so every Supabase call is attributable (RLS Option B prep).
+          try {
+            const { setSupabaseDeviceId } = require('./services/supabaseClient.js');
+            const { getCurrentDeviceRecord } = require('./services/deviceRegistry');
+            const currentDeviceRec = getCurrentDeviceRecord();
+            if (currentDeviceRec && currentDeviceRec.device_id) {
+              setSupabaseDeviceId(currentDeviceRec.device_id);
+            }
+          } catch (supaDeviceErr) {
+            console.warn("[App] setSupabaseDeviceId skipped (isolated):", supaDeviceErr?.message || supaDeviceErr);
+          }
+
           // TODO: If OWNER is granted Device Control screen access in the future, enable full device fleet fetching and reconciliation for OWNER here.
           if (ACTIVE_APP_PROFILE === 'ADMIN') {
             await reconcileAdminFleet();
@@ -516,6 +529,15 @@ export default function App() {
 
         // Start background sync service daemon automatically
         startSyncService();
+
+        // PHASE 2: start the independent Supabase dual-write daemon (no-op if
+        // disabled via EXPO_PUBLIC_SUPABASE_SYNC_ENABLED or Supabase unconfigured).
+        try {
+          const { startSupabaseSyncService } = require('./services/supabaseSyncQueue.js');
+          startSupabaseSyncService();
+        } catch (supaQueueErr) {
+          console.warn("[App] startSupabaseSyncService skipped (isolated):", supaQueueErr?.message || supaQueueErr);
+        }
 
         // Check if there are any pending midnight rollovers to apply
         const didRollover = checkAndApplyIjaraRollover();
@@ -622,6 +644,51 @@ export default function App() {
     return () => {
       clearInterval(lowFrequencyPoll);
       markSyncTimerInactive('auto-low-frequency-pull');
+    };
+  }, [isLoggedIn]);
+
+  // --- PHASE 3: SUPABASE-PRIMARY PULL (Firebase timers above are the fallback) ---
+  // These run ALONGSIDE the existing Firebase timers; each Supabase fn calls its
+  // Firebase counterpart on any failure/timeout. restaurant_tables uses polling.
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    const {
+      syncSupabaseTables,
+      syncSupabaseHighFrequencyCollections,
+      syncSupabaseDeletions,
+      syncSupabaseLowFrequencyCollections
+    } = require('./services/supabaseSync.js');
+
+    registerSyncTimer('supabase-tables-poll', 2000, 'syncSupabaseTables');
+    const supabaseTablesPoll = setInterval(async () => {
+      await runAutoPull('supabase-tables-poll', syncSupabaseTables, refreshData);
+    }, 2000);
+
+    registerSyncTimer('supabase-high-frequency-poll', 8000, 'syncSupabaseHighFrequencyCollections');
+    const supabaseHighPoll = setInterval(async () => {
+      await runAutoPull('supabase-high-frequency-poll', syncSupabaseHighFrequencyCollections, refreshData);
+    }, 8000);
+
+    registerSyncTimer('supabase-deletions-poll', 20000, 'syncSupabaseDeletions');
+    const supabaseDeletionsPoll = setInterval(async () => {
+      await runAutoPull('supabase-deletions-poll', syncSupabaseDeletions, refreshData);
+    }, 20000);
+
+    registerSyncTimer('supabase-low-frequency-poll', 60000, 'syncSupabaseLowFrequencyCollections');
+    const supabaseLowPoll = setInterval(async () => {
+      await runAutoPull('supabase-low-frequency-poll', syncSupabaseLowFrequencyCollections, refreshData);
+    }, 60000);
+
+    return () => {
+      clearInterval(supabaseTablesPoll);
+      markSyncTimerInactive('supabase-tables-poll');
+      clearInterval(supabaseHighPoll);
+      markSyncTimerInactive('supabase-high-frequency-poll');
+      clearInterval(supabaseDeletionsPoll);
+      markSyncTimerInactive('supabase-deletions-poll');
+      clearInterval(supabaseLowPoll);
+      markSyncTimerInactive('supabase-low-frequency-poll');
     };
   }, [isLoggedIn]);
 
@@ -2236,7 +2303,8 @@ export default function App() {
       setAppConfig('restore_in_progress', new Date().toISOString());
       setIsRestoring(true);
 
-      const result = await restoreDatabaseFromCloud({ mode: 'today' });
+      const { restoreHybridDatabaseFromCloud } = require('./services/supabaseSync.js');
+      const result = await restoreHybridDatabaseFromCloud({ mode: 'today' });
 
       if (result && result.success) {
         setAppConfig('initial_restore_done_v1', 'true');

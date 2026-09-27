@@ -11,8 +11,9 @@
       "environment": "production",
       "env": {
         "EXPO_PUBLIC_APP_PROFILE": "ADMIN",
-        "EXPO_PUBLIC_SUPABASE_URL": "https://zdruassdewwjbexximkj.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpkcnVhc3NkZXd3amJleHhpbWtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2NjQ4MzQsImV4cCI6MjEwNTI0MDgzNH0.LNR2SmBq5j3HZy624OMVBaiHH4I-EU4WNKAYAEMv6_A",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://gdqnfwccohxgaywzoysc.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkcW5md2Njb2h4Z2F5d3pveXNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA0OTM1OTQsImV4cCI6MjEwNjA2OTU5NH0.3ii6dDUzUKef1-TKYCXeQpHUZwH1uUBc_BTDfyyCs0E",
+        "EXPO_PUBLIC_SUPABASE_SYNC_ENABLED": "true",
         "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyDeRLnma3Z-VC_gJi37fLDJ4_4FLFbq8Oc",
         "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "rongdhonu-83b3d.firebaseapp.com",
         "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "rongdhonu-83b3d",
@@ -33,8 +34,9 @@
       "environment": "production",
       "env": {
         "EXPO_PUBLIC_APP_PROFILE": "OWNER",
-        "EXPO_PUBLIC_SUPABASE_URL": "https://zdruassdewwjbexximkj.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpkcnVhc3NkZXd3amJleHhpbWtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2NjQ4MzQsImV4cCI6MjEwNTI0MDgzNH0.LNR2SmBq5j3HZy624OMVBaiHH4I-EU4WNKAYAEMv6_A",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://gdqnfwccohxgaywzoysc.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkcW5md2Njb2h4Z2F5d3pveXNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA0OTM1OTQsImV4cCI6MjEwNjA2OTU5NH0.3ii6dDUzUKef1-TKYCXeQpHUZwH1uUBc_BTDfyyCs0E",
+        "EXPO_PUBLIC_SUPABASE_SYNC_ENABLED": "true",
         "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyDeRLnma3Z-VC_gJi37fLDJ4_4FLFbq8Oc",
         "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "rongdhonu-83b3d.firebaseapp.com",
         "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "rongdhonu-83b3d",
@@ -55,8 +57,9 @@
       "environment": "production",
       "env": {
         "EXPO_PUBLIC_APP_PROFILE": "MANAGER",
-        "EXPO_PUBLIC_SUPABASE_URL": "https://zdruassdewwjbexximkj.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpkcnVhc3NkZXd3amJleHhpbWtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2NjQ4MzQsImV4cCI6MjEwNTI0MDgzNH0.LNR2SmBq5j3HZy624OMVBaiHH4I-EU4WNKAYAEMv6_A",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://gdqnfwccohxgaywzoysc.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkcW5md2Njb2h4Z2F5d3pveXNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA0OTM1OTQsImV4cCI6MjEwNjA2OTU5NH0.3ii6dDUzUKef1-TKYCXeQpHUZwH1uUBc_BTDfyyCs0E",
+        "EXPO_PUBLIC_SUPABASE_SYNC_ENABLED": "true",
         "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyDeRLnma3Z-VC_gJi37fLDJ4_4FLFbq8Oc",
         "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "rongdhonu-83b3d.firebaseapp.com",
         "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "rongdhonu-83b3d",
@@ -75,8 +78,9 @@
     },
     "production": {
       "env": {
-        "EXPO_PUBLIC_SUPABASE_URL": "https://zdruassdewwjbexximkj.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpkcnVhc3NkZXd3amJleHhpbWtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk2NjQ4MzQsImV4cCI6MjEwNTI0MDgzNH0.LNR2SmBq5j3HZy624OMVBaiHH4I-EU4WNKAYAEMv6_A",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://gdqnfwccohxgaywzoysc.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdkcW5md2Njb2h4Z2F5d3pveXNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA0OTM1OTQsImV4cCI6MjEwNjA2OTU5NH0.3ii6dDUzUKef1-TKYCXeQpHUZwH1uUBc_BTDfyyCs0E",
+        "EXPO_PUBLIC_SUPABASE_SYNC_ENABLED": "true",
         "EXPO_PUBLIC_FIREBASE_API_KEY": "AIzaSyDeRLnma3Z-VC_gJi37fLDJ4_4FLFbq8Oc",
         "EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN": "rongdhonu-83b3d.firebaseapp.com",
         "EXPO_PUBLIC_FIREBASE_PROJECT_ID": "rongdhonu-83b3d",

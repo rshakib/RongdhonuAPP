@@ -64,7 +64,7 @@ In strict compliance with the audit charter:
 | **Total Modular Services** | **15 service modules** | Located in `services/` (5,100+ lines) |
 | **Local SQLite Tables** | **35 tables** | 33 in `database.js`, 1 in `appUsageTracker.js`, 1 in `deviceRegistry.js` |
 | **Cloud Firestore Collections** | **24 collections** | Synced via REST API (`firestore.googleapis.com`) |
-| **Supabase Postgres Tables** | **2 tables** | `public.devices`, `public.device_app_usage` in `supabase_schema.sql` |
+| **Supabase Postgres Tables** | **2 tables** | `public.devices`, `public.device_app_usage` in `supabase_full_setup.sql` |
 | **Supabase Realtime Channels** | **4 distinct channels** | Presence, Instant Command, Admin Fleet, App Usage |
 | **Background Timers & Daemons** | **13 active timers** | Polling, synchronization, presence keepalive, lag monitor |
 | **Automated Verification Tests** | **328 tests passing (100%)** | Across 11 test suites in `tests/` |

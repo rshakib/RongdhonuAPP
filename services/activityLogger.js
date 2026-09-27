@@ -1,4 +1,5 @@
 import { getDb, enqueueSync, syncRecordImmediately, ACTIVE_APP_PROFILE } from '../database';
+import { getDhakaCalendarDate } from './dhakaTime.js';
 import { getCurrentDeviceRecord } from './deviceRegistry';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
@@ -49,8 +50,11 @@ export async function logActivity({
     if (!db) return null;
 
     // 1. Resolve Timestamps & Business Date
+    // NOTE: use the Asia/Dhaka calendar date, not the raw UTC date. Between
+    // 12:00 AM and 05:59 AM BST the UTC date is still yesterday, which used to
+    // mis-file early-morning activity logs (Phase 4 fix).
     const now = new Date();
-    const resolvedDate = businessDate || now.toISOString().split('T')[0];
+    const resolvedDate = businessDate || getDhakaCalendarDate(now);
     const timestamp = now.toISOString();
 
     // 2. Resolve Hardware Device Telemetry

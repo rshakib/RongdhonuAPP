@@ -8,6 +8,7 @@ import {
   processStructuredTransportResponse
 } from './services/aiDataset/transport/googleSheets';
 import { getFirestoreAuthHeaders, invalidateCurrentToken, isAuthCredentialKey } from './services/firebaseAuth.js';
+import { getRolePriority, remotePriorityWins } from './services/dailySubmitPriority.js';
 
 let dbInstance = null;
 
@@ -559,6 +560,8 @@ const TABLE_SCHEMAS = {
       role TEXT,
       priority INTEGER,
       sync_source_device TEXT,
+      device_id TEXT,
+      submitted_at TEXT,
       created_at TEXT,
       updated_at TEXT,
       is_synced INTEGER DEFAULT 0
@@ -824,6 +827,45 @@ export function migrateSyncQueueDiagnostics() {
   }
 }
 
+// Phase 2: independent Supabase outbound queue (mirrors sync_queue; Firebase untouched).
+export function migrateSupabaseSyncQueue() {
+  try {
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS sync_queue_supabase (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        record_id TEXT,
+        table_name TEXT,
+        action TEXT, -- INSERT, UPDATE, DELETE
+        status TEXT DEFAULT 'PENDING', -- PENDING, SUCCESS, FAILED
+        created_at TEXT,
+        retry_count INTEGER DEFAULT 0,
+        last_error TEXT,
+        last_attempt_at TEXT
+      );
+    `);
+  } catch (err) {
+    console.error("[DB Migration] Supabase sync queue migration failed:", err);
+  }
+}
+
+// Phase 4: deterministic same-role multi-device tie-breaker columns.
+export function migrateDailySubmitPriorityTiebreaker() {
+  try {
+    const cols = db.getAllSync("PRAGMA table_info(daily_submit_priority)");
+    if (!cols || cols.length === 0) return;
+    if (!cols.some(c => c.name === 'submitted_at')) {
+      console.log("[DB Migration] Adding submitted_at to daily_submit_priority...");
+      db.execSync("ALTER TABLE daily_submit_priority ADD COLUMN submitted_at TEXT");
+    }
+    if (!cols.some(c => c.name === 'device_id')) {
+      console.log("[DB Migration] Adding device_id to daily_submit_priority...");
+      db.execSync("ALTER TABLE daily_submit_priority ADD COLUMN device_id TEXT");
+    }
+  } catch (err) {
+    console.error("[DB Migration] daily_submit_priority tie-breaker migration failed:", err);
+  }
+}
+
 export function migrateDailySubmitUnified() {
   try {
     const submitCols = db.getAllSync("PRAGMA table_info(daily_submit)");
@@ -953,6 +995,8 @@ export function initDatabase(skipSeeding = false) {
       `);
     } catch (idxErr) {}
     migrateSyncQueueDiagnostics();
+    migrateSupabaseSyncQueue();
+    migrateDailySubmitPriorityTiebreaker();
     console.log("[DB] SQLite Tables Verified/Created successfully.");
 
     // Check if one-off database wipe is required to prepare a completely fresh environment
@@ -1306,6 +1350,16 @@ export function enqueueSync(tableName, recordId, action) {
       "INSERT INTO sync_queue (record_id, table_name, action, status, created_at) VALUES (?, ?, ?, 'PENDING', ?)",
       [recordId, tableName, action, new Date().toISOString()]
     );
+
+    // PHASE 2 DUAL-WRITE: mirror the write into the independent Supabase queue.
+    // Runs AFTER the Firebase enqueue above and is fully isolated (lazy require +
+    // try/catch) so a Supabase failure can never affect the Firebase path.
+    try {
+      const { enqueueSupabaseSync } = require('./services/supabaseSyncQueue.js');
+      enqueueSupabaseSync(tableName, recordId, action);
+    } catch (supaEnqueueErr) {
+      console.warn("[DB] Supabase enqueue delegation skipped (isolated):", supaEnqueueErr?.message || supaEnqueueErr);
+    }
   } catch (err) {
     console.error("[DB] Failed to enqueue sync:", err);
   }
@@ -1729,7 +1783,8 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
             if (tableName === 'daily_submit') {
               try {
                 const localPriorityRec = getDailySubmitPriority(rIdStr);
-                const localPriority = localPriorityRec ? localPriorityRec.priority : 10; // default to manager priority
+                // Default local record to manager priority when absent.
+                const localPriorityRecord = localPriorityRec || { priority: 10 };
 
                 // Fetch remote priority from Firestore for this business date
                 const remotePriorityUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/daily_submit_priority/${encodeURIComponent(rIdStr)}?key=${apiKey}`;
@@ -1746,9 +1801,16 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
                   const remotePriorityDoc = await remotePriorityRes.json();
                   const remoteFields = remotePriorityDoc.fields || {};
                   const remotePriority = remoteFields.priority ? Number(remoteFields.priority.integerValue || remoteFields.priority.doubleValue || 0) : 0;
-                  
-                  if (remotePriority > localPriority) {
-                    console.log(`[Priority Sync] Remote priority (${remotePriority}) is higher than local priority (${localPriority}) for daily_submit date ${rIdStr}. Skipping upload.`);
+                  // Deterministic same-role tie-breaker record (Phase 4).
+                  const remotePriorityRecord = {
+                    priority: remotePriority,
+                    submitted_at: remoteFields.submitted_at ? (remoteFields.submitted_at.stringValue || remoteFields.submitted_at.timestampValue || '') : '',
+                    device_id: remoteFields.device_id ? (remoteFields.device_id.stringValue || '') : '',
+                    sync_source_device: remoteFields.sync_source_device ? (remoteFields.sync_source_device.stringValue || '') : ''
+                  };
+
+                  if (remotePriorityWins(localPriorityRecord, remotePriorityRecord)) {
+                    console.log(`[Priority Sync] Remote priority wins (remote=${remotePriorityRecord.priority}/${remotePriorityRecord.submitted_at}/${remotePriorityRecord.device_id}, local=${localPriorityRecord.priority}/${localPriorityRecord.submitted_at || ''}/${localPriorityRecord.device_id || ''}) for daily_submit date ${rIdStr}. Skipping upload.`);
                     // Skip upload and mark queue complete (delete from queue)
                     dbInstance.runSync("DELETE FROM sync_queue WHERE id = ?", [Number(queueId)]);
                     successfulWrites++;
@@ -2252,6 +2314,21 @@ export async function syncMenuOnly() {
     return await traceSyncOperation('syncMenuOnly', () => syncCollections(['menu_items', 'menu_categories'], 'Menu Sync'));
   } catch (err) {
     recordAutoSyncEvent('syncMenuOnly', 'failure', err.message);
+    return false;
+  }
+}
+
+// Phase 3: Firebase-only pull used by the Supabase hybrid restore — menu tables
+// plus daily_submit/daily_summary (which are NEVER read back from Supabase).
+export async function syncDailyAndMenuFromFirebase() {
+  try {
+    incrementReadCounter('menu', 4);
+    return await traceSyncOperation('syncDailyAndMenuFromFirebase', () => syncCollections(
+      ['menu_items', 'menu_categories', 'daily_submit', 'daily_summary'],
+      'Supabase-Restore Firebase-only'
+    ));
+  } catch (err) {
+    recordAutoSyncEvent('syncDailyAndMenuFromFirebase', 'failure', err.message);
     return false;
   }
 }
@@ -5804,6 +5881,11 @@ export function getBusinessDateFromISO(isoStr) {
   return `${y}-${m}-${day}`;
 }
 
+// Dhaka wall-clock date helper (Phase 4). Implementation lives in a pure module
+// so both the app and the Node test suite can share it; re-exported here for
+// discoverability alongside the other business-date helpers.
+export { getDhakaCalendarDate } from './services/dhakaTime.js';
+
 export function formatDisplayDate(dateInput) {
   if (!dateInput) return '';
   
@@ -6369,23 +6451,29 @@ export function getTodayRestaurantDeposit(todayStr) {
   }
 }
 
-export function getRolePriority(role) {
-  const r = String(role).trim().toLowerCase();
-  if (r === 'owner') return 100;
-  if (r === 'admin') return 50;
-  if (r === 'manager') return 10;
-  return 0;
+// Role priority now lives in the shared module so the Firebase and Supabase
+// push paths resolve conflicts identically (Phase 4). Re-exported for compat.
+export { getRolePriority };
+
+function getPersistentDeviceId() {
+  try {
+    const row = db.getFirstSync("SELECT value FROM app_config WHERE key = 'persistent_device_id'");
+    return row && row.value ? String(row.value) : '';
+  } catch (e) {
+    return '';
+  }
 }
 
 export function saveDailySubmitPriority(businessDate, submittedBy, role, syncSourceDevice = '') {
   try {
     const now = new Date().toISOString();
     const priority = getRolePriority(role);
+    const deviceId = getPersistentDeviceId() || syncSourceDevice || Platform.OS;
     db.runSync(`
       INSERT OR REPLACE INTO daily_submit_priority (
-        business_date, submitted_by, role, priority, sync_source_device, created_at, updated_at, is_synced
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0)
-    `, [businessDate, submittedBy, role, priority, syncSourceDevice || Platform.OS, now, now]);
+        business_date, submitted_by, role, priority, sync_source_device, device_id, submitted_at, created_at, updated_at, is_synced
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+    `, [businessDate, submittedBy, role, priority, syncSourceDevice || Platform.OS, deviceId, now, now, now]);
     enqueueSync("daily_submit_priority", businessDate, "INSERT");
     return true;
   } catch (err) {
