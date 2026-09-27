@@ -21,6 +21,7 @@ import {
   withTimeout
 } from './supabaseClient.js';
 import { isTombstoned } from './tombstoneStore.js';
+import { recordSyncHeartbeat } from './supabaseHeartbeat.js';
 
 const OVERLAP_MS = 60000;          // re-read window to absorb clock drift / eventual consistency
 const MARKER_SAFETY_MS = 15000;    // never advance a cursor past queryStart - 15s
@@ -443,10 +444,12 @@ async function runSupabaseGroup(tables, firebaseFnName) {
     supabasePrimaryHealthy = false;
     const r = await callFirebaseFallback(fb, firebaseFnName);
     emitPull('firebase', r);
+    recordSyncHeartbeat({ backend: 'firebase', kind: 'read' }).catch(() => {});
     return r;
   }
   supabasePrimaryHealthy = true;
   emitPull('supabase', hasChanges);
+  recordSyncHeartbeat({ backend: 'supabase', kind: 'read' }).catch(() => {});
   return hasChanges;
 }
 

@@ -167,6 +167,31 @@ ON CONFLICT (id) DO NOTHING;
 
 
 -- -------------------------------------------------------------------------
+-- 2.1b SYNC HEARTBEAT (observability: per device × backend last push/read)
+--   Self-reported by the app so you can verify FROM THE SQL EDITOR that both
+--   Firebase and Supabase are actually receiving writes, and which side lags:
+--     SELECT device_id, backend, last_push_at, last_push_ok, last_read_at, last_error
+--       FROM public.sync_heartbeat ORDER BY device_id, backend;
+--   PERMANENT table (never date-pruned). App writes are throttled (~60s).
+-- -------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.sync_heartbeat (
+    device_id     TEXT NOT NULL,
+    backend       TEXT NOT NULL,          -- 'firebase' | 'supabase'
+    app_profile   TEXT,
+    app_version   TEXT,
+    last_push_at  TIMESTAMPTZ,            -- last successful WRITE to this backend
+    last_push_ok  BOOLEAN,
+    last_error    TEXT,
+    last_read_at  TIMESTAMPTZ,            -- last successful READ/PULL from this backend
+    last_rows     INTEGER,
+    updated_at    TIMESTAMPTZ DEFAULT now(),
+    PRIMARY KEY (device_id, backend)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sync_heartbeat_updated ON public.sync_heartbeat(updated_at DESC);
+
+
+-- -------------------------------------------------------------------------
 -- 2.2 CORE POS TABLES
 -- -------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.users (

@@ -115,6 +115,29 @@ CREATE POLICY "Permissive version policy update"
 
 
 -- ============================================================================
+-- SECTION 2b — sync_heartbeat (observability; NEVER device-gated)
+-- ============================================================================
+-- Same treatment as `devices`/`device_app_usage`: this is a device-STATUS table.
+-- It must stay writable BEFORE/independent of the device-active gate (a device may
+-- be PENDING, and the heartbeat is exactly how you observe that state).
+ALTER TABLE public.sync_heartbeat ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Permissive anon access (Phase 1)" ON public.sync_heartbeat;
+DROP POLICY IF EXISTS "Public read sync heartbeat" ON public.sync_heartbeat;
+DROP POLICY IF EXISTS "Permissive heartbeat insert" ON public.sync_heartbeat;
+DROP POLICY IF EXISTS "Permissive heartbeat update" ON public.sync_heartbeat;
+
+CREATE POLICY "Public read sync heartbeat"
+    ON public.sync_heartbeat FOR SELECT TO anon, authenticated USING (true);
+
+CREATE POLICY "Permissive heartbeat insert"
+    ON public.sync_heartbeat FOR INSERT TO anon, authenticated WITH CHECK (true);
+
+CREATE POLICY "Permissive heartbeat update"
+    ON public.sync_heartbeat FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
+
+
+-- ============================================================================
 -- SECTION 3 — STAGED DEVICE-GATED POLICIES (27 POS TABLES)
 -- ----------------------------------------------------------------------------
 -- Run ONE block at a time, lowest-risk first. Each block:

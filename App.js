@@ -70,6 +70,10 @@ const runFirebasePullIfSupabaseDown = async (name, syncFn, refreshData) => {
   console.log(`[Firebase-Read] ${name} RUNNING Firebase pull — reason=${health.reason}`);
   const didChange = await runAutoPull(name, syncFn, refreshData);
   reportPull('firebase', didChange); // this path only runs on the Firebase fallback
+  try {
+    const { recordSyncHeartbeat } = require('./services/supabaseHeartbeat.js');
+    recordSyncHeartbeat({ backend: 'firebase', kind: 'read' }).catch(() => {});
+  } catch (_) {}
   return didChange;
 };
 

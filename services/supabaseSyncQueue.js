@@ -336,6 +336,12 @@ export async function processSupabaseSyncQueue(singleRecordId = null, singleTabl
         }
       }
 
+      // Observability heartbeat (isolated + throttled): proves Supabase pushes happen.
+      try {
+        const { recordSyncHeartbeat } = require('./supabaseHeartbeat.js');
+        recordSyncHeartbeat({ backend: 'supabase', kind: 'push', rows: successfulWrites, ok: failedWrites === 0 }).catch(() => {});
+      } catch (_) {}
+
       return { successfulWrites, failedWrites };
     };
 

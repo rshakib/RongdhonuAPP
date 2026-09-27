@@ -1959,6 +1959,18 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
         afterCount = afterRes ? afterRes.count : 0;
       }
 
+      // Observability heartbeat (isolated + throttled): proves Firebase pushes happen.
+      try {
+        const { recordSyncHeartbeat } = require('./services/supabaseHeartbeat.js');
+        recordSyncHeartbeat({
+          backend: 'firebase',
+          kind: 'push',
+          rows: successfulWrites,
+          ok: failedWrites === 0,
+          error: failedWrites ? lastSyncError : null
+        }).catch(() => {});
+      } catch (_) {}
+
       return { beforeCount, afterCount, successfulWrites, failedWrites };
     };
 
