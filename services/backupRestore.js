@@ -262,7 +262,7 @@ export async function createBackup() {
 
     // 5. Populate _backup_metadata table with full audit details
     const nowIso = new Date().toISOString();
-    const appVersion = Application.nativeApplicationVersion || '1.0.5';
+    const appVersion = Application.nativeApplicationVersion || '1.0.7';
     const currentProfile = String(ACTIVE_APP_PROFILE || 'ADMIN').toUpperCase().trim();
     const packageName = Application.applicationId || 'com.riajulshakib.rongdhonu';
 

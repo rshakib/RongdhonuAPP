@@ -3,7 +3,7 @@
 -- ============================================================================
 -- Goal   : Server-side delete of rows older than 31 days from the 13 rolling
 --          transactional tables. NEVER touches local SQLite or Firebase history.
--- Runs   : Once daily at ~03:30 Asia/Dhaka = 21:30 UTC (previous day) -> '30 21 * * *'
+-- Runs   : Once daily at ~01:00 Asia/Dhaka = 19:00 UTC (previous day) -> '0 19 * * *'
 -- Target : Supabase SQL Editor (run manually; idempotent, safe to re-run).
 --
 -- IMPORTANT — text-column cast:
@@ -44,7 +44,7 @@ WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'rongdhonu_retention_31d');
 
 SELECT cron.schedule(
   'rongdhonu_retention_31d',
-  '30 21 * * *',                     -- 21:30 UTC == 03:30 Asia/Dhaka (UTC+6)
+  '0 19 * * *',                      -- 19:00 UTC == 01:00 Asia/Dhaka (UTC+6)
   $job$
   DO $do$
   DECLARE
@@ -136,7 +136,7 @@ SELECT cron.schedule(
 --   FROM cron.job
 --  WHERE jobname = 'rongdhonu_retention_31d';
 
--- (b) Confirm the next scheduled run time (UTC) is tomorrow 21:30 UTC.
+-- (b) Confirm the next scheduled run time (UTC) is tomorrow 19:00 UTC (01:00 Dhaka).
 -- SELECT jobid, jobname, schedule,
 --        (now() AT TIME ZONE 'Asia/Dhaka')                       AS now_dhaka,
 --        (now() AT TIME ZONE 'Asia/Dhaka')::date + INTERVAL '1 day' AS next_dhaka_day

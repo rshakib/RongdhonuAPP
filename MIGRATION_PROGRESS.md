@@ -2,23 +2,19 @@
 
 > **Purpose:** Persistent session-memory file. Update after every meaningful step so a session reset never loses context.
 > **Full plan:** [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) · supporting research: [`ARCHITECTURE_CURRENT_STATE.md`](ARCHITECTURE_CURRENT_STATE.md), [`ARCHITECTURE_QUERY_PATTERNS.md`](ARCHITECTURE_QUERY_PATTERNS.md), [`DATE_FIELD_ANALYSIS.md`](DATE_FIELD_ANALYSIS.md), [`VERSION_CONTROL_MIGRATION_NOTES.md`](VERSION_CONTROL_MIGRATION_NOTES.md), [`RLS_IMPLEMENTATION_PLAN.md`](RLS_IMPLEMENTATION_PLAN.md).
-> **Last updated:** 2026-09-27 (Phase 5 SQL ready — pending manual run) · Branch: `feature/admin-dashboard-redesign`
+> **Last updated:** 2026-09-27 (Phases 1–7 complete; Supabase intervals tuned; **Firebase reads now gated — Supabase-only while healthy, Firebase only on failure / >31-day**; Device Control stays 100% Supabase-only — Firebase fallback DECLINED) · Branch: `feature/admin-dashboard-redesign`
 
 ---
 
-## 0. ▶ RESUME HERE — NEXT ACTION (read this first after any session reset)
+## 0. ▶ STATUS — ✅ MIGRATION COMPLETE (Phases 1–7)
 
-**We are BLOCKED on a manual step, then Phase 6.** The agent must NOT start Phase 6 until the owner confirms the step below.
+**Phases 1–7 are complete. 27/27 POS tables are device-gated. No pending manual SQL steps.**
 
-1. **Owner runs `supabase_cron.sql`** in the Supabase SQL Editor (schedules the Phase 5 retention job). Server-side only — no app code involved.
-2. **Owner verifies:**
-   ```sql
-   SELECT jobid, jobname, schedule, active FROM cron.job WHERE jobname = 'rongdhonu_retention_31d';
-   ```
-   Expect **exactly one** row: `schedule = '30 21 * * *'`, `active = true`.
-3. **Owner tells the agent it's confirmed → agent starts PHASE 6** (Version control migration, `IMPLEMENTATION_PLAN.md` §6).
-
-> Reminder recorded 2026-09-27 at the owner's request (owner was shutting the session down and resuming later). Phase 5 status: 🟡 **SQL ready — pending manual run**. Phase 6: **NOT started**.
+1. ✅ **Phase 5 retention** live (`rongdhonu_retention_31d`, `0 19 * * *`, active).
+2. ✅ **Phase 6 version control** complete (Supabase-first, Firebase fallback).
+3. ✅ **Phase 7 (RLS) COMPLETE — 27/27 gated.** All rollout stages (1–7) **plus the Stage 1 remainder** (`weather_data`, `eja_history`) were applied and verified on-device. Core POS flow (orders → items → payments → deliveries) verified: **no flicker, no duplicates, clean SQL spot-checks** (no duplicate/orphan `order_items`/`payments`).
+   - **Four bugs were found and fixed during the rollout — see §1b.**
+4. ℹ️ **Only remaining action = optional final confirmation:** run the §4 (c) policy-inventory query to confirm **every** gated table shows only `"Device active gate"` and no leftover `"Permissive anon access (Phase 1)"`. Deferred (out-of-scope) items are listed in §1b.
 
 ---
 
@@ -30,18 +26,95 @@
 | 2 | Local scaffolding + dual-write queue | ✅ Done |
 | 3 | Read routing (Supabase-primary pull + Firebase fallback) | ✅ Done |
 | 4 | Correctness & conflict fixes (pre-retention) | ✅ Done |
-| 5 | Rolling 31-day retention (pg_cron) | 🟡 SQL ready — pending manual run |
-| 6 | Version control migration | ⏳ Not Started |
-| 7 | RLS enforcement (Option B, device-gated) | ⏳ Not Started |
+| 5 | Rolling 31-day retention (pg_cron) | ✅ Done (job registered + active) |
+| 6 | Version control migration | ✅ Done |
+| 7 | RLS enforcement (Option B, device-gated) | ✅ **Complete — 27/27 tables gated + verified** |
+
+---
+
+## 1b. FINAL SUMMARY — Dual-DB migration (Phases 1–7 complete)
+
+### Bugs found & fixed during the migration
+| # | Bug | Where | Description | Fix |
+|---|---|---|---|---|
+| 1 | **`x-device-id` header never sent** | `services/supabaseClient.js` | `setSupabaseDeviceId()` did `rest.headers['x-device-id'] = id` — a **no-op on supabase-js's `Headers` instance** — so the header was never transmitted → `is_device_active(NULL)` denied **every** gated write. | Use the `Headers` API (`setHeaderOn()` → `.set()`), with a plain-object fallback. Found/fixed at **Stage 2**. |
+| 2 | **Pre-Phase-2 backfill gap (FK)** | `services/supabaseBackfill.js` (new) | Rows created **before** dual-write existed were never mirrored to Supabase, so `owner_salary_ledger` referenced a missing `owner_employees` parent → **FK violation**. | One-time Admin **"Backfill to Supabase"** — parent-first, idempotent, batched upsert. Found/fixed at **Stage 3**. |
+| 3 | **Tombstone resurrection (R3/R4)** | `services/tombstoneStore.js` (new) + both merges + `enqueueSync` | Pull merges **ignored local `deletions` tombstones** → deleted rows reappeared (menu delete ping-pong). | `isTombstoned()` skip in **both** merge engines + `clearTombstone()` on legitimate re-add. Found/fixed at **Stage 5**. |
+| 4 | **Shared `is_synced` flag → cross-backend overwrite (the flicker)** | `database.js`, `services/supabaseSync.js`, `services/supabaseSyncQueue.js` | One flag shared by both backends: a fast **Firebase** push flipped `is_synced=1`, so the slower **Supabase** pull trusted its still-stale copy and **clobbered the fresh local edit** (item flickered). | New **per-backend `is_synced_supabase`** column; Supabase merge guards on its own flag; reset on edit, set on SB push success. Found/fixed at **Stage 5** (Phase 7.2) — **the critical bug of the migration.** |
+
+### Deferred / intentionally out of scope (NOT part of Phases 1–7)
+- **`expenses` stable-ID overwrite race** (`exp_YYYY-MM-DD_category`) — deferred conflict fix (Phase 4 §4.3).
+- **`supplier_payment_ledger` INSERT OR REPLACE overwrite** — deferred (Phase 4 §4.3).
+- **`supplier_due` read-modify-write running-balance race** — deferred (Phase 4 §4.3).
+- ~~**`updateCompletedOrder` tombstone-free wipe**~~ — **FIXED (2026-09-27).** `DELETE FROM order_items WHERE order_id = ?` + new `_rev` ids now **tombstones each wiped row (`recordDeletion`) BEFORE the delete**, so the pull engines can't resurrect duplicates on completed-order edits.
+- ❌ **Device Control Firebase fallback — DECLINED / OUT OF SCOPE (final, permanent).** The app owner has decided **Device Control stays 100% Supabase-only, by design**. No Firebase fallback will be built; the earlier plan is **withdrawn** and any partial work reverted. Do NOT re-raise this in future sessions.
+
+### Firebase-untouched — final sanity check (vs pre-migration reference `/run/media/shaki/2472D89F72D87750/Apps/rong`)
+- **Byte-identical:** `services/firebaseAuth.js`, `services/deviceRegistry.js`, `services/appUsageTracker.js`, `services/printerService.js`, `services/analyticsService.js`, `services/analyticsHelper.js`, `services/backupRestore.js`.
+- **Modified — in-scope & documented:** `database.js` (additive: dual-write delegation, per-backend-flag migration/reset, tombstone skip, Phase-4 tie-breaker, diagnostics; the Firebase `syncCollections`/`processSyncQueue` internals otherwise unchanged), `App.js` (additive: Supabase header/daemon/timers + the one hybrid-restore call swap), `services/firebaseAppConfig.js` (Phase 6 additive dual-DB policy), `services/activityLogger.js` (Phase 4 Dhaka `business_date` **value** bug-fix — not a sync change), `screens/AdminDB.js` (Phase 6 save route), `services/supabaseClient.js` (Phase 2 additions).
+- **New (pure additions):** `services/supabaseSync.js`, `services/supabaseSyncQueue.js`, `services/tombstoneStore.js`, `services/dhakaTime.js`, `services/dailySubmitPriority.js`, `supabase_rls.sql`. (`services/supabaseBackfill.js` was added then **REMOVED** — see below.)
+- **Pre-existing, unrelated to this migration:** `screens/DevicePendingScreen.js` (device-control `ensureAnonymousAuth`/`PAUSE_DEVICE_APPROVAL` cleanup from earlier work).
+- Firebase pull timer **registrations** (15s/30s/90s/180s), the `syncCollections` merge, `processSyncQueue`, `sync_queue`, and `firebaseAuth` are **unchanged as functions**; since the read-routing gate (§ read-routing gate, below) those timers are **skipped while Supabase is healthy** — they now run only when Supabase is down/unconfigured/kill-switched-off (or for >31-day history / manual full restore).
+
+### Post-migration tuning — Supabase pull intervals (2026-09-27)
+Final **Supabase-side** polling cadence (Firebase timers 15s/30s/90s/180s **untouched**):
+
+| Poll | Original | **Final** |
+|---|---|---|
+| `restaurant_tables` | 2s | **2s** (kept — 1s was reverted as too aggressive on egress) |
+| High-freq (`orders`, `order_items`, `payments`, `deliveries`) | 8s | **5s** |
+| Deletions | 20s | **15s** |
+| Low-freq | 60s | **45s** |
+
+**Rationale:** Supabase free tier has **unlimited API requests** (no request-count cap), so the real constraint is **egress (5 GB/mo) + device battery/data**, not request count.
+
+**Scope:** **constants-only** — no logic, guard, `is_synced_supabase`, or fallback changes. Files touched: `App.js` (4 `registerSyncTimer` labels + 4 `setInterval` delays), comments in `services/supabaseSync.js`, and the interval assertions in `tests/supabaseSync.test.js`. `npm run test:all` green (27 files). Trivially reversible.
+
+⚠️ **Volume note (final values, 3 devices):** rate ≈ 2,840 req/hr/device (tables 1,800 + high 720 + deletions 240 + low 80) — ≈ **1.14× the original** pull volume. Total open ~5.5h across all 3 devices ⇒ **~15,600 req/day ≈ 0.47 GB/mo** @1 KB/response; if each device is open ~5.5h (≈16.5 device-hours) ⇒ **~46,900 req/day ≈ 1.4 GB/mo**. Both comfortably under the 5 GB cap.
+
+### Read-routing gate — Firebase reads ONLY on failure / >31-day (2026-09-27)
+**Owner target:** normal use → **Supabase reads only**; **Firebase is read ONLY when** (a) Supabase **fails**, or (b) reading data **older than 31 days**. **Writes stay dual (Firebase + Supabase).**
+
+Implemented:
+- **Health signal** `isSupabasePrimaryHealthy()` in `services/supabaseSync.js` — true only when `enabled && configured` **and** the last pull cycle did not fail **and no Supabase write is failing** (see the write-failure guard below). Read flag set in `runSupabaseGroup` (kill-switch / blank-URL / no-db / table-failure → `false`; full success → `true`). Optimistic default (enabled+configured).
+- **Firebase timers gated** (`App.js`): the 4 standalone Firebase pull timers now call `runFirebasePullIfSupabaseDown(...)` → **skipped while healthy** (logs `recordAutoSyncEvent(…, 'skipped', 'supabase-healthy → Firebase read skipped')`). The Supabase syncers already fall back to Firebase in the same tick on failure, so no coverage is lost.
+- **Lifecycle pulls prefer Supabase** (`runPullPreferSupabase`): login delta sync, cold start, foreground resume, and network recovery now run the Supabase fn (which falls back to Firebase on failure).
+- **Menu + daily shifted to Supabase** (so healthy mode reads **nothing** from Firebase): new `syncSupabaseMenu()` (`menu_items`, `menu_categories`) + a 45s `supabase-menu-poll`; `LOW_FREQ_EXCLUDED` is now **`['app_config']`** only, so `daily_submit`/`daily_summary` join the Supabase low-freq group (both are permanent in Supabase, so history is preserved). Menu edits refresh via `refreshMenuFromCloud()` (Supabase-first).
+- **Restore:** menu/daily now come from Supabase; Firebase is only the fallback (and the >31-day / manual `Cloud Restore` path).
+- **Write-failure guard (stale-read protection):** if the Supabase dual-write queue has a **`FAILED`** row (`sync_queue_supabase`), the Supabase copy is **behind** (the parallel Firebase write already succeeded), so `isSupabasePrimaryHealthy()` returns `false` → **Firebase reads resume until the queue drains** (success rows are deleted, so "no FAILED rows" = recovered). Prevents reading a stale Supabase while a write is outstanding — the Supabase **copy is only trusted when its writes are keeping up.**
+- **Unchanged:** dual-writes, the Firebase syncer functions, `processSyncQueue`/`sync_queue`.
+
+| Situation | Reads |
+|---|---|
+| Supabase healthy (normal) | **Supabase only** (tables 2s, high 5s, deletions 15s, low 45s, menu 45s) |
+| Supabase request fails/timeout | Supabase syncer → **Firebase fallback same tick** |
+| Supabase **write FAILED** (quota / storage full / 5xx) | **Firebase** (Supabase copy is stale) until the write queue drains |
+| Supabase unconfigured / kill-switch off | **Firebase only** (gated timers run) |
+| Data older than 31 days | **Firebase** (restore / manual Cloud Restore; Supabase pruned) |
+
+**Tests:** `tests/supabaseSync.test.js` updated (low-freq list now includes daily; restore no longer reads Firebase when Supabase serves menu/daily) + new health-gate / write-failure-stale-read / `syncSupabaseMenu` / App.js-gating cases; `tests/phase7RlsFallback.test.js` ordering anchor updated. `npm run test:all` **green (EXIT 0)**.
+
+**✅ VERIFIED WITH LIVE DEVICE LOGS (2026-09-27, 17:04:25–17:05:30 UTC · admin device `hw_mv6rti_redmi_24117rk2cc` · build `1.0.7`):**
+- `[Firebase-Read] auto-tables-pull SKIPPED — Supabase primary healthy (reason=healthy)` (repeated every 15s)
+- `[Firebase-Read] auto-high-frequency-pull SKIPPED — Supabase primary healthy (reason=healthy)`
+- `[Firebase-Read] login-high-frequency-pull / login-tables-pull / login-low-frequency-pull / login-deletions-pull / startup-low-frequency-pull SKIPPED — Supabase route (reason=healthy)`
+- **Zero `[Pull Sync]` lines** in the 90s+ window (the Firebase-only pull marker) ⇒ **no Firestore collection reads**.
+- Meanwhile the Supabase polls ran continuously (`supabase-tables-poll` 2s, `supabase-high-frequency-poll` 5s, `supabase-deletions-poll` 15s, `supabase-low-frequency-poll` 45s, `supabase-menu-poll` 45s) and `queue-push-daemon` drained **0 writes** each cycle.
+
+⇒ **Firebase reads = ≈0/hour when Supabase is healthy — confirmed empirically (live logs), not theoretically.** This **supersedes** the earlier unverified "≈0" statement, which was wrong for the pre-gating build.
+
+**⚠️ Lesson learned:** the earlier "Firebase is being read" confusion came from debugging against an **unbuilt / uncommitted APK** — the gating (and its `[Firebase-Read]` logs) existed only in the working tree while the running app still had the original "both timer sets fire in parallel" code (`IMPLEMENTATION_PLAN §3.3`). **Always confirm the running build matches the committed source** (check the displayed app version and/or a build-unique log line) before debugging "unexpected" runtime behaviour.
+
+**Note (not a bug):** the only remaining Firebase reads are the intentional ones — >31-day / manual `Cloud Restore`, the on-demand recovery/report paths (`resyncSameDayFromCloud`, `recoverMenuFromCloud`, `fetchHistorical*`, `executeManualPull`), and the `daily_submit` priority GET on push. All are user/report-triggered; none are periodic.
 
 ---
 
 ## 2. Key Confirmed Decisions Log
 
 **Architecture / scope (Phase 1 baseline)**
-- **Read routing = sync-layer.** Supabase becomes the primary PULL source feeding local SQLite; screens keep reading SQLite unchanged; Firebase pull timers (15s/30s/90s/180s) stay running as fallback. **Zero screen changes.**
-- **`daily_submit` / `daily_summary` = Firebase-only** for pull AND fresh-install restore. Dual-WRITTEN to Supabase but never read back (guarantees AdminAnalyticsScreen keeps full lifetime history).
-- **Non-negotiable:** Firebase code path 100% untouched (same collections, `sync_queue`, `processSyncQueue`, intervals, `firebaseAuth`, `restoreDatabaseFromCloud` internals). Supabase is pure-additive; every Supabase error/timeout is swallowed.
+- **Read routing = sync-layer.** Supabase is the **primary and only** PULL source **while healthy** (feeding local SQLite); screens keep reading SQLite unchanged. Firebase pull timers (15s/30s/90s/180s) are **health-gated** — they run only when Supabase is down/unconfigured/kill-switched-off (or for >31-day history / manual full restore). **Zero screen changes.** *(This supersedes the original "keep Firebase timers always running" stance — see the read-routing gate note in §1b.)*
+- **`daily_submit` / `daily_summary` = Supabase-backed READS** (since the read-routing gate, 2026-09-27). Dual-WRITTEN to Supabase **and now pulled back from Supabase** (they are permanent tables, so full history is preserved there); Firebase is the fallback only. *(Reverses the original "Firebase-only pull" decision.)*
+- **Firebase code path unchanged as FUNCTIONS** (same collections, `sync_queue`, `processSyncQueue`, intervals, `firebaseAuth`, `restoreDatabaseFromCloud` internals) — but **when the Firebase pull timers run is now gated on Supabase health** (read-routing gate, 2026-09-27): skipped while healthy; run only on failure/unconfigured/kill-switch. Supabase stays additive; every Supabase error/timeout is swallowed.
 - **RLS = Option B** (`is_device_active()` SECURITY DEFINER function + `X-Device-Id` header). **`devices` and `device_app_usage` are intentionally EXCLUDED** from gating (permissive RLS — owner decision, do not re-flag). This is Phase 7.
 - **`users.pin` syncs as-is plaintext** (mirrors Firestore 1:1; login verification stays entirely local SQLite PIN check).
 - **`restaurant_tables` uses 1–2s POLLING, not Realtime**, in the migration phases (no POS table added to the `supabase_realtime` publication).
@@ -49,7 +122,7 @@
 - **Correctness fixes (Phase 4) precede retention (Phase 5)** because the `activity_logs` retention cutoff depends on the Dhaka-aware business-date fix.
 - **Deferred / OUT OF SCOPE (documented, do NOT touch):** `expenses` stable-ID overwrite race; `supplier_payment_ledger` INSERT OR REPLACE overwrite; `supplier_due` read-modify-write running-balance race.
 - **`supabase_schema.sql` deleted**; all references repointed to `supabase_full_setup.sql` (consolidated, idempotent).
-- **`pg_cron` available + enabled** (v1.6.4); no retention job scheduled yet (Phase 5).
+- **`pg_cron` available + enabled** (v1.6.4); Phase 5 retention job `rongdhonu_retention_31d` scheduled (`0 19 * * *`, active).
 
 **Phase 2 (dual-write)**
 - **Dual-write = PARALLEL / independent queues.** New SQLite table `sync_queue_supabase` mirrors `sync_queue`. One `enqueueSync()` choke-point delegates to `enqueueSupabaseSync()` **after** the Firebase INSERT, via **lazy `require` + nested try/catch** (isolation; no import cycle; Supabase failure can never affect Firebase).
@@ -81,15 +154,31 @@
 - **Historical `activity_logs` rows are NOT backfilled** (per instruction) — the fix affects only NEW logs going forward.
 
 **Phase 5 (rolling 31-day retention)**
-- **`supabase_cron.sql` (new, server-side only — no app code).** One `pg_cron` job `rongdhonu_retention_31d` at `30 21 * * *` (21:30 UTC = 03:30 Asia/Dhaka) deletes rows older than a `(now() AT TIME ZONE 'Asia/Dhaka')::date - 31 days` cutoff from the **13 rolling tables only**.
+- **`supabase_cron.sql` (new, server-side only — no app code).** One `pg_cron` job `rongdhonu_retention_31d` at `0 19 * * *` (19:00 UTC = 01:00 Asia/Dhaka) deletes rows older than a `(now() AT TIME ZONE 'Asia/Dhaka')::date - 31 days` cutoff from the **13 rolling tables only**.
 - **TEXT→timestamptz cast correction.** Supabase timestamp columns are `TEXT` (ISO-8601), so the plan's literal `col AT TIME ZONE 'Asia/Dhaka'` would ERROR; each is cast `(col::timestamptz AT TIME ZONE 'Asia/Dhaka')::date`. Pure date columns use `::date`. `deliveries` uses `COALESCE(NULLIF(completed_at,'')::timestamptz, NULLIF(created_at,'')::timestamptz)`.
 - **`activity_logs` deletes by `created_at`, not `business_date`** — historical `business_date` predates the Phase 4 fix and was not backfilled (§R5: do both).
 - **Excluded (17 permanent/non-windowed, confirmed complete):** menu_items, menu_categories, restaurant_tables, devices, device_app_usage, app_version_policy, daily_submit, daily_summary, daily_submit_priority, users, supplier_due, deletions, delete_history, owner_employees, owner_salary_ledger, owner_deposits, owner_home_deposits. **13 + 17 = 30 = full table set.**
 - **Idempotent:** guarded `cron.unschedule('rongdhonu_retention_31d')` (only if it exists) then `cron.schedule(...)`. File also embeds verification queries + an optional dry-run preview.
 
+**Phase 6 (version control)**
+- **Supabase-primary version policy** via `fetchVersionPolicyDualDB()` in `services/firebaseAppConfig.js`. Read chain: Supabase `app_version_policy` (3.5s timeout, `EXPO_PUBLIC_SUPABASE_VERSION_TIMEOUT_MS`) → existing `fetchVersionPolicy()` (Firebase, UNCHANGED) → SQLite `cached_version_policy` → `DEFAULT_VERSION_POLICY`. Supabase success writes the SQLite cache.
+- **`checkAppVersionPolicy(role)` public contract byte-identical** — only its internal fetch swapped to the dual wrapper. All 4 call sites (App.js ×3, `AppUpdateRequiredScreen.js`) unchanged; ADMIN-exempt / semver / `updateRequired` / blocking screen preserved.
+- **Write path = SEQUENTIAL** (`setVersionPolicyDualDB`): Supabase `app_version_policy` **first** → **best-effort Firebase `setVersionPolicy()`** → SQLite cache. `success:true` if either cloud write lands.
+- **Admin save routed via new `setMinimumVersionDualDB(cleanVer)`** in `AdminDB.js` (import + call only). **Biometric + PIN gate (L445–L481) untouched.**
+- **Kill switch respected:** `EXPO_PUBLIC_SUPABASE_SYNC_ENABLED=false` or unconfigured URL → version read/write is Firebase-only.
+
+**Phase 7 (RLS — staged, IN PROGRESS)**
+- **`supabase_rls.sql` (new, server-side only).** `public.is_device_active(p_device_id)` (SECURITY DEFINER, STABLE; `status='ACTIVE' AND allow_login=true AND admin_lock=false AND is_deleted=false`), granted to `anon, authenticated`.
+- **CRITICAL implementation detail:** Phase 1 created a **permissive** policy `"Permissive anon access (Phase 1)"` (`FOR ALL USING(true)`) on all 28 tables. Postgres ORs permissive policies, so each gate block **DROPS that policy first** — otherwise gating would be a no-op. The SQL test suite asserts this for every table.
+- **27 POS tables gated** (everything except `devices`, `device_app_usage`, `app_version_policy`). Structured as **comment-able per-table STAGE blocks** so tables can be enabled one at a time.
+- **`devices` + `device_app_usage` = NEVER GATED (final owner decision, do NOT revisit).** A brand-new device must self-register + heartbeat + emit telemetry while PENDING. Section 1 re-asserts their permissive policies defensively. Test asserts they are never gated.
+- **`app_version_policy` = public SELECT** (version check runs pre-registration) **+ permissive INSERT/UPDATE** (Phase-6 dual writer uses UPSERT; no Postgres admin-auth yet → preserves current behavior, no regression). DELETE intentionally not granted.
+- **Client-side safety (already true, now proven):** an RLS-denied **write** returns `42501` → `processSupabaseSyncQueue` marks the row `FAILED` + backoff-retries (never throws); an RLS-denied **read** returns HTTP 200 + empty (PostgREST filters) — not an error — so the untouched **Firebase timers remain the safety net** and the local DB still converges. Added `isRlsDenialError()` + preserved PostgREST `code`/`status` on pull errors for clear diagnostics + fallback logging.
+- **Staging state = 0/27 tables gated.** Next table: `off_days`.
+
 ---
 
-## 3. Current Phase Detail — Phase 4 ✅ Done → Phase 5 (SQL ready, pending manual run)
+## 3. Current Phase Detail — Phase 6 ✅ done → Phase 7 🟡 in progress (staged)
 
 ### Phase 2 — Local scaffolding + dual-write queue ✅
 Delivered (all per IMPLEMENTATION_PLAN.md §2):
@@ -134,14 +223,188 @@ Delivered (all per IMPLEMENTATION_PLAN.md §4, with the §4.1 correction noted i
 - **Firebase-untouched:** `App.js`, `firebaseAuth.js`, `supabaseSync.js`, `appUsageTracker.js` untouched this phase; the only Firebase-path change is the in-scope `daily_submit` conflict block (refactor to the shared comparator; higher-remote-priority still skips). `test:activity` 9/9, `test:firebase-auth` 21/21.
 - New Firestore fields (`submitted_at`, `device_id`) flow additively via generic `toFirestoreDocument`.
 
-### Phase 5 — Rolling 31-day retention (pg_cron) 🟡 SQL ready — pending manual run
+### Phase 5 — Rolling 31-day retention (pg_cron) ✅
 Delivered:
-1. **`supabase_cron.sql`** (new) — idempotent pg_cron registration of one job `rongdhonu_retention_31d` (`'30 21 * * *'`, i.e. 21:30 UTC = **03:30 Asia/Dhaka**) whose command is a `DO` block deleting `cutoff = ((now() AT TIME ZONE 'Asia/Dhaka')::date - INTERVAL '31 days')::date`-and-older rows from the **13 rolling tables**.
+1. **`supabase_cron.sql`** (new) — idempotent pg_cron registration of one job `rongdhonu_retention_31d` (`'0 19 * * *'`, i.e. 19:00 UTC = **01:00 Asia/Dhaka**) whose command is a `DO` block deleting `cutoff = ((now() AT TIME ZONE 'Asia/Dhaka')::date - INTERVAL '31 days')::date`-and-older rows from the **13 rolling tables**.
 2. Verification queries (`cron.job` / `cron.job_run_details`) + an optional dry-run count preview are embedded in the file.
 
-**Status:** server-side only — **no app code changed**. Awaiting the owner to run it in the Supabase SQL Editor and confirm the job shows in `cron.job`. **Phase 6 not started** (held until Phase 5 is confirmed).
+**Status:** ✅ **VERIFIED 2026-09-27.** Server-side only — **no app code changed**. Owner ran `supabase_cron.sql` in the Supabase SQL Editor and confirmed:
+```sql
+SELECT * FROM cron.job WHERE jobname = 'rongdhonu_retention_31d';
+```
+returns **exactly one** row with `schedule = '30 21 * * *'`, `active = true`. **Phase 5 closed; Phase 6 started.**
 
 **Pre-run checks already satisfied:** `pg_cron` v1.6.4 available/enabled (Phase 1); Phase 4 delivered first so the `activity_logs`/Dhaka-date premise holds.
+
+### Phase 6 — Version control migration ✅
+Delivered (all per IMPLEMENTATION_PLAN.md §6 + VERSION_CONTROL_MIGRATION_NOTES.md §6):
+1. **`services/firebaseAppConfig.js`** — added `fetchVersionPolicyDualDB()` (§6.2 read chain), `setVersionPolicyDualDB(newPolicy)` (§6.3 write chain), `setMinimumVersionDualDB(newVersion)` (version-string admin helper), `mapSupabasePolicyRow()`, `VERSION_TIMEOUT_MS` (`EXPO_PUBLIC_SUPABASE_VERSION_TIMEOUT_MS`, default **3500 ms**), and test seams `__setVersionPolicyDepsForTesting` / `__resetVersionPolicyDepsForTesting`. All existing exports retained; `fetchVersionPolicy`/`setVersionPolicy`/`checkAppVersion`/`fetchMinimumVersion`/`setMinimumVersion` **unchanged**.
+2. **`checkAppVersionPolicy(role)`** — single internal line changed: `fetchVersionPolicy()` → `fetchVersionPolicyDualDB()`. Return contract byte-identical (ADMIN-exempt, semver compare, `updateRequired`, `offline`, `minimumVersion`).
+3. **`screens/AdminDB.js`** — save call `setMinimumVersion(cleanVer)` → `setMinimumVersionDualDB(cleanVer)` (import + call only). **Biometric + PIN security gate (L445–L481) untouched.**
+4. **`example.env`** — added `EXPO_PUBLIC_SUPABASE_VERSION_TIMEOUT_MS` placeholder; **`eas.json`** ×4 profiles added the same key (`3500`).
+5. **`tests/phase6VersionControl.test.js`** (new, 18 tests) wired into `test:all` (+ `test:phase6` script).
+
+**Verification**
+- `npm run test:all` → **exit 0, 0 failures** (Phase 6 suite **18/18**; prior suites unchanged).
+- **§6.4 Firebase-untouched:** `checkAppVersionPolicy` return keys/values asserted identical (ADMIN exempt, blocked non-admin, allowed fresh, offline-cached); `fetchVersionPolicy`/`setVersionPolicy` source unchanged; no call-site edits.
+- **§6.5 Supabase-down:** blank URL → Firebase poll; invalid/unreachable URL + timeout → Firebase fallback (no throw); kill switch off → Firebase-only. Non-admin outdated still blocked; ADMIN still exempt.
+- **§6.5 Supabase healthy:** valid `app_version_policy` row used + written to SQLite cache (`source:'supabase'`); `offline:false`.
+
+### Phase 7 — RLS enforcement (Option B, device-gated) 🟡 IN PROGRESS (staged)
+Delivered (per IMPLEMENTATION_PLAN.md §7):
+1. **`supabase_rls.sql`** (new) — Section 0: `is_device_active()`; Section 1: never-gate tables; Section 2: version policy; Section 3: **27 comment-able per-table STAGE blocks**; Section 4: verification queries; Section 5: rollback (`revoke_device_gate`).
+2. **`services/supabaseSync.js`** — added `isRlsDenialError()` + preserved PostgREST `code`/`status` on pull errors; fallback logging now tags RLS/permission denials. *(additive; no behavior change to the fallback itself.)*
+3. **`tests/phase7RlsFallback.test.js`** (new, 14 tests) wired into `test:all` (+ `test:phase7`).
+
+**Step 2 client-side verification results (CONFIRMED, not assumed):**
+- **Ordering:** `App.js` cold start does `await registerDeviceIfNeeded()` (L442) → `setSupabaseDeviceId(currentDeviceRec.device_id)` (L446–L450) → `reconcileAdminFleet`/`verifyDeviceAccess` → `startSyncService()` (L531) → `startSupabaseSyncService()` (L536–L537); the Supabase pull timers (2s/8s/20s/60s) are wired later inside a `isLoggedIn` effect. **No gated Supabase call fires before the device id is set.**
+- **Only exception (safe):** the startup version check `checkAppVersionPolicy(ACTIVE_APP_PROFILE)` (L424–L425) runs **before** registration and reads `app_version_policy` — which is **public-read and never gated** (§Section 2). No other Supabase call precedes `setSupabaseDeviceId`. Warm start also re-applies the id from SQLite `persistent_device_id` inside `getSupabaseClient()`.
+- **Header injection:** sent via `createClient({ global: { headers: { 'x-device-id': … } } })` for all PostgREST calls **plus** runtime `supabaseInstance.rest.headers['x-device-id']` mutation (preserves Realtime channels). Asserted by test.
+- **RLS-denial fallback (proven by test):** read error → every Supabase group calls its Firebase counterpart same-tick; restore failure → Firebase `restoreDatabaseFromCloud({mode:'today'})`; dual-write error → row `FAILED` + retry, never throws. A denied **SELECT** returns 200 + empty (not an error) → Firebase timers remain the safety net.
+
+**RECOMMENDED STAGED ROLLOUT ORDER (lowest risk → highest):**
+| Stage | Tables | Status |
+|---|---|---|
+| **1** | `off_days` ✅ gated · `weather_data` ⏳ · `eja_history` ⏳ | `off_days` gated (read-path "verification" was a false positive — see root cause below) |
+| **2** | `supplier_due`, `supplier_due_history`, `supplier_payment_ledger`, `due_payments` | ✅ gated + **VERIFIED** (header-injection bug found & fixed here) |
+| 3 | `owner_home_deposits`, `owner_deposits`, `owner_expenses`, `owner_salary_ledger`, `owner_employees` | ✅ gated + **VERIFIED** (pre-Phase-2 backfill gap found & fixed here) |
+| 4 | `delete_history`, `deletions`, `activity_logs` | ✅ gated + **VERIFIED** (delete propagation + activity logging OK) |
+| 5 | `menu_categories`, `menu_items`, `users`, `restaurant_tables` | ✅ gated + **VERIFIED** (critical `is_synced_supabase` flicker bug found & fixed here) |
+| 6 | `daily_submit_priority`, `daily_summary`, `daily_submit`, `expenses` | ✅ gated + **VERIFIED** (daily submit + expense entry OK) |
+| **7** | `deliveries`, `payments`, `order_items`, `orders` | **🔄 ABOUT TO RUN** — 4 blocks, `supabase_rls.sql` lines **342–376** (final stage) |
+
+**⚠️ Remaining after Stage 7:** `weather_data` + `eja_history` (Stage 1 remainder, `supabase_rls.sql` lines **140–154**) → run these too to reach **27/27**.
+
+**Per-stage acceptance (owner, in the running app):** (1) ACTIVE device works normally; (2) PENDING/BLOCKED device is denied on that table, app does **not** crash, Firebase fallback is transparent; (3) Section 4 query shows only `Device active gate` remains and `Permissive anon access (Phase 1)` is gone for that table; (4) rollback = `SELECT public.revoke_device_gate('<table>');`
+
+**PHASE 7 COMPLETE — 27 of 27 tables gated.** All rollout stages (1–7) **plus the Stage 1 remainder** (`weather_data`, `eja_history`) applied + verified on-device (core POS flow clean; no flicker; no duplicates/orphans).
+
+#### Phase 7 — Stage 2 root cause (evidence, not a guess)
+**Symptom:** `upsert supplier_payment_ledger error: new row violates row-level security policy for table "supplier_payment_ledger"` on an ACTIVE/approved device.
+
+**Evidence (empirical, real `@supabase/supabase-js` 2.117.2 via an intercepted-`fetch` probe of the REAL `services/supabaseClient.js`):**
+- Before the fix, `getSupabaseClient().rest.headers` showed `{}` and the outgoing requests contained headers `apikey, authorization, content-profile, content-type, prefer, x-client-info` — **no `x-device-id`**. So `is_device_active(NULL)` → false → WITH CHECK violation on every gated write.
+- After the fix, the same probe shows outgoing POST **and** GET include `x-device-id: "dev_REAL_123"`.
+
+**Root cause:** `@supabase/postgrest-js` stores its headers as a **`Headers` instance** (`this.headers = new Headers(headers)`). `setSupabaseDeviceId()` did `supabaseInstance.rest.headers['x-device-id'] = nextId` — a plain property assignment, which on a `Headers` object only creates a dangling **expando** property that is **never serialized into the request**. The device id was therefore never transmitted.
+
+**Why Stage 1 `off_days` looked OK:** an RLS-denied **SELECT** is not an error — PostgREST returns HTTP 200 with an empty set — so reads silently returned nothing and the untouched Firebase timers filled in. The first gated **WRITE** (Stage 2) is where the missing header surfaced. Offline/queued writes simply got queued as `FAILED` (retried), which is why nothing visibly broke.
+
+**Fix (code only — NO RLS change/loosening):**
+- `services/supabaseClient.js`: `setSupabaseDeviceId()` now attaches the header via the `Headers` API (`setHeaderOn()` → `headers.set('x-device-id', id)`, with a plain-object fallback), also mirrors it onto the top-level global header map, and logs `(attached=<bool>)` so this class of bug is immediately visible.
+- `services/supabaseSyncQueue.js`: the upsert-failure log now prints the **actual outgoing `x-device-id`** to pinpoint header vs data mismatches.
+- New regression guard `tests/phase7HeaderInjection.test.js` intercepts fetch and asserts the header is truly present on outbound POST+GET.
+
+**Data-side pre-flight (run for the failing `device_id` from the log — the header id must exactly match a row):**
+```sql
+-- (a) Is the gate true for the id actually being sent?
+SELECT public.is_device_active('<DEVICE_ID>') AS is_active,   -- expect true
+       public.is_device_active(NULL)        AS is_active_null; -- false
+
+-- (b) Which condition would fail? (empty result = row missing entirely)
+SELECT device_id, status, allow_login, admin_lock, is_deleted,
+       length(device_id) AS id_len, quote_literal(status) AS status_exact
+  FROM public.devices
+ WHERE device_id = '<DEVICE_ID>';
+
+-- (c) If empty above, find the real row (watch for case/whitespace/old-id mismatch)
+SELECT device_id, status, allow_login, admin_lock, is_deleted, length(device_id) AS id_len
+  FROM public.devices ORDER BY updated_at DESC LIMIT 20;
+```
+If (a) is false and (b) is empty → the app is sending an id with no `devices` row (or a stale id) — a data/identity mismatch, separate from the header bug. If (b) shows `status` not exactly `'ACTIVE'` (case-sensitive) or `allow_login`/`admin_lock`/`is_deleted` wrong, correct that row.
+
+### One-time Supabase backfill (pre-Phase-2 permanent-data gap) — ✅ used, then **REMOVED**
+> **2026-09-27: the backfill tool and its Admin-dashboard button were REMOVED at the owner's request** (`services/supabaseBackfill.js`, `tests/supabaseBackfill.test.js`, the AdminDB button/handler/state/styles, and the `test:backfill` script all deleted). The FK gap it fixed is already resolved, so nothing is lost. The notes below are historical.
+**Gap (Stage 3 symptom):** dual-write (Phase 2) only mirrors writes made AFTER it shipped, so rows created before Phase 2 exist in local SQLite but NOT in Supabase. A post-migration child write then fails its FK — `owner_salary_ledger.employee_id → owner_employees.id` (`ON DELETE CASCADE`). Only **3 FKs** exist: `order_items.order_id → orders`, `payments.order_id → orders`, `owner_salary_ledger.employee_id → owner_employees`. **FK parent must be backfilled first (yes).** This is a **data gap**, not a schema/RLS defect — do NOT loosen RLS/FK.
+
+**Gap-analysis SQL** (Supabase SQL Editor; runs as postgres, bypasses RLS). Alternatively §3 (a)/(b) already prove it:
+```sql
+-- counts per permanent table (Supabase) — expect far lower than local
+SELECT 'owner_employees' t, count(*) FROM public.owner_employees
+UNION ALL SELECT 'owner_salary_ledger', count(*) FROM public.owner_salary_ledger
+UNION ALL SELECT 'owner_deposits',      count(*) FROM public.owner_deposits
+UNION ALL SELECT 'owner_home_deposits', count(*) FROM public.owner_home_deposits
+UNION ALL SELECT 'menu_items',          count(*) FROM public.menu_items
+UNION ALL SELECT 'menu_categories',     count(*) FROM public.menu_categories
+UNION ALL SELECT 'restaurant_tables',   count(*) FROM public.restaurant_tables
+UNION ALL SELECT 'users',               count(*) FROM public.users
+UNION ALL SELECT 'supplier_due',        count(*) FROM public.supplier_due
+UNION ALL SELECT 'daily_submit',        count(*) FROM public.daily_submit
+UNION ALL SELECT 'daily_summary',       count(*) FROM public.daily_summary
+UNION ALL SELECT 'orders',              count(*) FROM public.orders
+ORDER BY t;
+-- orphan children (definitive proof; expect ≥1 before backfill, 0 after)
+SELECT DISTINCT l.employee_id FROM public.owner_salary_ledger l
+  LEFT JOIN public.owner_employees e ON e.id = l.employee_id WHERE e.id IS NULL;
+```
+
+**Fix — NO RLS/FK changes:**
+- **`services/supabaseBackfill.js`** — `backfillPermanentTablesToSupabase({tables, batchSize, onProgress})` reads all local rows for the permanent/non-windowed tables **+ the parent `orders`** and upserts them **PARENT-FIRST** in batches (default 200). `BACKFILL_TABLES` order: `owner_employees`, `orders`, `owner_salary_ledger`, `owner_deposits`, `owner_home_deposits`, `menu_categories`, `menu_items`, `restaurant_tables`, `users`, `supplier_due`, `daily_submit`, `daily_summary`, `daily_submit_priority`, `delete_history`, `deletions`. Strips `is_synced`; PK map via `getSupabaseConflictKey` (`date`/`business_date`/`id`); **NOT part of the dual-write queue** (direct upsert, never enqueues); never throws; respects `EXPO_PUBLIC_SUPABASE_SYNC_ENABLED`. Also `getBackfillPreview()` (local counts for the UI). Test seams `__setSupabaseBackfillDepsForTesting`.
+- **`screens/AdminDB.js`** — one-time button in the Cloud Sync section: **"⬆️ পুরোনো ডেটা Supabase-এ ব্যাকফিল করুন"** → confirm (shows local preview counts) → runs → per-table progress → result summary (`uploaded/total`). Plain confirm (no PIN); non-destructive. Stores `supabase_backfill_last_run_at`.
+- `is_synced`/`app_config`/device tables deliberately excluded. Idempotent (re-runnable).
+
+**Verification:** `tests/supabaseBackfill.test.js` **11 tests** (parent-first order, `is_synced` stripped, PK map, empty-skip, batching, error isolation, kill-switch/dormant no-op, execution order, idempotency). `npm run test:all` green (25 files).
+**On-device acceptance (owner):** run the button on the ADMIN device → re-run the orphan query above → expect **0 rows** → retry an `owner_salary_ledger` write → succeeds, no FK error.
+
+### Critical sync-engine fix — delete/resurrect ping-pong (R3/R4) — FIXED
+**Found during Stage 5 testing.** Deleting a record (e.g. a `menu_items` row named "পানি") made it **reappear repeatedly** — a general add/delete ping-pong, not menu-specific.
+
+**Root cause (traced, not guessed):** when a row is deleted locally, `recordDeletion()` (`database.js` L6259) writes a local `deletions` tombstone and enqueues a DELETE to both clouds — **but the pull merge for a normal table never consults the `deletions` tombstones**; it only *applies* tombstones when the pulled table itself IS `deletions`. Worse, `handleDeleteMenuItem` calls `syncMenuOnly()` **immediately after deleting** (`App.js` L1693), so the very next Firebase pull re-fetches the still-present cloud row and `INSERT OR REPLACE`s it back.
+- Firebase merge: `database.js` `syncCollections` pull loop (~L2098–2239) — tombstone applied only when `table === 'deletions'` (L2180); no check on other tables.
+- Supabase merge: `services/supabaseSync.js` `mergeSupabaseRows` (~L123–185) — tombstone applied only when `table === 'deletions'` (L143). (Note: `menu_items` isn't pulled from Supabase at all — the immediate Firebase pull is what resurrected it — but the same defect affected every Supabase-pulled table, hence "multiple tables".)
+
+**Fix (NO RLS/FK changes):**
+1. New **`services/tombstoneStore.js`** — pure, never-throwing `isTombstoned(db, table, id)` / `clearTombstone(db, table, id)`.
+2. **Firebase merge** (`database.js`): before the pull-insert, `if (table !== 'deletions' && isTombstoned(db, table, docId)) continue;` + log `[Sync] Skipped resurrect: <table>/<id>, tombstone present`.
+3. **Supabase merge** (`services/supabaseSync.js`): identical guard + log.
+4. **Re-create safety**: `enqueueSync()` clears any stale tombstone when `action !== 'DELETE'`, so a legitimate re-add is not permanently blocked.
+5. **`tests/syncTombstoneResurrect.test.js`** (9 tests) wired into `test:all`.
+
+**Verification:** `npm run test:all` → **green (26 files, 0 failures)**. Tests prove: tombstoned `restaurant_tables`/`users` rows are **not** resurrected (Supabase-pulled), the `deletions` table still applies tombstones, a re-add after `clearTombstone` merges again, the Firebase-pulled `menu_items` decision, source wiring of both merges + `enqueueSync`, and **fresh-install safety** (a 50-row merge with no tombstones inserts every row — no stale tombstone blocks a restore).
+**On-device acceptance (owner):** delete a menu item → it must stay deleted across ~2–3 min of pull cycles (look for `[Sync] Skipped resurrect:` in logs); re-add an item → it must appear. Then resume Stage 5 verification → Stage 6.
+
+**Diagnostics added (2026-09-27, Stage-5 investigation):**
+- **`[MENU-DEBUG]`** — logs: `deleteMenuItem` (name/category/id), `recordDeletion` (tombstone written + DELETE enqueued), and each `menu_items` doc returned by the Firebase pull. Filter the log stream for `MENU-DEBUG`.
+  - NOTE: **no `MENU-DEBUG` markers existed before this change** — the only logging previously added was `[Sync] Skipped resurrect:` (fires only when a tombstone exists AND a pull returns that row). This was a case of expecting a marker that was never added, not a missed build.
+- **`[TABLE8-DEBUG]`** — logs every `enqueueSync('restaurant_tables', …)` with action/id **plus a caller stack frame**, `updateTableState`/`updateTableName` when the id contains `table_8`, and the init "fixed 8 tables" rename-mismatch. Filter for `TABLE8-DEBUG`.
+
+**`restaurant_tables` / `table_8` repeating-UPDATE investigation (in progress):** static trace of the whole codebase shows only **three** places enqueue `restaurant_tables` writes —
+1. `updateTableState()` / `updateTableName()` (`database.js` L4359/L4372) — called only from App.js handlers (L1591 save-edit, L1840 return-home, L1919 delete-active-order);
+2. the one-shot init "Seed/Sync Fixed 8 Restaurant Tables" block (`database.js` L1100–1116, runs only in `initDatabase(false)` at App.js L526) — enqueues an UPDATE **only when `existing.table_name !== ft.name`** (table_8 expects `"Extra"`);
+3. `executeManualPush()` (`database.js` L6346) — scans `is_synced=0` and re-enqueues, but has **no automatic caller** (exported only).
+A successful Firestore PATCH sets `is_synced = 1` (`database.js` L1870), so a row should settle. So a *repeating* UPDATE means either a UI path is re-firing `updateTableState/Name` (the `[TABLE8-DEBUG] … caller=` stack frame will name it), or the push is failing and being retried (existing `[Queue Audit] FAIL … error=…` lines show why). **Awaiting the on-device `TABLE8-DEBUG` capture to confirm which.**
+
+### Running-cart (`restaurant_tables.items`) vs `order_items` — trace (Stage 5 investigation)
+Reported: an item added to a table's **running order** flickers (add/delete loops). Trace result:
+- The **running cart is stored in `restaurant_tables.items` (JSON), NOT `order_items`.** Path: `AddItemScreen`/`TableDetailScreen` → `onUpdateTableItems` → `handleUpdateTableItems` (`App.js` L1554) → `updateTableState()` (`database.js` L4359) → `enqueueSync('restaurant_tables', id, 'UPDATE')`. So the flicker on a *running* table is on **`restaurant_tables`**, which is pulled by **Supabase every 2s AND Firebase every 15s** — even faster than `order_items` (8s/30s).
+- **`order_items` rows are written only at checkout / completed-order edit / completed-order delete:** `addCompletedOrder` (L4704–4716), `updateCompletedOrder` (L5791–5801), `deleteCompletedOrder` (L5729/5750) — **not** on cart edits.
+- 🐞 **Bug found in `updateCompletedOrder` (L5799–5810):** it does `DELETE FROM order_items WHERE order_id = ?` then re-INSERTs rows under **new ids** (`..._item_<i>_rev`) **without calling `recordDeletion()`** for the wiped rows → the old rows persist in both clouds → a pull resurrects them → duplicate/looping items on completed-order edits.
+- **Tombstone-fix applicability:** both `order_items` and `restaurant_tables` flow through the **generic** merge loops we patched (`syncCollections` in `database.js`; `mergeSupabaseRows` in `supabaseSync.js`), so the tombstone-skip **does** apply to both. But the running-cart flicker is a different mechanism — an **UPDATE overwrite race**: when `updated_at` is equal after a push, the merge falls through to the **field-by-field equality check** (`database.js` L2167–2174) and can overwrite a just-written local row with the *other* cloud's version. The tombstone-skip does not address this.
+- **Two-cloud race (confirmed plausible):** `restaurant_tables` is pulled independently by Supabase (2s) and Firebase (15s). If the two clouds disagree (one push landed, the other lagged/failed — e.g. Supabase RLS on `restaurant_tables` since Stage 5), each pull can clobber the local pending edit: `is_synced=0` is preserved only when the cloud row is **not newer**; an equal timestamp falls through to the overwrite path.
+
+**Diagnostics for the repro:** `[MERGE-DEBUG] FB|SB <table>/<id> localSynced=… localTs=… cloudTs=… shouldUpdate=…` (emitted from **both** merge engines for `restaurant_tables` + `order_items`) and `[ORDERITEM-DEBUG]` at checkout / `updateCompletedOrder` / `deleteCompletedOrder`.
+
+### FINAL root cause — shared `is_synced` flag → PER-BACKEND tracking — FIXED
+**Confirmed via on-device logs (`restaurant_tables/table_8`):** `is_synced` is a **single flag shared by both backends**.
+1. local edit → `updated_at` changes, `is_synced=0`;
+2. Firebase push completes fast → `is_synced=1`;
+3. Supabase push (independent queue) hasn't landed → Supabase copy is still **stale**;
+4. Supabase 2s poll runs, sees `is_synced=1`, treats the row as "safe to trust cloud" → **overwrites the fresh local edit with stale Supabase data** → item disappears;
+5. Supabase push finally lands → next poll pulls the fresh data back → item reappears (flicker).
+
+This **reverses the Phase 2 decision §2.7** ("`is_synced_supabase` not needed") — it **IS** needed.
+
+**Fix (Firebase path unchanged):**
+- **Migration `migrateSupabaseSyncFlags()`** (`database.js` L876, called in `initDatabase`): adds `is_synced_supabase INTEGER DEFAULT 0` to **every table that has `is_synced`** (all dual-write tables) — generic + future-proof.
+- **`enqueueSync`** (action ≠ DELETE): resets `is_synced_supabase = 0` for the record (mirrors the local `is_synced=0` writes).
+- **`processSupabaseSyncQueue`** success: sets `is_synced_supabase = 1` for the record.
+- **`mergeSupabaseRows`** (`services/supabaseSync.js`): guard changed to `Number(localRow.is_synced_supabase || 0) === 0`; pulled inserts also set `is_synced_supabase = 1`.
+- `performUpsert` + `supabaseBackfill` strip `is_synced_supabase` from Supabase payloads; `toFirestoreDocument` strips it too (**Firestore payloads unchanged**).
+- **Firebase merge (`syncCollections`) keeps using `is_synced` — UNCHANGED.**
+
+**Tables covered (Q5 → yes):** the migration touches every `is_synced` table, so `order_items`, `restaurant_tables`, `orders`, `payments`, `deliveries`, `expenses`, `due_payments`, `eja_history`, `off_days`, `weather_data`, `supplier_*`, `owner_*`, `daily_*`, `menu_*`, `users`, `deletions`, `delete_history` all get the column automatically — no per-table work.
+
+**Tests:** `tests/supabaseSyncFlag.test.js` (**7**) proves the exact bug (is_synced=1 + is_synced_supabase=0 → stale cloud does **not** overwrite), own-flag semantics, newer-cloud-wins, SB-sourced inserts flag themselves, post-push normal behaviour, queue success sets the flag, and source wiring. **`npm run test:all` green (27 files).**
 
 ---
 
@@ -151,17 +414,54 @@ Delivered:
 - _Stale old-ref leftovers (not config, harmless):_ `.expo/dev/logs/*` (regenerated on next `expo start`) and `.commandcode/settings.json` (tooling permission cache).
 - ✅ **`example.env` is a template and must keep PLACEHOLDERS only** (owner decision) — do NOT put the real Supabase URL/anon key there. Real values live in `.env` + `eas.json` only.
 - ✅ **DONE (2026-09-27) — Phase 4 `daily_submit_priority` column adds on Supabase** (`device_id`, `submitted_at`). Owner ran them in the SQL Editor; Supabase upserts of `daily_submit_priority` now succeed.
-- **NOW (Phase 5): run `supabase_cron.sql` in the Supabase SQL Editor** to schedule the 31-day retention job. Then verify with:
+- ✅ **DONE (2026-09-27) — Phase 5: `supabase_cron.sql` run in the Supabase SQL Editor.** The owner confirmed the retention job is registered + active:
   ```sql
-  SELECT jobid, jobname, schedule, active, command FROM cron.job WHERE jobname = 'rongdhonu_retention_31d';
+  SELECT * FROM cron.job WHERE jobname = 'rongdhonu_retention_31d';
   ```
-  Expect exactly one row, `schedule = '30 21 * * *'`, `active = true`. Confirm to the agent to proceed to Phase 6. Deleted rows remain in Firebase (full history) and local SQLite (never rolling-deleted).
-- **Later (Phase 7):** run `supabase_rls.sql` to create `is_device_active()` and apply device-gated policies.
+  → exactly one row, `schedule = '30 21 * * *'`, `active = true`. Deleted rows remain in Firebase (full history) and local SQLite (never rolling-deleted).
+- ✅ **DONE (2026-09-27) — Phase 7 Sections 0/1/2 run; STAGE 1 `off_days` gated + VERIFIED WORKING.** ACTIVE device normal, no crashes, no regressions. (`weather_data` + `eja_history` not yet gated.)
+- ✅ **DONE (2026-09-27) — Phase 7 Stage 2 VERIFIED.** The 4 supplier/dues tables are gated and working: writes succeed, `is_device_active()` true, FAILED queue rows drained. (Stage 2 initially failed with an RLS error; root cause was the shared client sending no `x-device-id` — fixed in code, no RLS change.)
+- ✅ **DONE (2026-09-27) — Phase 7 Stage 3 VERIFIED.** Owner tables gated; the one-time backfill ran (orphan query → **0 rows**) and `owner_salary_ledger` writes now succeed. (Stage 3 initially hit an FK gap — a pre-Phase-2 backfill gap, not RLS.)
+- ✅ **DONE (2026-09-27) — one-time Supabase backfill tool** (`services/supabaseBackfill.js` + AdminDB button) exercised successfully on the ADMIN device.
+- ✅ **DONE (2026-09-27) — Phase 7 Stage 4 VERIFIED.** `delete_history`, `deletions`, `activity_logs` gated; deletes propagate correctly and activity logging works with no RLS errors.
+- ✅ **DONE (2026-09-27) — Phase 7 Stage 5 VERIFIED.** `menu_categories`, `menu_items`, `users`, `restaurant_tables` verified on-device: no flicker/loop on `restaurant_tables` item add/delete, menu delete stays deleted (~2–3 min), menu/ordering/table-status/login all normal. This is where the **critical `is_synced_supabase` flicker bug was found + fixed** (see §3).
+- ✅ **DONE (2026-09-27) — Phase 7 Stage 6 VERIFIED.** `daily_submit_priority`, `daily_summary`, `daily_submit`, `expenses` verified: daily submit + expense entry work, no errors.
+- ✅ **DONE (2026-09-27) — Phase 7 Stage 7 (final) VERIFIED** (`orders`, `order_items`, `payments`, `deliveries`) **and the Stage 1 remainder** (`weather_data`, `eja_history`). Full test plan passed: order creation, item add/remove (no flicker), full + split payments, table close, completed-order edit (no duplicates after 2–3 min), delivery flow — plus clean SQL duplicate/orphan spot-checks. **27/27 gated → Phase 7 COMPLETE.**
+- **OPTIONAL FINAL CONFIRMATION (no SQL left to run):** in the Supabase SQL Editor, run the §4 (c) policy-inventory query — every gated table should list exactly **one** policy, `"Device active gate"`, and **zero** `"Permissive anon access (Phase 1)"` rows. Rollback (if ever needed): `SELECT public.revoke_device_gate('<table>');`
 
 ---
 
 ## Changelog
-- **2026-09-27 (Phase 5 SQL ready)** — Added `supabase_cron.sql` (server-side only): idempotent `pg_cron` job `rongdhonu_retention_31d` (`30 21 * * *` = 03:30 Asia/Dhaka) deleting >31-day rows from the 13 rolling tables keyed on the DATE_FIELD_ANALYSIS §5 columns. Corrected the plan's `AT TIME ZONE` expressions to `::timestamptz` casts (Supabase timestamp columns are TEXT). `activity_logs` retention uses `created_at` (historical `business_date` un-backfilled). 17 permanent tables explicitly excluded (13+17=30). Includes verification + dry-run queries. **Pending manual execution by owner.** No app code changed. Phase 6 held.
+- **2026-09-27 (✅ LIVE-VERIFIED — Firebase reads ≈0/hr when Supabase healthy)** — Device log capture (admin `hw_mv6rti_redmi_24117rk2cc`, build **1.0.7**, 17:04:25–17:05:30 UTC) shows `[Firebase-Read] … SKIPPED — … reason=healthy` for **every** periodic timer (`auto-tables-pull`, `auto-high-frequency-pull`) and **every** login/startup lifecycle pull, with **zero `[Pull Sync]`** lines across a 90s+ window while all Supabase polls ran normally. Confirms the read-gating empirically. **Lesson learned:** the earlier confusion came from testing an **unbuilt/uncommitted** APK — always verify the running build matches the committed source before debugging "unexpected" behaviour. Gating + diagnostics + lifecycle source-tagging now committed.
+- **2026-09-27 (Firebase-read diagnostics — prove the cause, don't assume)** — Investigation: the 4 Firebase timers ARE gated in the working tree via `runFirebasePullIfSupabaseDown`, BUT **HEAD `78f7ce6` contains 0 occurrences of it** → the gating is **uncommitted/unbuilt**, so the running APK still has BOTH timer sets firing (matches IMPLEMENTATION_PLAN §3.3 "alongside"). Also found 7 genuinely **ungated** Firebase-read paths + the **sticky** health-false condition (any `FAILED` row in `sync_queue_supabase` ⇒ `failed-writes` ⇒ Firebase timers run forever). Diagnostics added: `services/supabaseSync.js` `getSupabaseHealth()` → `{healthy, reason}` with reason ∈ `killswitch | unconfigured | read-failed | failed-writes:<n> | healthy`; `App.js` logs `[Firebase-Read] <timer> SKIPPED …` (healthy) vs `RUNNING Firebase pull — reason=…`, and `RUNNING Firebase fallback pull`; `database.js` logs `[Firebase-Read] <fn> triggered` at every ungated path (`executeManualPull`, `resyncSameDayFromCloud`, `fetchHistoricalDateData`, `fetchHistoricalMonthData`, `recoverMenuFromCloud`, `restoreDatabaseFromCloud`, `syncDailyAndMenuFromFirebase`) + the `daily_submit` priority GET. Tests added; `npm run test:all` **green (EXIT 0)**. Rebuild required to capture real logs.
+- **2026-09-27 (PULL toast — ALL apps; sync toast ADMIN-only)** — Added a pull-activity reporter: `services/supabaseSync.js` exports `setPullListener()/clearPullListener()` and emits `{ source: 'supabase' | 'firebase', hasChanges }` from `runSupabaseGroup` (the backend **actually read**). `App.js` subscribes and shows a toast in **all apps** using the **same** `NotificationToast` style/size: `⬇️ Supabase থেকে ডাটা pull হয়েছে` / `⬇️ Firebase থেকে ডাটা pull হয়েছে`; fires only when a pull brought changes, debounced 3s (multi-group ticks → one toast). The existing background-sync toast (`☁️ N টি ডাটা সিঙ্ক হয়েছে`) stays **ADMIN-only**. Tests in `tests/supabaseSync.test.js`; `npm run test:all` **green (EXIT 0)**.
+- **2026-09-27 (App version → 1.0.7)** — Bumped app version to **1.0.7** everywhere the *current* version is declared: `app.json` (`version`), `app.config.js` (fallback), `package.json` + `package-lock.json` (root only — dependency `1.0.5`s untouched), `services/backupRestore.js` (backup metadata fallback), `supabase_full_setup.sql` (`app_version_policy` seed), tests (`backupRestore.test.js` fixture), and docs (`ARCHITECTURE_CURRENT_STATE.md`, `PROJECT_DOCUMENTATION.md`, `VERSION_CONTROL_MIGRATION_NOTES.md`). Android `versionCode` **9 → 10** (`app.json` + `app.config.js` fallback) so it installs as an update. Historical changelog entries kept as-is.
+- **2026-09-27 (Read gate — Supabase write failure also forces Firebase reads)** — Owner pointed out the stale-read gap: if a Supabase **write** is failing (quota / DB storage full / 5xx), the Supabase copy is behind the local DB (the parallel Firebase write already landed), so a Supabase **read** would be stale. Fix: `isSupabasePrimaryHealthy()` now also returns `false` while `sync_queue_supabase` holds a **`FAILED`** row (`hasFailedSupabaseWrites()`), so the Firebase pull timers resume (and lifecycle pulls prefer Firebase) **until the write queue drains**. Success rows are deleted from that queue, so recovery is automatic. New test case in `tests/supabaseSync.test.js`; `npm run test:all` **green (EXIT 0)**.
+- **2026-09-27 (Read routing — Firebase reads gated to fallback-only)** — Owner target: **normal use = Supabase reads only; Firebase read only when Supabase fails or for >31-day data** (writes stay dual). Added `isSupabasePrimaryHealthy()` to `services/supabaseSync.js` (set in `runSupabaseGroup`); gated the 4 standalone Firebase pull timers in `App.js` via `runFirebasePullIfSupabaseDown` (skipped while healthy — the Supabase syncers already fall back to Firebase same-tick on failure); added `runPullPreferSupabase` for login/startup/foreground/network-recovery pulls; **shifted menu + daily reads to Supabase** (new `syncSupabaseMenu()` + 45s `supabase-menu-poll`; `LOW_FREQ_EXCLUDED` → `['app_config']`); menu edits refresh via `refreshMenuFromCloud()`; restore serves menu/daily from Supabase with Firebase fallback. Mechanical `Cloud Restore` remains the intentional Firebase (>31-day/full-history) path. Dual-writes + Firebase syncer functions unchanged. Tests updated/added (`tests/supabaseSync.test.js`, `tests/phase7RlsFallback.test.js`); `npm run test:all` **green (EXIT 0)**. This intentionally relaxes the earlier "Firebase untouched" stance in favor of the owner's read policy.
+- **2026-09-27 (Retention cron rescheduled → 01:00 Dhaka)** — `supabase_cron.sql` schedule changed from `'30 21 * * *'` (03:30 Asia/Dhaka) to **`'0 19 * * *'`** (19:00 UTC = **01:00 Asia/Dhaka**). Re-run the file in the Supabase SQL Editor to apply (idempotent: it unschedules then reschedules). Delete logic unchanged (13 rolling tables, 31-day cutoff).
+- **2026-09-27 (App version → 1.0.6)** — Bumped app version to **1.0.6** (`app.json` `version` + `app.config.js` fallback; `package.json`/`package-lock.json` root) and Android `versionCode` **8 → 9** (`app.json` + `app.config.js` fallback) so it installs as an update.
+- **2026-09-27 (Removed Supabase backfill tool + Admin button)** — At the owner's request, removed the "⬆️ পুরোনো ডেটা Supabase-এ ব্যাকফিল করুন" button from the Admin dashboard and deleted the whole tool: `services/supabaseBackfill.js`, `tests/supabaseBackfill.test.js`, the AdminDB handler/state/styles/import, and the `test:backfill` script. The FK gap it resolved is already fixed, so no data impact.
+- **2026-09-27 (Device Control Firebase fallback — REVERTED / DECLINED)** — The owner halted this work: Device Control stays **100% Supabase-only, permanently, by design**. All fallback changes were reverted (deleted `services/firebaseDeviceControl.js` + its test; reverted `deviceRegistry.js`, `database.js` `devices` queue allowance, `supabaseSyncQueue.js` `EXCLUDED_TABLES`, `App.js` poll wiring, `example.env`/`eas.json` env vars, and any Firestore-rules notes). Supabase device control untouched. See §1b deferred list.
+- **2026-09-27 (Deferred fix — `updateCompletedOrder` order_items tombstones)** — Completed-order edits wiped `order_items` (`DELETE FROM order_items WHERE order_id = ?`) and re-inserted under new `_rev` ids **without tombstones**, so old rows could be resurrected as duplicates by a pull. Fix: fetch the existing item ids and `recordDeletion('order_items', id)` for each **before** the wipe (tombstone-first), matching `deleteCompletedOrder`. Regression assertion added to `tests/syncTombstoneResurrect.test.js`. `npm run test:all` green.
+- **2026-09-27 (Post-migration tuning — restaurant_tables reverted to 2s)** — `restaurant_tables` Supabase poll set back to **2s** (1s was too aggressive on the egress budget). Final cadence: tables **2s**, high-freq **5s**, deletions **15s**, low-freq **45s** (Firebase 15s/30s/90s/180s untouched). Constants-only; `npm run test:all` green (27 files). ≈1.14× original pull volume, ~0.5–1.4 GB/mo (3 devices).
+- **2026-09-27 (Post-migration tuning — final Supabase pull intervals)** — Tried `restaurant_tables` 1s then reverted (see above); high/deletions/low set to 5s/15s/45s. Firebase timers untouched. `npm run test:all` green (27 files).
+- **2026-09-27 (🎉 PHASE 7 COMPLETE — MIGRATION DONE, 27/27 gated)** — Owner verified Stage 7 (final: `orders`, `order_items`, `payments`, `deliveries`) **and the Stage 1 remainder** (`weather_data`, `eja_history`). Full core-POS test plan passed (order creation, item add/remove with no flicker, full + split payments, table close, completed-order edit with no duplicates after 2–3 min, delivery flow) and SQL duplicate/orphan spot-checks came back clean. **All of Phases 1–7 complete.** Final summary (§1b) added: 4 bugs found+fixed (header injection, FK backfill gap, tombstone resurrection, `is_synced_supabase` race), deferred items, and the Firebase-untouched evidence.
+- **2026-09-27 (Phase 7 · Stage 6 VERIFIED → Stage 7 ready)** — Owner confirmed `daily_submit_priority`, `daily_summary`, `daily_submit`, `expenses` gated: daily submit + expense entry work, no errors. **21/27 gated (Stages 1–6 ✅).** Stage 7 (final, `orders`, `order_items`, `payments`, `deliveries`) confirmed ready — `supabase_rls.sql` lines 342–376. **Tally note:** 21 + 4 = 25; the last **2** are `weather_data` + `eja_history` (Stage 1 remainder, lines 140–154) → also run to reach **27/27**.
+- **2026-09-27 (Phase 7 · Stage 5 VERIFIED — critical flicker bug fixed)** — Owner confirmed on-device: no flicker/loop on `restaurant_tables` item add/delete, menu delete stays deleted (~2–3 min), menu/ordering/table-status/login normal. **17/27 gated (Stages 1–5 ✅).** The `is_synced_supabase` per-backend-flag fix (Phase 7.2) was the critical resolution of the whole migration's sync bug.
+- **2026-09-27 (FINAL flicker fix — per-backend `is_synced_supabase`)** — Root cause confirmed via logs (`restaurant_tables/table_8`): a single **shared `is_synced`** flag let the fast Firebase push flip it to 1, so the slower Supabase pull wrongly trusted its still-stale copy and overwrote the fresh local edit → item vanished, then the Supabase push landed and the next poll pulled it back (flicker). **Reverses Phase 2 §2.7.** Fix: new `is_synced_supabase` column (migration adds it to every `is_synced` table), reset to 0 on local edit (`enqueueSync`), set to 1 on Supabase push success (`processSupabaseSyncQueue`); `mergeSupabaseRows` now guards on `is_synced_supabase`; Supabase/backfill/Firestore payloads strip it. Firebase path unchanged (`syncCollections` still guards on `is_synced`). New `tests/supabaseSyncFlag.test.js` (7); `npm run test:all` green (27 files).
+- **2026-09-27 (Stage-5 diagnostics — ORDERITEM-DEBUG + MERGE-DEBUG)** — Corrected the target: the running table cart is **`restaurant_tables.items`** (via `handleUpdateTableItems`→`updateTableState`), not `order_items`; `order_items` is written only at checkout/edit/delete of a completed order. Added `[MERGE-DEBUG] FB|SB …` to both merge engines for `restaurant_tables`+`order_items`, and `[ORDERITEM-DEBUG]` at `addCompletedOrder`/`updateCompletedOrder`/`deleteCompletedOrder`. Found a **tombstone-free wipe** in `updateCompletedOrder` (`DELETE FROM order_items` + new `_rev` ids, no `recordDeletion`) → a resurrection source for completed-order edits.
+- **2026-09-27 (Stage-5 diagnostics — MENU-DEBUG + TABLE8-DEBUG)** — Clarified that the only logging previously added was `[Sync] Skipped resurrect:` (no `MENU-DEBUG` markers ever existed). Added `[MENU-DEBUG]` logging to `deleteMenuItem`, `recordDeletion`, and the Firebase `menu_items` pull, and `[TABLE8-DEBUG]` logging to `enqueueSync('restaurant_tables')` (with a caller stack frame), `updateTableState`/`updateTableName`, and the init rename-mismatch. Static trace of the `restaurant_tables`/`table_8` repeating UPDATE found only 3 enqueue sources (2 user handlers + one-shot init) and a re-enqueue-only `executeManualPush` with no automatic caller; a successful push sets `is_synced=1`. `npm run test:all` green (26 files).
+- **2026-09-27 (Sync-engine fix — delete/resurrect ping-pong, R3/R4)** — During Stage 5 testing, deleting a record (e.g. a `menu_items` row) made it **reappear repeatedly**. Root cause (traced): on delete, `recordDeletion()` writes a local `deletions` tombstone + enqueues the DELETE to both clouds, **but the pull merge for a normal table never checks tombstones** — it only *applies* them when the pulled table IS `deletions`. And `handleDeleteMenuItem` calls `syncMenuOnly()` immediately after deleting, so the next Firebase pull re-inserts the still-present cloud row. Fixed with a shared, testable `services/tombstoneStore.js` (`isTombstoned`/`clearTombstone`) wired into **both** merges (skip resurrect + `[Sync] Skipped resurrect:` log) and into `enqueueSync` (clear stale tombstone on non-DELETE so a re-add isn't blocked). New `tests/syncTombstoneResurrect.test.js` (9 tests); `npm run test:all` green (26 files), incl. fresh-install safety. **No RLS/FK changes.** Awaiting on-device confirmation, then resume Stage 5 verify → Stage 6.
+- **2026-09-27 (Phase 7 · Stage 4 VERIFIED → Stage 5 ready)** — Owner confirmed `delete_history`, `deletions`, `activity_logs` gated: deletes propagate correctly, activity logging works, no RLS errors. **13/27 tables gated (Stages 1–4 ✅).** Stage 5 (`menu_categories`, `menu_items`, `users`, `restaurant_tables`) confirmed ready as one batch — `supabase_rls.sql` lines 268–302. FK check: `menu_items.category` is a **logical** link only (no DB FK); the schema has only 3 FKs total, none here. `users` uses the standard device-active gate (no special-casing).
+- **2026-09-27 (Phase 7 · Stage 3 VERIFIED — backfill gap fixed)** — Owner ran the one-time backfill on the ADMIN device: the `owner_salary_ledger → owner_employees` orphan query returned **0 rows** and the salary-ledger write now succeeds. Stage 3 (5 `owner_*` tables) is verified. **10/27 tables gated (Stages 1–3 ✅).** Stage 4 (`delete_history`, `deletions`, `activity_logs`) confirmed ready as one batch — `supabase_rls.sql` lines 239–265; **none have FK dependencies** (only 3 FKs exist in the schema, none on these tables).
+- **2026-09-27 (Supabase backfill — pre-Phase-2 permanent data)** — Stage 3 (owner tables) hit `owner_salary_ledger` FK violation: dual-write only mirrors post-Phase-2 writes, so pre-migration rows were never in Supabase → the FK parent was missing. **Data gap, not RLS/FK.** Built a one-time in-app backfill: new `services/supabaseBackfill.js` (`backfillPermanentTablesToSupabase()`, `getBackfillPreview()`, `BACKFILL_TABLES` parent-first) + an AdminDB button in the Cloud Sync section. Pushes the permanent/non-windowed tables + the parent `orders` via batched idempotent upsert (strips `is_synced`; PK `date`/`business_date`/`id`); NOT part of the dual-write queue; parent-first (owner_employees before owner_salary_ledger; orders before its children); respects the kill switch; never throws. Added `tests/supabaseBackfill.test.js` (11 tests); `npm run test:all` green (25 files). **No RLS/FK changes.**
+- **2026-09-27 (Phase 7 · Stage 2 VERIFIED → Stage 3 ready)** — Owner confirmed the 4 supplier/dues tables now work after the `x-device-id` header fix: writes succeed, `is_device_active()` true, FAILED queue rows drained. **5/27 tables gated (Stages 1–2 ✅).** Stage 3 (`owner_home_deposits`, `owner_deposits`, `owner_expenses`, `owner_salary_ledger`, `owner_employees`) confirmed ready as one batch — `supabase_rls.sql` lines 194–236. The header fix lives in the shared `services/supabaseClient.js`, so this bug class cannot recur per-table. No app code changed this step.
+- **2026-09-27 (Phase 7 · Stage 2 RLS error — root-caused + fixed)** — Stage 2 gated (`supplier_due`, `supplier_due_history`, `supplier_payment_ledger`, `due_payments`) but a write failed with `new row violates row-level security policy`. **Root cause = client bug, not RLS:** `setSupabaseDeviceId()` set `rest.headers['x-device-id']` as a plain property, but `@supabase/postgrest-js` stores headers in a `Headers` instance, so it was a **no-op** and **no `x-device-id` was ever sent** → `is_device_active(NULL)` false → every gated WRITE denied. Proven with an intercepted-`fetch` probe against the real `@supabase/supabase-js` (before: header absent on POST/GET; after: present). Fixed `services/supabaseClient.js` to use `Headers.set` (`setHeaderOn()` helper + plain-object fallback), mirrored onto the global header map, and added an `(attached=…)` log; added the outgoing-`x-device-id` diagnostic to `services/supabaseSyncQueue.js` upsert failures. New `tests/phase7HeaderInjection.test.js` (3 empirical tests) + updated the stale source assertion in `tests/phase7RlsFallback.test.js`. `npm run test:all` green (24 files). **No RLS policy changed/loosened.** Awaiting an app rebuild to re-test Stage 2.
+- **2026-09-27 (Phase 7 · STAGE 1 verified → STAGE 2 ready)** — Owner ran Sections 0/1/2 + gated `off_days`; confirmed working (ACTIVE device normal, no crashes, no regressions). 1/27 tables gated. Stage 2 (`supplier_due`, `supplier_due_history`, `supplier_payment_ledger`, `due_payments`) confirmed ready as a single batch (`supabase_rls.sql` lines 157–191), each following the ENABLE → DROP permissive → CREATE gate pattern. No app code changed this step.
+- **2026-09-27 (Phase 7 IN PROGRESS — staged rollout prepared)** — Created `supabase_rls.sql` for device-gated RLS (Option B): `is_device_active()` gate + **27 comment-able per-table STAGE blocks** (drops the Phase-1 permissive policy per table — otherwise RLS is a no-op), never-gate re-assertion for `devices`/`device_app_usage`, public-read + permissive-upsert `app_version_policy`, verification queries, and a `revoke_device_gate()` rollback helper + emergency all-at-once revert. Added `isRlsDenialError()` + PostgREST `code`/`status` preservation to `services/supabaseSync.js` (diagnostics only; fallback behavior unchanged). `tests/phase7RlsFallback.test.js` (14 tests) proves RLS-denied read→Firebase fallback, restore→Firebase fallback, dual-write→FAILED+retry (no throw), the App.js `registerDeviceIfNeeded → setSupabaseDeviceId → sync` ordering, global header injection, and SQL completeness (27 gates + permissive drops + exclusions). `npm run test:all` green (23 files). Staging plan + acceptance test logged in §0/§3/§4.
+- **2026-09-27 (Phase 6 complete)** — Version control migration (Supabase-first, Firebase fallback). `services/firebaseAppConfig.js`: added `fetchVersionPolicyDualDB()` (Supabase `app_version_policy` → existing `fetchVersionPolicy()` → SQLite cache → DEFAULT; 3500ms `EXPO_PUBLIC_SUPABASE_VERSION_TIMEOUT_MS`, respects kill switch/config), `setVersionPolicyDualDB()` (sequential: Supabase → best-effort Firebase `setVersionPolicy()` → cache; `minimum_version` legacy alias mirrored), `setMinimumVersionDualDB()`, `mapSupabasePolicyRow()`, and deps test seams. `checkAppVersionPolicy` only swapped its internal fetch to the dual reader — return contract byte-identical (ADMIN-exempt/blocked/allowed/offline all asserted). `screens/AdminDB.js` save call routed to `setMinimumVersionDualDB` (biometric+PIN gate untouched). `example.env` + `eas.json` ×4 gained the version-timeout key. `tests/phase6VersionControl.test.js` 18 tests; `npm run test:all` green (22 files). Real-module probes: blank URL → Firebase/dormant fallback; black-hole host → timeout → Firebase fallback; no throw; ADMIN exempt in both.
+- **2026-09-27 (Phase 5 verified)** — Owner ran `supabase_cron.sql` in the Supabase SQL Editor; `SELECT * FROM cron.job WHERE jobname='rongdhonu_retention_31d'` returns exactly one row, `schedule='30 21 * * *'`, `active=true`. Phase 5 closed; Phase 6 unblocked.
+- **2026-09-27 (Phase 5 SQL ready)** — Added `supabase_cron.sql` (server-side only): idempotent `pg_cron` job `rongdhonu_retention_31d` (`30 21 * * *` = 03:30 Asia/Dhaka) deleting >31-day rows from the 13 rolling tables keyed on the DATE_FIELD_ANALYSIS §5 columns. Corrected the plan's `AT TIME ZONE` expressions to `::timestamptz` casts (Supabase timestamp columns are TEXT). `activity_logs` retention uses `created_at` (historical `business_date` un-backfilled). 17 permanent tables explicitly excluded (13+17=30). Includes verification + dry-run queries. No app code changed.
 - **2026-09-27 (Phase 4 complete)** — Correctness & conflict fixes. `activity_logs` default `business_date` switched to a new Dhaka **calendar**-date helper (`services/dhakaTime.js` `getDhakaCalendarDate`, fixed UTC+6, 12 AM rollover) — the plan's literal `getDhakaBusinessDate()` reuse was rejected as a no-op (it returns the UTC date); confirmed with owner. Deterministic same-role `daily_submit` tie-breaker (priority → later `submitted_at` → greater `device_id`) centralized in `services/dailySubmitPriority.js` and applied identically on the Firebase (`processSyncQueue`) and Supabase (`processSupabaseSyncQueue`) push paths; `daily_submit_priority` gains `submitted_at` + `device_id` (SQLite migration + Supabase DDL). Skipped expenses / supplier_payment_ledger / supplier_due (documented deferred). `tests/phase4Correctness.test.js` 18 tests; `npm run test:all` green (21 files). No historical backfill.
 - **2026-09-27 (Phase 3 complete)** — Supabase-primary pull (`services/supabaseSync.js`): 4 group sync fns + Firebase fallback on any failure, Supabase cursors, Firebase-equivalent merge rules (Schema Guardian, is_synced=0 preservation, tombstones, table_1..8 filter); App.js 2s/8s/20s/60s timers added alongside untouched Firebase timers; hybrid fresh-install restore (transition = running-day Firebase until 31d coverage). `tests/supabaseSync.test.js` 19 tests; `npm run test:all` green. Project ID issue resolved (all 30 tables confirmed live on gdqnfwccohxgaywzoysc).
 - **2026-09-27 (config)** — Real `gdqnfwccohxgaywzoysc` URL + anon key live in `.env` + `eas.json` (×4) only; `example.env` intentionally kept as PLACEHOLDERS (owner decision). Shell env still stale (old project) — restart before dev runs.

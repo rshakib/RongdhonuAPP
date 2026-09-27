@@ -9,6 +9,7 @@ import {
 } from './services/aiDataset/transport/googleSheets';
 import { getFirestoreAuthHeaders, invalidateCurrentToken, isAuthCredentialKey } from './services/firebaseAuth.js';
 import { getRolePriority, remotePriorityWins } from './services/dailySubmitPriority.js';
+import { isTombstoned, clearTombstone } from './services/tombstoneStore.js';
 
 let dbInstance = null;
 
@@ -866,6 +867,33 @@ export function migrateDailySubmitPriorityTiebreaker() {
   }
 }
 
+// Phase 7.2: PER-BACKEND Supabase sync flag.
+// `is_synced` stays FIREBASE-ONLY (unchanged). `is_synced_supabase` tracks the
+// independent Supabase push, so the Supabase pull never trusts Firebase's flag.
+// This is the fix for the shared-flag flicker on dual-written tables (a fast
+// Firebase push flipped is_synced=1, so the slower Supabase pull wrongly trusted
+// its still-stale copy and overwrote the local edit).
+export function migrateSupabaseSyncFlags() {
+  try {
+    const tables = db.getAllSync("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
+    for (const t of tables) {
+      const name = t && t.name;
+      if (!name || name === '_backup_metadata') continue;
+      let cols = [];
+      try { cols = db.getAllSync(`PRAGMA table_info(${name})`).map((c) => c.name); } catch (_) { continue; }
+      if (!cols.includes('is_synced')) continue;         // only synced tables participate
+      if (cols.includes('is_synced_supabase')) continue; // already migrated
+      try {
+        db.execSync(`ALTER TABLE ${name} ADD COLUMN is_synced_supabase INTEGER DEFAULT 0`);
+      } catch (e) {
+        console.error(`[DB Migration] is_synced_supabase add failed for ${name}:`, e.message);
+      }
+    }
+  } catch (err) {
+    console.error("[DB Migration] Supabase sync-flags migration failed:", err);
+  }
+}
+
 export function migrateDailySubmitUnified() {
   try {
     const submitCols = db.getAllSync("PRAGMA table_info(daily_submit)");
@@ -997,6 +1025,7 @@ export function initDatabase(skipSeeding = false) {
     migrateSyncQueueDiagnostics();
     migrateSupabaseSyncQueue();
     migrateDailySubmitPriorityTiebreaker();
+    migrateSupabaseSyncFlags();
     console.log("[DB] SQLite Tables Verified/Created successfully.");
 
     // Check if one-off database wipe is required to prepare a completely fresh environment
@@ -1106,6 +1135,7 @@ export function initDatabase(skipSeeding = false) {
         enqueueSync("restaurant_tables", ft.id, "INSERT");
       } else if (existing.table_name !== ft.name) {
         // Force rename to match our strict naming
+        console.log(`[TABLE8-DEBUG] init rename-mismatch ${ft.id}: local="${existing.table_name}" -> "${ft.name}"`);
         db.runSync(
           "UPDATE restaurant_tables SET table_name = ?, updated_at = ?, is_synced = 0 WHERE id = ?",
           [ft.name, now, ft.id]
@@ -1329,6 +1359,13 @@ export function cleanupDuplicateMenuItems() {
 // 2. SYNCHRONIZATION QUEUE SYSTEM
 // ==========================================
 
+// PK column for a local table (mirrors the Supabase conflict key).
+function getLocalRecordPkColumn(tableName) {
+  if (tableName === 'daily_submit' || tableName === 'daily_summary' || tableName === 'ai_dataset_history') return 'date';
+  if (tableName === 'daily_submit_priority') return 'business_date';
+  return 'id';
+}
+
 export function enqueueSync(tableName, recordId, action) {
   try {
     // SECURITY GUARD: Never enqueue auth credentials into sync_queue
@@ -1339,6 +1376,27 @@ export function enqueueSync(tableName, recordId, action) {
     // IGNORE local-only tables to prevent Firestore 403 errors
     const forbiddenTables = ['ai_dataset_queue', 'ai_dataset_history', 'weather_timeline_queue'];
     if (forbiddenTables.includes(tableName)) return;
+
+    // DEBUG: trace who enqueues restaurant_tables writes (table_8 loop investigation).
+    if (tableName === 'restaurant_tables') {
+      const caller = (new Error().stack || '').split('\n').slice(2, 4).map((s) => s.trim()).join(' <- ');
+      console.log(`[TABLE8-DEBUG] enqueue ${action} id=${recordId} caller=${caller}`);
+    }
+
+    // R3/R4 fix: a genuine add/update clears any stale tombstone for this record
+    // so a legitimate re-create is not permanently blocked by the merge-skip.
+    if (action !== 'DELETE') {
+      clearTombstone(db, tableName, recordId);
+      // Phase 7.2: mark this record as UNSYNCED-to-Supabase (mirrors the is_synced
+      // reset done at the local write sites) so the Supabase pull won't overwrite
+      // the fresh local edit with a stale Supabase copy.
+      try {
+        db.runSync(
+          `UPDATE ${tableName} SET is_synced_supabase = 0 WHERE ${getLocalRecordPkColumn(tableName)} = ?`,
+          [recordId]
+        );
+      } catch (_) {}
+    }
 
     // Delete any pending write for this specific record in the queue to avoid stale runs
     db.runSync(
@@ -1369,7 +1427,7 @@ export function enqueueSync(tableName, recordId, action) {
 function toFirestoreDocument(obj) {
   const fields = {};
   for (const [k, v] of Object.entries(obj)) {
-    if (k === 'is_synced') continue; // local only
+    if (k === 'is_synced' || k === 'is_synced_supabase') continue; // local only
     if (v === null || v === undefined) continue;
     
     if (typeof v === 'string') {
@@ -1787,6 +1845,7 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
                 const localPriorityRecord = localPriorityRec || { priority: 10 };
 
                 // Fetch remote priority from Firestore for this business date
+                console.log(`[Firebase-Read] daily_submit priority GET (processSyncQueue) id=${rIdStr}`);
                 const remotePriorityUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/daily_submit_priority/${encodeURIComponent(rIdStr)}?key=${apiKey}`;
                 let remotePriorityRes = await fetch(remotePriorityUrl, { headers: { ...auth.headers } });
                 if (remotePriorityRes.status === 401) {
@@ -2099,6 +2158,8 @@ async function syncCollections(collectionsList, cycleName = 'Unnamed Cycle') {
         const row = fromFirestoreDocument(doc);
         const docId = String(row.id);
 
+        if (table === 'menu_items') console.log(`[MENU-DEBUG] pull doc ${docId}`);
+
         // Track max updated_at for the next sync marker
         if (row.updated_at && (!maxUpdatedAt || row.updated_at > maxUpdatedAt)) {
           maxUpdatedAt = row.updated_at;
@@ -2146,6 +2207,13 @@ async function syncCollections(collectionsList, cycleName = 'Unnamed Cycle') {
           continue;
         }
 
+        // R3/R4 fix: never resurrect a locally-deleted record. If a local
+        // tombstone exists for this (table, id), skip the pull-insert.
+        if (table !== 'deletions' && isTombstoned(db, table, docId)) {
+          console.log(`[Sync] Skipped resurrect: ${table}/${docId}, tombstone present`);
+          continue;
+        }
+
         let localRow = null;
         try {
           localRow = db.getFirstSync(`SELECT * FROM ${table} WHERE id = ?`, [docId]);
@@ -2173,6 +2241,12 @@ async function syncCollections(collectionsList, cycleName = 'Unnamed Cycle') {
               }
             }
           }
+        }
+
+        if (table === 'restaurant_tables' || table === 'order_items') {
+          const _lt = localRow ? new Date(localRow.updated_at || localRow.created_at || 0).getTime() : 0;
+          const _ct = new Date(row.updated_at || row.created_at || 0).getTime();
+          console.log(`[MERGE-DEBUG] FB ${table}/${docId} localSynced=${localRow ? localRow.is_synced : 'none'} localTs=${_lt} cloudTs=${_ct} shouldUpdate=${shouldUpdate}`);
         }
 
         if (shouldUpdate) {
@@ -2322,6 +2396,7 @@ export async function syncMenuOnly() {
 // plus daily_submit/daily_summary (which are NEVER read back from Supabase).
 export async function syncDailyAndMenuFromFirebase() {
   try {
+    console.log('[Firebase-Read] syncDailyAndMenuFromFirebase triggered');
     incrementReadCounter('menu', 4);
     return await traceSyncOperation('syncDailyAndMenuFromFirebase', () => syncCollections(
       ['menu_items', 'menu_categories', 'daily_submit', 'daily_summary'],
@@ -2572,6 +2647,7 @@ function fromFirestoreDocument(doc) {
 }
 
 export async function restoreDatabaseFromCloud({ mode = 'full' } = {}) {
+  console.log(`[Firebase-Read] restoreDatabaseFromCloud triggered (mode=${mode})`);
   const profile = getActiveProfileConfig();
   const alwaysFull = profile.alwaysFull;
   const recentOnly = profile.recentOnly;
@@ -2883,6 +2959,7 @@ async function fetchSingleDocFromFirestore(collectionName, docId) {
 }
 
 export async function resyncSameDayFromCloud(targetDateStr = null) {
+  console.log('[Firebase-Read] resyncSameDayFromCloud triggered');
   const todayStr = targetDateStr || getBusinessDate();
   console.log(`[SameDay Resync] Starting Same-Day Cloud Resync for date: ${todayStr}...`);
 
@@ -3205,6 +3282,7 @@ async function processRemoteDocsToLocal(table, docs) {
 }
 
 export async function fetchHistoricalDateData(dateStr) {
+  console.log('[Firebase-Read] fetchHistoricalDateData triggered');
   const collections = ['orders', 'order_items', 'payments', 'expenses', 'deliveries'];
   console.log(`[Historical Download] Fetching data for date: ${dateStr}`);
   for (const table of collections) {
@@ -3222,6 +3300,7 @@ export async function fetchHistoricalDateData(dateStr) {
 }
 
 export async function fetchHistoricalMonthData(monthStr) {
+  console.log('[Firebase-Read] fetchHistoricalMonthData triggered');
   // monthStr is YYYY-MM
   const collections = ['orders', 'order_items', 'payments', 'expenses', 'daily_submit', 'daily_summary'];
   console.log(`[Historical Download] Fetching data for month: ${monthStr}`);
@@ -3244,6 +3323,7 @@ export async function fetchHistoricalMonthData(monthStr) {
 }
 
 export async function recoverMenuFromCloud() {
+  console.log('[Firebase-Read] recoverMenuFromCloud triggered');
   const collections = ['menu_items', 'menu_categories'];
   for (const table of collections) {
     incrementReadCounter('menu', 1);
@@ -4307,6 +4387,7 @@ export function deleteMenuItem(itemName, category = null) {
     }
     
     if (item) {
+      console.log(`[MENU-DEBUG] deleteMenuItem name="${itemName}" category="${category || ''}" id=${item.id}`);
       logDeleteHistory("menu_items", item.id, "Menu Items");
       db.runSync("DELETE FROM menu_items WHERE id = ?", [item.id]);
       recordDeletion("menu_items", item.id);
@@ -4344,6 +4425,9 @@ export function getTables() {
 
 export function updateTableState(tableId, updatedItems, status, startTime) {
   try {
+    if (String(tableId).includes('table_8')) {
+      console.log(`[TABLE8-DEBUG] updateTableState id=${tableId} status=${status} items=${Array.isArray(updatedItems) ? updatedItems.length : '?'}`);
+    }
     const now = new Date().toISOString();
     db.runSync(
       "UPDATE restaurant_tables SET items = ?, status = ?, startTime = ?, updated_at = ?, is_synced = 0 WHERE id = ?",
@@ -4357,6 +4441,9 @@ export function updateTableState(tableId, updatedItems, status, startTime) {
 
 export function updateTableName(tableId, newName) {
   try {
+    if (String(tableId).includes('table_8')) {
+      console.log(`[TABLE8-DEBUG] updateTableName id=${tableId} newName="${newName}"`);
+    }
     const now = new Date().toISOString();
     db.runSync(
       "UPDATE restaurant_tables SET table_name = ?, updated_at = ?, is_synced = 0 WHERE id = ?",
@@ -4672,6 +4759,7 @@ export function addCompletedOrder(orderRecord) {
         const itemId = `${idStr}_item_${index}`;
         
         const existingItem = db.getFirstSync("SELECT id FROM order_items WHERE id = ?", [itemId]);
+        console.log(`[ORDERITEM-DEBUG] checkout ${existingItem ? 'UPDATE' : 'INSERT'} order_items id=${itemId} order=${idStr} item="${itemName}" qty=${qty}`);
         if (existingItem) {
           db.runSync(`
             UPDATE order_items SET itemName = ?, quantity = ?, unit_price = ?, revenue = ?, updated_at = ?, is_synced = 0 WHERE id = ?
@@ -5715,6 +5803,7 @@ export function deleteCompletedOrder(orderId) {
     }
     
     if (items && items.length > 0) {
+      console.log(`[ORDERITEM-DEBUG] deleteCompletedOrder order=${orderIdStr} → ${items.length} order_items tombstoned (recordDeletion)`);
       items.forEach(item => {
         if (item.id) {
           recordDeletion("order_items", String(item.id));
@@ -5758,8 +5847,13 @@ export function updateCompletedOrder(orderId, updatedItems, newTotal) {
       enqueueSync("payments", pay.id, "UPDATE");
     }
 
-    // 3. Update order_items (Wipe and recreate for simplicity)
+    // 3. Update order_items (Wipe and recreate). CRITICAL: tombstone the wiped
+    // rows FIRST so the pull engines never resurrect them (same class as the
+    // delete/resurrect fix) — otherwise old order_items reappear as duplicates.
+    const wipedItemIds = db.getAllSync("SELECT id FROM order_items WHERE order_id = ?", [String(orderId)]) || [];
+    wipedItemIds.forEach((r) => { if (r && r.id) recordDeletion('order_items', String(r.id)); });
     db.runSync("DELETE FROM order_items WHERE order_id = ?", [String(orderId)]);
+    console.log(`[ORDERITEM-DEBUG] updateCompletedOrder WIPE order_items for order=${orderId} (tombstoned ${wipedItemIds.length}) then recreate ${updatedItems.length}`);
     
     updatedItems.forEach((item, index) => {
       const itemId = `${orderId}_item_${index}_rev`;
@@ -5767,6 +5861,7 @@ export function updateCompletedOrder(orderId, updatedItems, newTotal) {
         INSERT INTO order_items (id, order_id, itemName, quantity, unit_price, revenue, created_at, updated_at, is_synced)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
       `, [itemId, String(orderId), item.name, item.qty, item.price, item.price * item.qty, now, now]);
+      console.log(`[ORDERITEM-DEBUG] updateCompletedOrder INSERT order_items id=${itemId} order=${orderId} item="${item.name}"`);
       enqueueSync("order_items", itemId, "INSERT");
     });
 
@@ -6275,6 +6370,9 @@ export function recordDeletion(tableName, recordId) {
     enqueueSync(tableName, recordId, "DELETE");
 
     console.log(`[Tombstone] Recorded and enqueued deletion for "${tableName}" ID/Date: ${recordId}`);
+    if (tableName === 'menu_items') {
+      console.log(`[MENU-DEBUG] tombstone written ("${tableName}","${recordId}") + DELETE enqueued (FB+SB)`);
+    }
 
     // IMMEDIATE PUSH: Do not wait for 60s daemon
     syncRecordImmediately(tableName, recordId);
@@ -6380,6 +6478,7 @@ export async function executeManualPush() {
 
 export async function executeManualPull() {
   try {
+    console.log('[Firebase-Read] executeManualPull triggered');
     console.log("[Manual Pull] Pulling latest updates from Firestore...");
     const highFreqChanged = await syncHighFrequencyCollections();
     const tablesChanged = await syncTablesOnly();

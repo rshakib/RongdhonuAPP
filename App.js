@@ -43,6 +43,65 @@ const runAutoPull = async (name, syncFn, refreshData) => {
   }
 };
 
+// --- pull toast plumbing ------------------------------------------------------
+// A single sink (set by the pull-listener effect in App) receives
+// (source, hasChanges) for every cloud pull and shows the pull toast.
+let pullReportSink = null;
+const reportPull = (source, hasChanges) => {
+  try { if (pullReportSink) pullReportSink(source, hasChanges); } catch (_) {}
+};
+
+// Supabase is the primary read path: while it is healthy the standalone Firebase
+// pull timers are skipped entirely (the Supabase syncers already fall back to
+// Firebase in the same tick on any failure). Firebase is read only when Supabase
+// is down/unconfigured/kill-switched-off, or for >31-day history.
+const runFirebasePullIfSupabaseDown = async (name, syncFn, refreshData) => {
+  let health = { healthy: false, reason: 'error' };
+  try {
+    const { getSupabaseHealth } = require('./services/supabaseSync.js');
+    health = getSupabaseHealth();
+  } catch (_) {}
+  const { recordAutoSyncEvent } = require('./database');
+  if (health.healthy) {
+    console.log(`[Firebase-Read] ${name} SKIPPED — Supabase primary healthy (reason=${health.reason})`);
+    recordAutoSyncEvent(name, 'skipped', `supabase-healthy reason=${health.reason} → Firebase read skipped`);
+    return false;
+  }
+  console.log(`[Firebase-Read] ${name} RUNNING Firebase pull — reason=${health.reason}`);
+  const didChange = await runAutoPull(name, syncFn, refreshData);
+  reportPull('firebase', didChange); // this path only runs on the Firebase fallback
+  return didChange;
+};
+
+// One-off lifecycle refresh (login/foreground/startup/network): prefer the Supabase
+// pull; the Supabase fn falls back to Firebase on failure.
+const runPullPreferSupabase = async (name, supabaseFnName, fallbackFn, refreshData) => {
+  let health = { healthy: false, reason: 'error' };
+  try {
+    const mod = require('./services/supabaseSync.js');
+    health = mod.getSupabaseHealth();
+    if (health.healthy && typeof mod[supabaseFnName] === 'function') {
+      // Supabase route → Firebase is NOT read. Tagged so every pull shows its source.
+      console.log(`[Firebase-Read] ${name} SKIPPED — Supabase route (reason=${health.reason})`);
+      return await runAutoPull(name, mod[supabaseFnName], refreshData);
+    }
+  } catch (_) {}
+  console.log(`[Firebase-Read] ${name} RUNNING Firebase fallback pull — reason=${health.reason}`);
+  const didChange = await runAutoPull(name, fallbackFn, refreshData);
+  reportPull('firebase', didChange);
+  return didChange;
+};
+
+// Menu refresh from cloud: Supabase-first (menu is now Supabase-backed).
+const refreshMenuFromCloud = async () => {
+  try {
+    const { syncSupabaseMenu } = require('./services/supabaseSync.js');
+    return await syncSupabaseMenu();
+  } catch (_) {
+    try { return await syncMenuOnly(); } catch (__) { return false; }
+  }
+};
+
 // Import SQLite and cloud synchronization layer
 import {
   db,
@@ -227,6 +286,19 @@ export default function App() {
     setToastType(type);
     setToastVisible(true);
     setTimeout(() => setToastVisible(false), 1500);
+  };
+
+  // Pull toast (ALL apps) — identical style/size to the sync toast. Fires only
+  // when a pull actually brought changes, debounced so multi-group ticks show ONE.
+  const pullToastAtRef = useRef(0);
+  const notifyPull = (source, hasChanges) => {
+    if (!hasChanges) return;
+    const now = Date.now();
+    if (now - pullToastAtRef.current < 3000) return;
+    pullToastAtRef.current = now;
+    showToast(source === 'supabase'
+      ? '⬇️ Supabase থেকে ডাটা pull হয়েছে'
+      : '⬇️ Firebase থেকে ডাটা pull হয়েছে', 'sync');
   };
 
   const [queueItems, setQueueItems] = useState([]);
@@ -552,9 +624,8 @@ export default function App() {
         // Pull low frequency collections (excluding menu) in the background on startup.
         // Only for devices that already have data; a fresh install downloads post-login (ensureInitialData).
         if (!usersEmpty) {
-          syncLowFrequencyCollections().then((didChange) => {
-            if (didChange) refreshData();
-          }).catch(e => console.log("[Startup Sync] Offline, skipped low frequency pull:", e.message));
+          runPullPreferSupabase('startup-low-frequency-pull', 'syncSupabaseLowFrequencyCollections', syncLowFrequencyCollections, refreshData)
+            .catch(e => console.log("[Startup Sync] Offline, skipped low frequency pull:", e.message));
         }
       } catch (err) {
         console.error("[App] Critical Initialization error:", err);
@@ -592,7 +663,7 @@ export default function App() {
 
     registerSyncTimer('auto-high-frequency-pull', 30000, 'syncHighFrequencyCollections');
     const realtimePoll = setInterval(async () => {
-       await runAutoPull('auto-high-frequency-pull', syncHighFrequencyCollections, refreshData);
+       await runFirebasePullIfSupabaseDown('auto-high-frequency-pull', syncHighFrequencyCollections, refreshData);
     }, 30000); // Check every 30 seconds
 
     return () => {
@@ -607,7 +678,7 @@ export default function App() {
 
     registerSyncTimer('auto-deletions-pull', 90000, 'syncDeletionsOnly');
     const deletionsChannel = setInterval(async () => {
-       await runAutoPull('auto-deletions-pull', syncDeletionsOnly, refreshData);
+       await runFirebasePullIfSupabaseDown('auto-deletions-pull', syncDeletionsOnly, refreshData);
     }, 90000); // Check every 90 seconds
 
     return () => {
@@ -622,7 +693,7 @@ export default function App() {
 
     registerSyncTimer('auto-tables-pull', 15000, 'syncTablesOnly');
     const tablesChannel = setInterval(async () => {
-       await runAutoPull('auto-tables-pull', syncTablesOnly, refreshData);
+       await runFirebasePullIfSupabaseDown('auto-tables-pull', syncTablesOnly, refreshData);
     }, 15000); // Check every 15 seconds
 
     return () => {
@@ -638,7 +709,7 @@ export default function App() {
 
     registerSyncTimer('auto-low-frequency-pull', 180000, 'syncLowFrequencyCollections');
     const lowFrequencyPoll = setInterval(async () => {
-      await runAutoPull('auto-low-frequency-pull', syncLowFrequencyCollections, refreshData);
+      await runFirebasePullIfSupabaseDown('auto-low-frequency-pull', syncLowFrequencyCollections, refreshData);
     }, 180000); // Check every 3 minutes (180s)
 
     return () => {
@@ -647,9 +718,10 @@ export default function App() {
     };
   }, [isLoggedIn]);
 
-  // --- PHASE 3: SUPABASE-PRIMARY PULL (Firebase timers above are the fallback) ---
-  // These run ALONGSIDE the existing Firebase timers; each Supabase fn calls its
-  // Firebase counterpart on any failure/timeout. restaurant_tables uses polling.
+  // --- SUPABASE-PRIMARY PULL (the Firebase timers above are health-gated) ---
+  // While Supabase is healthy these are the ONLY read path: the Firebase timers
+  // above skip themselves via runFirebasePullIfSupabaseDown. Each Supabase fn calls
+  // its Firebase counterpart on any failure/timeout. restaurant_tables uses polling.
   useEffect(() => {
     if (!isLoggedIn) return;
 
@@ -657,7 +729,8 @@ export default function App() {
       syncSupabaseTables,
       syncSupabaseHighFrequencyCollections,
       syncSupabaseDeletions,
-      syncSupabaseLowFrequencyCollections
+      syncSupabaseLowFrequencyCollections,
+      syncSupabaseMenu
     } = require('./services/supabaseSync.js');
 
     registerSyncTimer('supabase-tables-poll', 2000, 'syncSupabaseTables');
@@ -665,20 +738,25 @@ export default function App() {
       await runAutoPull('supabase-tables-poll', syncSupabaseTables, refreshData);
     }, 2000);
 
-    registerSyncTimer('supabase-high-frequency-poll', 8000, 'syncSupabaseHighFrequencyCollections');
+    registerSyncTimer('supabase-high-frequency-poll', 5000, 'syncSupabaseHighFrequencyCollections');
     const supabaseHighPoll = setInterval(async () => {
       await runAutoPull('supabase-high-frequency-poll', syncSupabaseHighFrequencyCollections, refreshData);
-    }, 8000);
+    }, 5000);
 
-    registerSyncTimer('supabase-deletions-poll', 20000, 'syncSupabaseDeletions');
+    registerSyncTimer('supabase-deletions-poll', 15000, 'syncSupabaseDeletions');
     const supabaseDeletionsPoll = setInterval(async () => {
       await runAutoPull('supabase-deletions-poll', syncSupabaseDeletions, refreshData);
-    }, 20000);
+    }, 15000);
 
-    registerSyncTimer('supabase-low-frequency-poll', 60000, 'syncSupabaseLowFrequencyCollections');
+    registerSyncTimer('supabase-low-frequency-poll', 45000, 'syncSupabaseLowFrequencyCollections');
     const supabaseLowPoll = setInterval(async () => {
       await runAutoPull('supabase-low-frequency-poll', syncSupabaseLowFrequencyCollections, refreshData);
-    }, 60000);
+    }, 45000);
+
+    registerSyncTimer('supabase-menu-poll', 45000, 'syncSupabaseMenu');
+    const supabaseMenuPoll = setInterval(async () => {
+      await runAutoPull('supabase-menu-poll', syncSupabaseMenu, refreshData);
+    }, 45000);
 
     return () => {
       clearInterval(supabaseTablesPoll);
@@ -689,6 +767,8 @@ export default function App() {
       markSyncTimerInactive('supabase-deletions-poll');
       clearInterval(supabaseLowPoll);
       markSyncTimerInactive('supabase-low-frequency-poll');
+      clearInterval(supabaseMenuPoll);
+      markSyncTimerInactive('supabase-menu-poll');
     };
   }, [isLoggedIn]);
 
@@ -946,9 +1026,9 @@ export default function App() {
         const { incrementForegroundRecoveryCount } = require('./database');
         const { checkAndFlushLastSeen } = require('./services/deviceRegistry');
         incrementForegroundRecoveryCount();
-        await runAutoPull('foreground-tables-pull', syncTablesOnly, refreshData);
-        await runAutoPull('foreground-high-frequency-pull', syncHighFrequencyCollections, refreshData);
-        await runAutoPull('foreground-low-frequency-pull', syncLowFrequencyCollections, refreshData);
+        await runPullPreferSupabase('foreground-tables-pull', 'syncSupabaseTables', syncTablesOnly, refreshData);
+        await runPullPreferSupabase('foreground-high-frequency-pull', 'syncSupabaseHighFrequencyCollections', syncHighFrequencyCollections, refreshData);
+        await runPullPreferSupabase('foreground-low-frequency-pull', 'syncSupabaseLowFrequencyCollections', syncLowFrequencyCollections, refreshData);
         checkAndFlushLastSeen();
       }
       previousState = nextState;
@@ -1069,16 +1149,16 @@ export default function App() {
 
             // 2. High Frequency Pull (Orders, Order Items, Payments, Deliveries)
             console.log("[Network Recovery] 2/4: Running High Frequency pull sync...");
-            await syncHighFrequencyCollections();
+            await runPullPreferSupabase('recovery-high-frequency-pull', 'syncSupabaseHighFrequencyCollections', syncHighFrequencyCollections, refreshData);
 
             // 3. Low Frequency Pull (Expenses, Ijara, Users, Summaries)
             console.log("[Network Recovery] 3/4: Running Low Frequency pull sync...");
-            await syncLowFrequencyCollections();
+            await runPullPreferSupabase('recovery-low-frequency-pull', 'syncSupabaseLowFrequencyCollections', syncLowFrequencyCollections, refreshData);
 
             // 4. Tables & Deletions
             console.log("[Network Recovery] 4/4: Running Tables and Deletions sync...");
-            await syncTablesOnly();
-            await syncDeletionsOnly();
+            await runPullPreferSupabase('recovery-tables-pull', 'syncSupabaseTables', syncTablesOnly, refreshData);
+            await runPullPreferSupabase('recovery-deletions-pull', 'syncSupabaseDeletions', syncDeletionsOnly, refreshData);
 
             console.log("[Network Recovery] Instant recovery cycle COMPLETED successfully.");
             refreshData();
@@ -1098,15 +1178,15 @@ export default function App() {
 
     if (currentScreen === 'EDIT_MENU' || currentScreen === 'ADD_ITEM') {
        console.log("[Screen Sync] Menu screen opened. Syncing low frequency collections...");
-       syncLowFrequencyCollections().then((didChange) => {
-         if (didChange) refreshData();
-       }).catch(e => console.log("[Screen Sync] Offline, skipped low frequency pull:", e.message));
+       runPullPreferSupabase('menu-screen-low-frequency-pull', 'syncSupabaseLowFrequencyCollections', syncLowFrequencyCollections, refreshData)
+         .catch(e => console.log("[Screen Sync] Offline, skipped low frequency pull:", e.message));
     }
   }, [currentScreen, isLoggedIn]);
 
-  // Handle Toast for Background Sync Success
+  // Handle Toast for Background Sync Success (ADMIN app only)
   useEffect(() => {
     if (!isLoggedIn) return;
+    if (String(ACTIVE_APP_PROFILE).toUpperCase() !== 'ADMIN') return;
     
     let lastUnsyncedCount = 0;
     const syncToastCheck = setInterval(() => {
@@ -1114,13 +1194,22 @@ export default function App() {
         const count = getPendingSyncCount();
         
         if (lastUnsyncedCount > 0 && count === 0) {
-           showToast(`☁️ ${lastUnsyncedCount} টি ডাটা সিঙ্ক হয়েছে`, 'sync');
+           showToast(`☁️ ${lastUnsyncedCount} টি ডাটা সিঙ্ক হয়েছে`, 'sync');
         }
         lastUnsyncedCount = count;
       } catch (e) {}
     }, 3000);
 
     return () => clearInterval(syncToastCheck);
+  }, [isLoggedIn]);
+
+  // Report every cloud PULL as a toast for ALL apps (source = backend actually read).
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    const { setPullListener, clearPullListener } = require('./services/supabaseSync.js');
+    pullReportSink = (source, hasChanges) => notifyPull(source, hasChanges);
+    setPullListener((e) => reportPull(e && e.source, e && e.hasChanges));
+    return () => { clearPullListener(); pullReportSink = null; };
   }, [isLoggedIn]);
 
   const loadQueueData = () => {
@@ -1432,16 +1521,16 @@ export default function App() {
       refreshData();
 
       // 2. High Frequency (Orders, Payments, Deliveries)
-      await syncHighFrequencyCollections();
+      await runPullPreferSupabase('login-high-frequency-pull', 'syncSupabaseHighFrequencyCollections', syncHighFrequencyCollections, refreshData);
       
       // 3. Tables State
-      await syncTablesOnly();
+      await runPullPreferSupabase('login-tables-pull', 'syncSupabaseTables', syncTablesOnly, refreshData);
       
       // 4. Low Frequency (Expenses, Ijara, Users, Daily Submit)
-      await syncLowFrequencyCollections();
+      await runPullPreferSupabase('login-low-frequency-pull', 'syncSupabaseLowFrequencyCollections', syncLowFrequencyCollections, refreshData);
 
       // 5. Deletions
-      await syncDeletionsOnly();
+      await runPullPreferSupabase('login-deletions-pull', 'syncSupabaseDeletions', syncDeletionsOnly, refreshData);
 
       // 6. Final refresh to update UI with newly downloaded data
       refreshData();
@@ -1654,8 +1743,8 @@ export default function App() {
     if (item) {
        const success = await syncRecordImmediately('menu_items', item.id);
        showToast(success ? "✅ ডাটা সেভ হয়েছে" : "📱 অফলাইনে সেভ হয়েছে", success ? 'online' : 'offline');
-       // Refresh menu from Firestore for other devices
-       syncMenuOnly();
+       // Refresh menu from cloud (Supabase-first)
+       refreshMenuFromCloud();
     }
   };
 
@@ -1668,8 +1757,8 @@ export default function App() {
     if (added) {
        const success = await syncRecordImmediately('menu_items', added.id);
        showToast(success ? "✅ ডাটা সেভ হয়েছে" : "📱 অফলাইনে সেভ হয়েছে", success ? 'online' : 'offline');
-       // Refresh menu from Firestore for other devices
-       syncMenuOnly();
+       // Refresh menu from cloud (Supabase-first)
+       refreshMenuFromCloud();
     }
   };
 
@@ -1689,8 +1778,8 @@ export default function App() {
             if (itemToDelete) {
                await syncRecordImmediately('menu_items', itemToDelete.id);
                showToast("✅ ডাটা সেভ হয়েছে", 'online');
-               // Refresh menu from Firestore for other devices
-               syncMenuOnly();
+               // Refresh menu from cloud (Supabase-first)
+               refreshMenuFromCloud();
             }
 
             logActivity({

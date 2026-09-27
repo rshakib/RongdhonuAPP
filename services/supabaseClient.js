@@ -94,8 +94,13 @@ export function getSupabaseClient() {
 
 /**
  * Authoritatively configure the active device ID for all future Supabase calls.
- * Uses a global header at build time plus runtime PostgREST header mutation so
- * existing Realtime channels are not destroyed.
+ *
+ * IMPORTANT: `@supabase/postgrest-js` stores its headers as a `Headers` instance
+ * (`this.headers = new Headers(headers)`). A plain assignment like
+ * `rest.headers['x-device-id'] = id` only adds a dangling expando property and
+ * is NEVER serialized into the HTTP request — so use the Headers API `.set()`.
+ * (Fallback to bracket assignment keeps this working if a future/older version
+ * exposes a plain object instead of a Headers instance.)
  */
 export function setSupabaseDeviceId(deviceId) {
   if (!deviceId) return;
@@ -113,11 +118,33 @@ export function setSupabaseDeviceId(deviceId) {
     }
   }
 
-  if (supabaseInstance && supabaseInstance.rest && supabaseInstance.rest.headers) {
-    supabaseInstance.rest.headers['x-device-id'] = nextId;
+  // Attach to the PostgREST client's Headers (this is what PostgREST actually sends).
+  if (supabaseInstance && supabaseInstance.rest) {
+    setHeaderOn(supabaseInstance.rest.headers, 'x-device-id', nextId);
+  }
+  // Keep the top-level global header map in sync too (storage/functions/realtime).
+  if (supabaseInstance && supabaseInstance.headers) {
+    supabaseInstance.headers['x-device-id'] = nextId;
   }
 
-  console.log(`[SupabaseClient] Configured X-Device-Id header: ${nextId}`);
+  const attached = supabaseInstance && supabaseInstance.rest
+    ? readHeaderFrom(supabaseInstance.rest.headers, 'x-device-id')
+    : null;
+  console.log(`[SupabaseClient] Configured X-Device-Id header: ${nextId} (attached=${attached === nextId})`);
+}
+
+/** Set a header on either a `Headers` instance or a plain object. */
+function setHeaderOn(headers, name, value) {
+  if (!headers) return;
+  if (typeof headers.set === 'function') { headers.set(name, value); return; }
+  headers[name] = value;
+}
+
+/** Read a header from either a `Headers` instance or a plain object. */
+export function readHeaderFrom(headers, name) {
+  if (!headers) return null;
+  if (typeof headers.get === 'function') return headers.get(name);
+  return headers[name];
 }
 
 /**

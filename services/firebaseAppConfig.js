@@ -13,6 +13,12 @@ try {
 export const APP_VERSION = appVersion;
 
 import { getFirestoreAuthHeaders, invalidateCurrentToken } from './firebaseAuth.js';
+import {
+  getSupabaseClient,
+  isSupabaseConfigured,
+  isSupabaseSyncEnabled,
+  withTimeout
+} from './supabaseClient.js';
 
 const COLLECTION = 'app_config';
 const DOC_ID = 'global';
@@ -85,6 +91,167 @@ function setCachedVersionPolicy(policy) {
     const { setAppConfig } = require('../database');
     setAppConfig('cached_version_policy', JSON.stringify(policy));
   } catch (e) {}
+}
+
+// ---------------------------------------------------------------------------
+// Phase 6 — Dual-DB version policy (Supabase primary, Firebase fallback).
+// ---------------------------------------------------------------------------
+// Supabase per-read/write timeout (3–4s per IMPLEMENTATION_PLAN.md §6.2).
+const VERSION_TIMEOUT_MS = (() => {
+  const n = Number(process.env.EXPO_PUBLIC_SUPABASE_VERSION_TIMEOUT_MS);
+  return Number.isFinite(n) && n > 0 ? n : 3500;
+})();
+
+// Dependency seams (production defaults; overridable in unit tests).
+const productionVersionDeps = {
+  isEnabled: () => isSupabaseSyncEnabled(),
+  isConfigured: () => isSupabaseConfigured(),
+  getClient: () => getSupabaseClient(),
+  fetchFirebase: () => fetchVersionPolicy(),
+  writeFirebase: (policy) => setVersionPolicy(policy),
+  readCache: () => getCachedVersionPolicy(),
+  writeCache: (policy) => setCachedVersionPolicy(policy)
+};
+let versionDeps = { ...productionVersionDeps };
+
+export function __setVersionPolicyDepsForTesting(overrides = {}) {
+  versionDeps = { ...versionDeps, ...overrides };
+}
+export function __resetVersionPolicyDepsForTesting() {
+  versionDeps = { ...productionVersionDeps };
+}
+
+/** Map a Supabase `app_version_policy` row to the canonical policy shape. */
+export function mapSupabasePolicyRow(row = {}) {
+  return {
+    minimum_required_version: String(row.minimum_required_version || row.minimum_version || APP_VERSION).trim(),
+    latest_version: String(row.latest_version || row.minimum_required_version || APP_VERSION).trim(),
+    update_url: String(row.update_url || DEFAULT_VERSION_POLICY.update_url).trim(),
+    force_update_enabled: row.force_update_enabled === undefined || row.force_update_enabled === null
+      ? true
+      : row.force_update_enabled !== false,
+    update_message: row.update_message || DEFAULT_VERSION_POLICY.update_message
+  };
+}
+
+/** Normalize an arbitrary new-policy object into the canonical policy shape. */
+function normalizePolicy(newPolicy = {}) {
+  const minVer = String(newPolicy.minimum_required_version || newPolicy.minimumVersion || '').trim();
+  return {
+    minimum_required_version: minVer,
+    latest_version: String(newPolicy.latest_version || minVer).trim(),
+    update_url: String(newPolicy.update_url || DEFAULT_VERSION_POLICY.update_url).trim(),
+    force_update_enabled: newPolicy.force_update_enabled !== false,
+    update_message: String(newPolicy.update_message || DEFAULT_VERSION_POLICY.update_message).trim()
+  };
+}
+
+/**
+ * Phase 6 read path: Supabase `app_version_policy` first (bounded timeout) →
+ * EXISTING `fetchVersionPolicy()` (Firebase, unchanged) → SQLite cache →
+ * DEFAULT_VERSION_POLICY. On Supabase success the policy is written to the
+ * SQLite cache so offline enforcement stays warm.
+ *
+ * Never throws. Returns { success, policy, error?, source? } — the same
+ * `{ success, policy, error? }` contract the existing fetch returns.
+ */
+export async function fetchVersionPolicyDualDB() {
+  if (versionDeps.isEnabled() && versionDeps.isConfigured()) {
+    try {
+      const client = versionDeps.getClient();
+      if (client) {
+        const { data, error } = await withTimeout(
+          client.from('app_version_policy').select('*').eq('id', 'global').maybeSingle(),
+          VERSION_TIMEOUT_MS,
+          'fetch app_version_policy'
+        );
+        if (!error && data) {
+          const policy = mapSupabasePolicyRow(data);
+          try { versionDeps.writeCache(policy); } catch (_) {}
+          return { success: true, policy, source: 'supabase' };
+        }
+      }
+    } catch (err) {
+      console.warn('[AppVersion] Supabase version policy read failed → Firebase fallback:', err?.message || err);
+    }
+  }
+  // Fallback chain (all inside the untouched existing fetcher):
+  // Firebase → SQLite cache → DEFAULT_VERSION_POLICY.
+  const fallback = await versionDeps.fetchFirebase();
+  return { ...fallback, source: fallback?.success ? 'firebase' : (fallback?.source || 'fallback') };
+}
+
+/**
+ * Phase 6 write path (sequential — rare admin action): Supabase first → then
+ * BEST-EFFORT Firebase `setVersionPolicy()` (guaranteed fallback for older
+ * APKs) → SQLite cache. Returns { success, error? }; success when at least one
+ * cloud write landed. Never throws.
+ */
+export async function setVersionPolicyDualDB(newPolicy) {
+  const policy = normalizePolicy(newPolicy);
+  if (!policy.minimum_required_version || !/^\d+(\.\d+)+$/.test(policy.minimum_required_version.replace(/^v/i, ''))) {
+    return { success: false, error: 'Invalid minimum version format. Use X.Y.Z (e.g. 1.0.4)' };
+  }
+
+  let supabaseResult = { success: false, error: 'Supabase not configured' };
+
+  // 1) Supabase first (sequential, not parallel).
+  if (versionDeps.isEnabled() && versionDeps.isConfigured()) {
+    try {
+      const client = versionDeps.getClient();
+      if (client) {
+        const { error } = await withTimeout(
+          client.from('app_version_policy').upsert(
+            {
+              id: 'global',
+              ...policy,
+              minimum_version: policy.minimum_required_version, // legacy alias (mirrors Firestore)
+              updated_at: new Date().toISOString()
+            },
+            { onConflict: 'id' }
+          ),
+          VERSION_TIMEOUT_MS,
+          'upsert app_version_policy'
+        );
+        supabaseResult = error ? { success: false, error: error.message } : { success: true };
+      }
+    } catch (err) {
+      supabaseResult = { success: false, error: err?.message || String(err) };
+    }
+  }
+
+  // 2) Firebase best-effort (kept as the guaranteed fallback path).
+  let firebaseResult = { success: false, error: 'Firebase not attempted' };
+  try {
+    firebaseResult = await versionDeps.writeFirebase(policy);
+  } catch (err) {
+    firebaseResult = { success: false, error: err?.message || String(err) };
+  }
+
+  // 3) Local SQLite cache (covers offline enforcement).
+  if (supabaseResult.success || firebaseResult.success) {
+    try { versionDeps.writeCache(policy); } catch (_) {}
+    return { success: true };
+  }
+
+  return {
+    success: false,
+    error: firebaseResult.error || supabaseResult.error || 'Version policy update failed'
+  };
+}
+
+/**
+ * Phase 6 admin helper: set the minimum + latest version via the dual writer.
+ * Mirrors the legacy `setMinimumVersion` but reads/writes through the dual-DB
+ * layers. Public shape { success, error? } (unchanged for AdminDB).
+ */
+export async function setMinimumVersionDualDB(newVersion) {
+  const current = (await fetchVersionPolicyDualDB()).policy || DEFAULT_VERSION_POLICY;
+  return await setVersionPolicyDualDB({
+    ...current,
+    minimum_required_version: newVersion,
+    latest_version: newVersion
+  });
 }
 
 /**
@@ -255,7 +422,9 @@ export async function checkAppVersionPolicy(role = '') {
   const roleUpper = String(role || '').toUpperCase().trim();
   const isAdmin = roleUpper === 'ADMIN';
 
-  const fetchRes = await fetchVersionPolicy();
+  // Phase 6: Supabase-primary read with the existing Firebase path as the
+  // unchanged fallback. Public contract of this function is unchanged.
+  const fetchRes = await fetchVersionPolicyDualDB();
   const policy = fetchRes.policy || DEFAULT_VERSION_POLICY;
   const isOffline = !fetchRes.success;
 

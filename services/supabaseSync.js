@@ -2,14 +2,15 @@
  * Supabase-primary PULL sync (Phase 3)
  * ---------------------------------------------------------------------------
  * Mirrors the Firebase pull engine but sources rows from Supabase first.
- * The existing Firebase timers (15s/30s/90s/180s) stay running untouched; on ANY
- * Supabase failure/timeout the matching Firebase sync function is invoked as a
- * fallback in the SAME tick, so the local DB always converges.
+ * Supabase is the ONLY read path while it is healthy: the Firebase pull timers in
+ * App.js are gated on isSupabasePrimaryHealthy() and skipped in the healthy case.
+ * On ANY Supabase failure/timeout the matching Firebase sync function is invoked as
+ * a fallback in the SAME tick, so the local DB always converges.
  *
  * Isolation: nothing here throws out of a public function. Lazy `require` of
  * database.js keeps this module importable in plain Node (unit tests).
  *
- * daily_submit / daily_summary are NEVER pulled from Supabase (Firebase-only).
+ * menu_items/menu_categories + daily_submit/daily_summary ARE pulled from Supabase.
  * restaurant_tables uses polling (caller schedules ~2s) — NOT Realtime.
  */
 
@@ -19,6 +20,7 @@ import {
   isSupabaseSyncEnabled,
   withTimeout
 } from './supabaseClient.js';
+import { isTombstoned } from './tombstoneStore.js';
 
 const OVERLAP_MS = 60000;          // re-read window to absorb clock drift / eventual consistency
 const MARKER_SAFETY_MS = 15000;    // never advance a cursor past queryStart - 15s
@@ -29,7 +31,9 @@ const PULL_TIMEOUT_MS = (() => {
 })();
 
 const RESTAURANT_TABLE_IDS = ['table_1', 'table_2', 'table_3', 'table_4', 'table_5', 'table_6', 'table_7', 'table_8'];
-const LOW_FREQ_EXCLUDED = ['app_config', 'daily_submit', 'daily_summary'];
+// Only app_config stays Firebase-only (tombstones + sync markers).
+// daily_submit/daily_summary are permanent in Supabase, so they are pulled from it.
+const LOW_FREQ_EXCLUDED = ['app_config'];
 
 // --- dependency seams (production defaults; overridable in unit tests) --------
 function defaultGetDb() {
@@ -53,6 +57,71 @@ export function __setSupabaseSyncDepsForTesting(overrides = {}) {
 }
 export function __resetSupabaseSyncDepsForTesting() {
   deps = { ...productionDeps };
+  supabasePrimaryHealthy = true;
+  pullListener = null;
+}
+
+// Supabase health — the single source of truth for "may Firebase reads be skipped?".
+// Optimistic default (enabled + configured) until a pull cycle proves otherwise.
+let supabasePrimaryHealthy = true;
+
+/**
+ * True when the Supabase dual-write queue has at least one FAILED item. While a
+ * Supabase write is failing, the Supabase copy is BEHIND the local DB (the parallel
+ * Firebase write already succeeded), so a Supabase READ would return STALE data.
+ * In that state Firebase must be preferred until the write queue drains.
+ */
+function countFailedSupabaseWrites(db) {
+  try {
+    const row = db.getFirstSync("SELECT COUNT(*) AS n FROM sync_queue_supabase WHERE status = 'FAILED'");
+    return row && Number(row.n) > 0 ? Number(row.n) : 0;
+  } catch (_) {
+    return 0;
+  }
+}
+
+/**
+ * Diagnostic health snapshot. `reason` is one of:
+ *   'healthy' | 'killswitch' | 'unconfigured' | 'read-failed' | 'failed-writes:<n>' | 'error'
+ * Used by the App.js pull helper to log WHY Firebase reads are (not) being skipped.
+ */
+export function getSupabaseHealth() {
+  try {
+    if (!deps.isEnabled()) return { healthy: false, reason: 'killswitch' };
+    if (!deps.isConfigured()) return { healthy: false, reason: 'unconfigured' };
+    if (!supabasePrimaryHealthy) return { healthy: false, reason: 'read-failed' };
+    let db = null;
+    try { db = deps.getDb(); } catch (_) { db = null; }
+    if (db) {
+      const n = countFailedSupabaseWrites(db);
+      if (n > 0) return { healthy: false, reason: `failed-writes:${n}` };
+    }
+    return { healthy: true, reason: 'healthy' };
+  } catch (err) {
+    return { healthy: false, reason: 'error' };
+  }
+}
+
+/**
+ * True when Supabase is enabled, configured, the last pull cycle did NOT fail, AND
+ * no Supabase WRITE is currently failing. App.js gates every non-exempt Firebase
+ * read on this: while it is true the Firebase pull timers are skipped; on a read
+ * failure the Supabase syncers already invoked the matching Firebase fallback in
+ * the same tick, and on a write failure the Supabase copy is stale so Firebase is
+ * preferred for reads until the queue recovers.
+ */
+export function isSupabasePrimaryHealthy() {
+  return getSupabaseHealth().healthy;
+}
+
+// --- pull-activity listener (used by the pull toast in App.js) ----------------
+// Reports the BACKEND ACTUALLY READ for every pull: 'supabase' on success, or
+// 'firebase' when this group fell back. Fires only when a pull really happened.
+let pullListener = null;
+export function setPullListener(fn) { pullListener = typeof fn === 'function' ? fn : null; }
+export function clearPullListener() { pullListener = null; }
+function emitPull(source, hasChanges) {
+  try { if (pullListener) pullListener({ source, hasChanges: !!hasChanges }); } catch (_) {}
 }
 
 // --- pure helpers ------------------------------------------------------------
@@ -76,6 +145,31 @@ function normalizeValue(v) {
   if (typeof v === 'boolean') return v ? 1 : 0;
   if (v !== null && typeof v === 'object') return JSON.stringify(v);
   return v;
+}
+
+/**
+ * Phase 7 safety helper: does this Supabase/PostgREST error look like an
+ * RLS / permission denial? Such errors are handled EXACTLY like any other
+ * Supabase failure — the caller falls back to Firebase in the same tick.
+ *
+ * Note: an RLS-denied SELECT is NOT an error at all — PostgREST returns HTTP 200
+ * with an empty set (the policy filters rows out). The Firebase pull timers stay
+ * running, so the local DB still converges; only genuine write/HTTP denials
+ * (INSERT/UPDATE WITH CHECK, or a 401/403) surface as errors classified here.
+ */
+export function isRlsDenialError(error) {
+  if (!error) return false;
+  const code = String(error.code || '').toUpperCase();
+  if (code === '42501') return true; // insufficient_privilege
+  const status = Number(error.status || error.statusCode || 0);
+  if (status === 401 || status === 403) return true;
+  const msg = String(error.message || error.error_description || error || '').toLowerCase();
+  return (
+    msg.includes('row-level security') ||
+    msg.includes('row level security') ||
+    msg.includes('permission denied') ||
+    msg.includes('not authorized')
+  );
 }
 
 function deleteTargetRow(db, targetTable, targetId) {
@@ -119,6 +213,13 @@ export function mergeSupabaseRows(db, table, rows) {
       deleteTargetRow(db, row.table_name, row.record_id);
     }
 
+    // R3/R4 fix: never resurrect a locally-deleted record. Identical to the
+    // Firebase merge loop — if a local tombstone exists, skip the pull-insert.
+    if (table !== 'deletions' && isTombstoned(db, table, docId)) {
+      console.log(`[Sync] Skipped resurrect: ${table}/${docId}, tombstone present`);
+      continue;
+    }
+
     let localRow = null;
     try {
       localRow = db.getFirstSync(`SELECT * FROM ${table} WHERE ${pk} = ?`, [docId]);
@@ -132,8 +233,11 @@ export function mergeSupabaseRows(db, table, rows) {
       const cloudTime = new Date(row.updated_at || row.created_at || 0).getTime();
       if (cloudTime > localTime) {
         shouldUpdate = true;
-      } else if (localRow.is_synced === 0) {
-        // Preserve pending local edits; newer cloud data (handled above) may still repair them.
+      } else if (Number(localRow.is_synced_supabase || 0) === 0) {
+        // Phase 7.2: keep the local row ONLY while it is pending ITS OWN backend
+        // (Supabase). The Firebase `is_synced` flag is irrelevant here — using it
+        // was the bug: a fast Firebase push flipped is_synced=1, so this pull
+        // trusted Supabase's still-stale copy and clobbered the local edit.
         continue;
       } else {
         for (const key of Object.keys(row)) {
@@ -143,6 +247,12 @@ export function mergeSupabaseRows(db, table, rows) {
           }
         }
       }
+    }
+
+    if (table === 'restaurant_tables' || table === 'order_items') {
+      const _lt = localRow ? new Date(localRow.updated_at || localRow.created_at || 0).getTime() : 0;
+      const _ct = new Date(row.updated_at || row.created_at || 0).getTime();
+      console.log(`[MERGE-DEBUG] SB ${table}/${docId} localSynced=${localRow ? localRow.is_synced : 'none'} localTs=${_lt} cloudTs=${_ct} shouldUpdate=${shouldUpdate}`);
     }
 
     if (!shouldUpdate) continue;
@@ -161,20 +271,25 @@ export function mergeSupabaseRows(db, table, rows) {
     // --- SCHEMA GUARDIAN ---
     const filteredRow = {};
     for (const key of Object.keys(row)) {
-      if (validColumns.includes(key) && key !== 'is_synced') {
+      if (validColumns.includes(key) && key !== 'is_synced' && key !== 'is_synced_supabase') {
         filteredRow[key] = normalizeValue(row[key]);
       }
     }
     const keys = Object.keys(filteredRow);
     if (keys.length === 0) continue;
 
-    const placeholders = keys.map(() => '?').join(', ');
-    const sql = validColumns.includes('is_synced')
-      ? `INSERT OR REPLACE INTO ${table} (${keys.join(', ')}, is_synced) VALUES (${placeholders}, 1)`
-      : `INSERT OR REPLACE INTO ${table} (${keys.join(', ')}) VALUES (${placeholders})`;
+    // Preserve is_synced=1 (Firebase flag, existing behavior) and mark this row as
+    // Supabase-synced too, since it was just pulled FROM Supabase (Phase 7.2).
+    const cols = keys.slice();
+    const vals = keys.map((k) => filteredRow[k]);
+    if (validColumns.includes('is_synced')) { cols.push('is_synced'); vals.push(1); }
+    if (validColumns.includes('is_synced_supabase')) { cols.push('is_synced_supabase'); vals.push(1); }
+
+    const placeholders = cols.map(() => '?').join(', ');
+    const sql = `INSERT OR REPLACE INTO ${table} (${cols.join(', ')}) VALUES (${placeholders})`;
 
     try {
-      db.runSync(sql, keys.map((k) => filteredRow[k]));
+      db.runSync(sql, vals);
       hasChanges = true;
     } catch (e) {
       console.error(`[SupabaseSync] Failed to upsert row in "${table}":`, e.message);
@@ -217,7 +332,14 @@ async function fetchSupabaseRows(db, table, cursorCol, marker) {
     if (marker) q = q.gt(cursorCol, marker);
     q = q.order(cursorCol, { ascending: true }).range(offset, offset + PAGE_SIZE - 1);
     const { data, error } = await withTimeout(q, PULL_TIMEOUT_MS, `pull ${table}`);
-    if (error) throw new Error(error.message || 'supabase pull error');
+    if (error) {
+      // Preserve PostgREST code/status so callers can classify RLS/permission
+      // denials (isRlsDenialError) while still failing the same way.
+      const e = new Error(error.message || 'supabase pull error');
+      e.code = error.code;
+      e.status = error.status;
+      throw e;
+    }
     const batch = data || [];
     rows.push(...batch);
     if (batch.length < PAGE_SIZE) break;
@@ -279,11 +401,14 @@ async function callFirebaseFallback(fb, fnName) {
  * sync function in the same tick. Returns "did anything change".
  */
 async function runSupabaseGroup(tables, firebaseFnName) {
-  if (!deps.isEnabled()) return false; // kill switch → no-op (Firebase timers still run)
+  if (!deps.isEnabled()) { supabasePrimaryHealthy = false; return false; } // kill switch → Firebase-only mode
 
   const fb = deps.getFirebase();
   if (!deps.isConfigured()) {
-    return await callFirebaseFallback(fb, firebaseFnName); // dormant → Firebase fallback
+    supabasePrimaryHealthy = false;
+    const r = await callFirebaseFallback(fb, firebaseFnName); // dormant → Firebase fallback
+    emitPull('firebase', r);
+    return r;
   }
 
   let db = null;
@@ -292,7 +417,12 @@ async function runSupabaseGroup(tables, firebaseFnName) {
   } catch (_) {
     db = null;
   }
-  if (!db) return await callFirebaseFallback(fb, firebaseFnName);
+  if (!db) {
+    supabasePrimaryHealthy = false;
+    const r = await callFirebaseFallback(fb, firebaseFnName);
+    emitPull('firebase', r);
+    return r;
+  }
 
   let hasChanges = false;
   let failure = false;
@@ -302,13 +432,21 @@ async function runSupabaseGroup(tables, firebaseFnName) {
       if (res.failed) { failure = true; break; }
       hasChanges = hasChanges || res.hasChanges;
     } catch (err) {
-      console.warn(`[SupabaseSync] table ${table} failed (${err?.message || err}) → Firebase fallback`);
+      const why = isRlsDenialError(err) ? 'RLS/permission denial' : (err?.message || err);
+      console.warn(`[SupabaseSync] table ${table} failed (${why}) → Firebase fallback`);
       failure = true;
       break;
     }
   }
 
-  if (failure) return await callFirebaseFallback(fb, firebaseFnName);
+  if (failure) {
+    supabasePrimaryHealthy = false;
+    const r = await callFirebaseFallback(fb, firebaseFnName);
+    emitPull('firebase', r);
+    return r;
+  }
+  supabasePrimaryHealthy = true;
+  emitPull('supabase', hasChanges);
   return hasChanges;
 }
 
@@ -317,6 +455,7 @@ let isSupabasePullingTables = false;
 let isSupabasePullingHigh = false;
 let isSupabasePullingDeletions = false;
 let isSupabasePullingLow = false;
+let isSupabasePullingMenu = false;
 
 /** restaurant_tables — scheduled ~2s by the caller (polling, NOT Realtime). */
 export async function syncSupabaseTables() {
@@ -332,7 +471,7 @@ export async function syncSupabaseTables() {
   }
 }
 
-/** orders / order_items / payments / deliveries — scheduled 8s by the caller. */
+/** orders / order_items / payments / deliveries — scheduled 5s by the caller. */
 export async function syncSupabaseHighFrequencyCollections() {
   if (isSupabasePullingHigh) return false;
   isSupabasePullingHigh = true;
@@ -346,7 +485,7 @@ export async function syncSupabaseHighFrequencyCollections() {
   }
 }
 
-/** deletions tombstones — scheduled 20s by the caller. */
+/** deletions tombstones — scheduled 15s by the caller. */
 export async function syncSupabaseDeletions() {
   if (isSupabasePullingDeletions) return false;
   isSupabasePullingDeletions = true;
@@ -360,7 +499,7 @@ export async function syncSupabaseDeletions() {
   }
 }
 
-/** Low-frequency tables (profile lowFreq minus app_config/daily_submit/daily_summary) — 60s. */
+/** Low-frequency tables (profile lowFreq minus app_config) — 45s. */
 export async function syncSupabaseLowFrequencyCollections() {
   if (isSupabasePullingLow) return false;
   isSupabasePullingLow = true;
@@ -373,6 +512,20 @@ export async function syncSupabaseLowFrequencyCollections() {
     return false;
   } finally {
     isSupabasePullingLow = false;
+  }
+}
+
+/** menu_items / menu_categories — scheduled 45s by the caller. */
+export async function syncSupabaseMenu() {
+  if (isSupabasePullingMenu) return false;
+  isSupabasePullingMenu = true;
+  try {
+    return await runSupabaseGroup(['menu_items', 'menu_categories'], 'syncMenuOnly');
+  } catch (err) {
+    console.warn('[SupabaseSync] syncSupabaseMenu error (isolated):', err?.message || err);
+    return false;
+  } finally {
+    isSupabasePullingMenu = false;
   }
 }
 
@@ -412,7 +565,8 @@ function stampSupabaseRestoreMarkers(db, tables) {
 
 /**
  * Restore from Supabase: restaurant_tables in full + transactional tables for the
- * window. Menu + daily_submit/daily_summary are always pulled from Firebase.
+ * window + permanent tables (menu, daily) in full. Firebase is used only when
+ * Supabase cannot serve a portion of it.
  */
 export async function restoreSupabaseWindow({ profileName, mode = '31d' } = {}) {
   const fb = deps.getFirebase();
@@ -452,17 +606,34 @@ export async function restoreSupabaseWindow({ profileName, mode = '31d' } = {}) 
     }
   }
 
-  stampSupabaseRestoreMarkers(db, ['restaurant_tables', ...txTables]);
-
-  // Firebase-only tables: menu + daily_submit/daily_summary.
-  try {
-    if (typeof fb.syncDailyAndMenuFromFirebase === 'function') {
-      await fb.syncDailyAndMenuFromFirebase();
-    } else if (typeof fb.syncMenuOnly === 'function') {
-      await fb.syncMenuOnly();
+  // Permanent tables (menu + daily) — Supabase-backed; full snapshot.
+  const permanentTables = ['menu_items', 'menu_categories', 'daily_submit', 'daily_summary'];
+  let permanentFromSupabase = true;
+  for (const table of permanentTables) {
+    try {
+      const col = getSupabaseCursorColumn(db, table);
+      const rows = await fetchSupabaseRows(db, table, col, null);
+      mergeSupabaseRows(db, table, rows);
+      rowsWritten += rows.length;
+    } catch (err) {
+      permanentFromSupabase = false;
+      failedCollections.push(table);
     }
-  } catch (err) {
-    console.warn('[SupabaseSync] Firebase-only restore portion failed:', err?.message || err);
+  }
+
+  stampSupabaseRestoreMarkers(db, ['restaurant_tables', ...txTables, ...permanentTables]);
+
+  // Firebase fallback ONLY if Supabase could not serve the permanent tables.
+  if (!permanentFromSupabase) {
+    try {
+      if (typeof fb.syncDailyAndMenuFromFirebase === 'function') {
+        await fb.syncDailyAndMenuFromFirebase();
+      } else if (typeof fb.syncMenuOnly === 'function') {
+        await fb.syncMenuOnly();
+      }
+    } catch (err) {
+      console.warn('[SupabaseSync] Firebase fallback for permanent tables failed:', err?.message || err);
+    }
   }
 
   return { success: failedCollections.length === 0, failedCollections, rowsWritten };

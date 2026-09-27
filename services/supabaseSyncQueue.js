@@ -19,6 +19,7 @@ import {
   isSupabaseConfigured,
   isSupabaseSyncEnabled,
   withTimeout,
+  readHeaderFrom,
   SUPABASE_TIMEOUT_MS
 } from './supabaseClient.js';
 import { remotePriorityWins } from './dailySubmitPriority.js';
@@ -113,7 +114,7 @@ function readLocalRow(db, tableName, conflictKey, recordId) {
 async function performUpsert(client, tableName, conflictKey, row) {
   const payload = {};
   for (const [k, v] of Object.entries(row)) {
-    if (k === 'is_synced') continue; // SQLite-local only
+    if (k === 'is_synced' || k === 'is_synced_supabase') continue; // SQLite-local only
     payload[k] = v === undefined ? null : v;
   }
   const { error } = await withTimeout(
@@ -122,7 +123,17 @@ async function performUpsert(client, tableName, conflictKey, row) {
     `upsert ${tableName}`
   );
   if (error) {
-    console.warn(`[SupabaseSyncQueue] upsert ${tableName} error:`, error.message);
+    // Diagnostic: log the ACTUAL outgoing X-Device-Id at the moment of failure so
+    // an RLS/permission rejection can be traced to a missing/mismatched header.
+    let sentDeviceId = null;
+    try {
+      sentDeviceId = readHeaderFrom(client && client.rest && client.rest.headers, 'x-device-id');
+    } catch (_) {}
+    console.warn(
+      `[SupabaseSyncQueue] upsert ${tableName} error:`,
+      error.message,
+      `| outgoing x-device-id=${JSON.stringify(sentDeviceId)}`
+    );
     return false;
   }
   return true;
@@ -297,6 +308,13 @@ export async function processSupabaseSyncQueue(singleRecordId = null, singleTabl
           }
 
           if (ok) {
+            // Phase 7.2: mark the record as Supabase-synced (per-backend flag).
+            try {
+              db.runSync(
+                `UPDATE ${tableName} SET is_synced_supabase = 1 WHERE ${getSupabaseConflictKey(tableName)} = ?`,
+                [String(recordId)]
+              );
+            } catch (_) {}
             db.runSync("DELETE FROM sync_queue_supabase WHERE id = ?", [Number(queueId)]);
             successfulWrites++;
           } else {

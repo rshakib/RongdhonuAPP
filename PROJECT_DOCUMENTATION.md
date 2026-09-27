@@ -97,7 +97,7 @@ rong/
 ├── index.js                    # registerRootComponent(App)
 ├── database.js                 # SQLite + Firestore sync engine + ALL POS data functions (7128 lines)
 ├── app.config.js               # Dynamic Expo config per build profile (admin/owner/manager)
-├── app.json                    # Static Expo config (version 1.0.5)
+├── app.json                    # Static Expo config (version 1.0.7)
 ├── eas.json                    # EAS build profiles + env vars
 ├── supabase_full_setup.sql     # Supabase schema: devices, telemetry, POS tables, version policy (single source of truth)
 ├── pdfHelper.js                # PDF generation for reports
@@ -292,7 +292,7 @@ Version gating + forced re-authentication, using Firestore REST (`app_config/glo
 
 | Export | Signature | Behavior |
 |---|---|---|
-| `APP_VERSION` | `string` | Read from `app.json` → `expo.version` (default `1.0.4`; current `1.0.5`). |
+| `APP_VERSION` | `string` | Read from `app.json` → `expo.version` (default `1.0.4`; current `1.0.7`). |
 | `compareSemver(a, b)` | `(string,string) → 1\|-1\|0` | Numeric semver compare (handles `v` prefix, missing segments). |
 | `DEFAULT_VERSION_POLICY` | `object` | Fallback policy (min/latest = APP_VERSION, GitHub releases URL, Bengali message). |
 | `fetchVersionPolicy()` | `async → {success, policy, error?}` | GET `app_config/global`; caches to SQLite `cached_version_policy`; auto-initializes on 404. |
@@ -788,7 +788,7 @@ DB side: `enqueueAIDatasetExport(date)` + `processAIDatasetQueue()` (local-only 
 **`app.config.js`** — dynamic Expo config:
 - Validates `EXPO_PUBLIC_APP_PROFILE ∈ {ADMIN,OWNER,MANAGER}`.
 - Per-profile `name`, `slug` (`temp-expo`), package/bundle IDs, channel, icon/splash (with `./image/mylogo.png` fallback).
-- Version `1.0.5`, `runtimeVersion '1.0.0'`, EAS Update URL + channel.
+- Version `1.0.7`, `runtimeVersion '1.0.0'`, EAS Update URL + channel.
 - Plugins: `expo-splash-screen`, `expo-sharing`, `expo-sqlite`, `react-native-thermal-printer-driver`.
 - Syncs matching `credentials/android/credentials.{profile}.json` → `credentials.json` at build time.
 - ADMIN package **`com.riajulshakib.rongdhonu`** is preserved so production installs update seamlessly.

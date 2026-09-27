@@ -19,7 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { exportSalesReportPDF, exportDepositReportPDF } from '../pdfHelper';
 import { formatDisplayDate, getBusinessDate, inspectDatabaseStats, executeInspectorQuery, getFirebaseUsageStats, verifyPinCode, deleteDataByDate, getItemSalesReport, getDb } from '../database';
 import { getAllRegisteredDevices, getCurrentDeviceRecord } from '../services/deviceRegistry';
-import { fetchMinimumVersion, setMinimumVersion, APP_VERSION, compareSemver } from '../services/firebaseAppConfig';
+import { fetchMinimumVersion, setMinimumVersionDualDB, APP_VERSION, compareSemver } from '../services/firebaseAppConfig';
 import * as Application from 'expo-application';
 import * as LocalAuthentication from 'expo-local-authentication';
 import PrintReceiptModal from '../components/PrintReceiptModal';
@@ -484,13 +484,13 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     setIsSavingVersion(true);
 
     const cleanVer = versionInput.trim();
-    const result = await setMinimumVersion(cleanVer);
+    const result = await setMinimumVersionDualDB(cleanVer);
     setIsSavingVersion(false);
     if (result.success) {
       setFirebaseMinVersion(cleanVer);
-      Alert.alert('✅ সফল', `Firebase এ নিউনতম ভার্সন ${cleanVer} সেট করা হয়েছে।`);
+      Alert.alert('✅ সফল', `সর্বনিম্ন ভার্সন ${cleanVer} সেট করা হয়েছে (Supabase + Firebase)।`);
     } else {
-      Alert.alert('❌ ব্যর্থ', result.error || 'Firebase আপডেট করা সম্ভব হয়নি।');
+      Alert.alert('❌ ব্যর্থ', result.error || 'ভার্সন আপডেট করা সম্ভব হয়নি।');
     }
   };
 
