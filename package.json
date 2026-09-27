@@ -35,8 +35,6 @@
     "build:admin:local": "node scripts/select-credentials.js admin && eas build -p android --profile admin --local --output=Admin.apk",
     "build:owner:local": "node scripts/select-credentials.js owner && eas build -p android --profile owner --local --output=Owner.apk",
     "build:manager:local": "node scripts/select-credentials.js manager && eas build -p android --profile manager --local --output=Manager.apk",
-    "build:apk": "eas build -p android --profile preview",
-    "build:previe": "eas build -p android --profile previe",
     "test:builder": "node tests/builder.test.js",
     "test:validator": "node tests/validator.test.js",
     "test:mapper": "node tests/mapper.test.js",
