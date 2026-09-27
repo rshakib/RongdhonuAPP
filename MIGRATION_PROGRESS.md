@@ -10,7 +10,7 @@
 
 **Phases 1–7 are complete. 27/27 POS tables are device-gated. No pending manual SQL steps.**
 
-1. ✅ **Phase 5 retention** live (`rongdhonu_retention_31d`, `0 19 * * *`, active).
+1. ✅ **Phase 5 retention** live (`rongdhonu_retention_31d`, `5 21 * * *`, active).
 2. ✅ **Phase 6 version control** complete (Supabase-first, Firebase fallback).
 3. ✅ **Phase 7 (RLS) COMPLETE — 27/27 gated.** All rollout stages (1–7) **plus the Stage 1 remainder** (`weather_data`, `eja_history`) were applied and verified on-device. Core POS flow (orders → items → payments → deliveries) verified: **no flicker, no duplicates, clean SQL spot-checks** (no duplicate/orphan `order_items`/`payments`).
    - **Four bugs were found and fixed during the rollout — see §1b.**
@@ -34,7 +34,7 @@
 - **Login cloud-check is Supabase-first** (fixed 2026-09-28) — `verifyForceReauthLocally()` probes `app_version_policy` on Supabase and does **no Firebase read** when Supabase answers; a Firebase **429** no longer blocks login. *(Was the last Firebase-only read in a user-critical path — a quota-exhausted Firebase used to make login impossible.)*
 - **Observability — `public.sync_heartbeat`** (2026-09-28): per `device_id × backend`, `last_push_at`/`last_push_ok`/`last_error` + `last_read_at`/`last_rows`, written throttled (60s) by `services/supabaseHeartbeat.js` from all four sync paths. Lets you confirm from Supabase Studio that **Firebase and Supabase are both actually receiving writes**, and which side lags.
 - **RLS**: `is_device_active()` gate on **27/27 POS tables**; `devices`, `device_app_usage`, `app_version_policy` intentionally never device-gated.
-- **Retention**: `pg_cron` `rongdhonu_retention_31d` = `0 19 * * *` (01:00 Dhaka) prunes >31 d from the 13 rolling tables.
+- **Retention**: `pg_cron` `rongdhonu_retention_31d` = `5 21 * * *` (03:05 Dhaka) prunes >31 d from the 13 rolling tables.
 - **Fresh-install restore scope** (fixed this session): `getRestoreMode()` — **MANAGER = running day · ADMIN/OWNER = 31 days · unresolved profile = running day (fail-conservative)**. Master data (`restaurant_tables`/`menu_items`/`menu_categories`) unbounded; `daily_submit`/`daily_summary` now **windowed**; Supabase cursors stamped for the whole profile set; `users` restored separately (`restoreUsersOnlyForProfile`).
 - **Device control = 100% Supabase-only** (Firebase fallback declined — permanent). Version control = Supabase-first → Firebase → SQLite cache → DEFAULT.
 
@@ -60,7 +60,7 @@
 - 3 UX bugs (silent/false-success on `recoverMenuFromCloud`, month/date history downloads) — pre-existing, not addressed.
 
 **Manual / optional remaining**
-1. Re-run `supabase_cron.sql` in the Supabase SQL Editor if the `0 19 * * *` schedule isn't applied yet.
+1. Re-run `supabase_cron.sql` in the Supabase SQL Editor if the `5 21 * * *` schedule isn't applied yet.
 2. Optional: update the live `app_version_policy` row to 1.0.7 (seed uses `ON CONFLICT DO NOTHING`).
 3. Build + distribute the 1.0.7 APKs; verify the startup line `AppProfile: MANAGER|ADMIN|OWNER`.
 4. Optional: run the §4(c) RLS policy-inventory query for final confirmation.
@@ -183,7 +183,7 @@ Implemented:
 - **Correctness fixes (Phase 4) precede retention (Phase 5)** because the `activity_logs` retention cutoff depends on the Dhaka-aware business-date fix.
 - **Deferred / OUT OF SCOPE (documented, do NOT touch):** `expenses` stable-ID overwrite race; `supplier_payment_ledger` INSERT OR REPLACE overwrite; `supplier_due` read-modify-write running-balance race.
 - **`supabase_schema.sql` deleted**; all references repointed to `supabase_full_setup.sql` (consolidated, idempotent).
-- **`pg_cron` available + enabled** (v1.6.4); Phase 5 retention job `rongdhonu_retention_31d` scheduled (`0 19 * * *`, active).
+- **`pg_cron` available + enabled** (v1.6.4); Phase 5 retention job `rongdhonu_retention_31d` scheduled (`5 21 * * *`, active).
 
 **Phase 2 (dual-write)**
 - **Dual-write = PARALLEL / independent queues.** New SQLite table `sync_queue_supabase` mirrors `sync_queue`. One `enqueueSync()` choke-point delegates to `enqueueSupabaseSync()` **after** the Firebase INSERT, via **lazy `require` + nested try/catch** (isolation; no import cycle; Supabase failure can never affect Firebase).
@@ -215,7 +215,7 @@ Implemented:
 - **Historical `activity_logs` rows are NOT backfilled** (per instruction) — the fix affects only NEW logs going forward.
 
 **Phase 5 (rolling 31-day retention)**
-- **`supabase_cron.sql` (new, server-side only — no app code).** One `pg_cron` job `rongdhonu_retention_31d` at `0 19 * * *` (19:00 UTC = 01:00 Asia/Dhaka) deletes rows older than a `(now() AT TIME ZONE 'Asia/Dhaka')::date - 31 days` cutoff from the **13 rolling tables only**.
+- **`supabase_cron.sql` (new, server-side only — no app code).** One `pg_cron` job `rongdhonu_retention_31d` at `5 21 * * *` (21:05 UTC = 03:05 Asia/Dhaka) deletes rows older than a `(now() AT TIME ZONE 'Asia/Dhaka')::date - 31 days` cutoff from the **13 rolling tables only**.
 - **TEXT→timestamptz cast correction.** Supabase timestamp columns are `TEXT` (ISO-8601), so the plan's literal `col AT TIME ZONE 'Asia/Dhaka'` would ERROR; each is cast `(col::timestamptz AT TIME ZONE 'Asia/Dhaka')::date`. Pure date columns use `::date`. `deliveries` uses `COALESCE(NULLIF(completed_at,'')::timestamptz, NULLIF(created_at,'')::timestamptz)`.
 - **`activity_logs` deletes by `created_at`, not `business_date`** — historical `business_date` predates the Phase 4 fix and was not backfilled (§R5: do both).
 - **Excluded (17 permanent/non-windowed, confirmed complete):** menu_items, menu_categories, restaurant_tables, devices, device_app_usage, app_version_policy, daily_submit, daily_summary, daily_submit_priority, users, supplier_due, deletions, delete_history, owner_employees, owner_salary_ledger, owner_deposits, owner_home_deposits. **13 + 17 = 30 = full table set.**
@@ -286,7 +286,7 @@ Delivered (all per IMPLEMENTATION_PLAN.md §4, with the §4.1 correction noted i
 
 ### Phase 5 — Rolling 31-day retention (pg_cron) ✅
 Delivered:
-1. **`supabase_cron.sql`** (new) — idempotent pg_cron registration of one job `rongdhonu_retention_31d` (`'0 19 * * *'`, i.e. 19:00 UTC = **01:00 Asia/Dhaka**) whose command is a `DO` block deleting `cutoff = ((now() AT TIME ZONE 'Asia/Dhaka')::date - INTERVAL '31 days')::date`-and-older rows from the **13 rolling tables**.
+1. **`supabase_cron.sql`** (new) — idempotent pg_cron registration of one job `rongdhonu_retention_31d` (`'5 21 * * *'`, i.e. 21:05 UTC = **03:05 Asia/Dhaka**) whose command is a `DO` block deleting `cutoff = ((now() AT TIME ZONE 'Asia/Dhaka')::date - INTERVAL '31 days')::date`-and-older rows from the **13 rolling tables**.
 2. Verification queries (`cron.job` / `cron.job_run_details`) + an optional dry-run count preview are embedded in the file.
 
 **Status:** ✅ **VERIFIED 2026-09-27.** Server-side only — **no app code changed**. Owner ran `supabase_cron.sql` in the Supabase SQL Editor and confirmed:
@@ -493,6 +493,8 @@ This **reverses the Phase 2 decision §2.7** ("`is_synced_supabase` not needed")
 ---
 
 ## Changelog
+- **2026-09-28 (LATENCY — PUSH-ON-WRITE to both clouds; Supabase no longer trails its 5s daemon)** — Owner: *"table update korlam, order item [add korlam], push hoite ektu late hoy keno?"* Audit found **two real defects**: (1) `database.js` `syncRecordImmediately()` pushed **Firebase only** (`processSyncQueue(recordId, tableName)`), while the Supabase twin **`syncSupabaseRecordImmediately()` was exported but NEVER called anywhere** in the app (grep: only a test referenced it) — so **every** "immediate" push (menu, orders, deliveries, deletions, supplier, all `owner_*`) reached Supabase only via its **5s daemon**, i.e. the **primary** cloud was the slow one; (2) **checkout (`addCompletedOrder`) had NO immediate push at all** (only `enqueueSync`), so a completed order waited for the tick. **Fix:** `syncRecordImmediately()` now runs both pushes **in parallel** (`Promise.all`), each with its own try/catch (isolation preserved — one cloud failing can never block or throw into the other), returning `firebaseOk || supabaseOk` (so the existing `✅ ডাটা সেভ হয়েছে / 📱 অফলাইনে সেভ হয়েছে` toast is now truthful about **both** clouds); checkout flushes both queues (`processSyncQueue()` + `processSupabaseSyncQueue()`, fire-and-forget) right after the order/items/payments are queued. The UI already called `syncRecordImmediately` for the table cart (`handleUpdateTableItems`) and table rename (`handleUpdateTableName`) — the missing half was Supabase, which is why **no timer change was needed** for the "instant" part. **Poll retune (owner request):** `supabase-tables-poll` **2s → 1s** (table-cart fan-out ≤1s; *this was tried and reverted once before for egress — re-applied deliberately*) and `supabase-menu-poll` **45s → 60s**; net ≈ **+1,780 read req/hr/device** (cursor-incremental). Verified `SyncDiagnosticsScreen`'s own 2s UI refresh is unrelated, and `recordAutoSyncEvent` is **in-memory only** (no per-tick SQLite write). Regression guard: new **`tests/pushOnWrite.test.js`** (6 assertions: both clouds pushed, isolation, never-throws, checkout flush, the two UI paths); `tests/supabaseSync.test.js` timer assertions updated. `npm run test:all` **green (210 tests, 0 failed, EXIT 0)**. Commit `f9266b9`.
+- **2026-09-28 (Retention cron → 03:05 Asia/Dhaka — and why it looked like it "didn't run")** — Owner: *"cron kaj kore nai, 3:05 e set koro"*. `supabase_cron.sql` schedule changed **`'0 19 * * *'` → `'5 21 * * *'`** (**21:05 UTC = 03:05 Asia/Dhaka** — pg_cron always evaluates in **UTC**). Delete logic unchanged (13 rolling tables, 31-day Dhaka cutoff). Re-run the file in the Supabase SQL Editor to apply (idempotent: `cron.unschedule` if present → `cron.schedule`). **Diagnosis:** the live job may still carry the *older* `'30 21 * * *'` (03:30 Dhaka) if the file was never re-run after the earlier reschedule — so "it didn't run at 1 AM" is expected, not a failure. Verify with `SELECT jobid, jobname, schedule, active FROM cron.job WHERE jobname='rongdhonu_retention_31d';` and `SELECT status, return_message, start_time FROM cron.job_run_details ORDER BY start_time DESC LIMIT 5;`. Also note the job legitimately logs **0 deleted rows** until data crosses 31 days (dry-run preview query is embedded in the file).
 - **2026-09-28 (FEATURE — Sync Health is now FLEET-WIDE: every device reports its own unsent rows)** — Owner wanted everything on the screen to cover **all devices**, not just the one in hand. Added a per-device **per-table payload**: `public.sync_heartbeat` gains **`pending_tables JSONB`** (`{ "orders": 3, … }` = unsent rows for that backend; `CREATE TABLE` + `ALTER TABLE … ADD COLUMN IF NOT EXISTS` in `supabase_full_setup.sql`), and `services/supabaseHeartbeat.recordSyncHeartbeat({ …, includeTables })` reads that queue (`SELECT table_name, COUNT(*) … WHERE status IN ('PENDING','FAILED') GROUP BY table_name`) and publishes it. The two push hooks now pass it: `database.js` → `includeTables: 'sync_queue'` (Firebase), `services/supabaseSyncQueue.js` → `includeTables: 'sync_queue_supabase'` (Supabase). The screen aggregates **across all devices**: the "একসাথে সেভ হচ্ছে কি?" table (now tagged **সব ফোন**) marks `SB/FB ❌` from the fleet totals and names the lagging app(s), e.g. `⚠️ ব্যাকআপে বাকি (ম্যানেজার অ্যাপ)`; the queue totals card uses fleet totals too. Only the per-table **times** card stays local (cursors are per-device) and says so. Falls back to this device's numbers until other devices are on the new build. `npm run test:all` **green (538 assertions, EXIT 0)**.
   - **⚠️ Manual step:** re-run `supabase_full_setup.sql` in the Supabase SQL editor to add the `pending_tables` column.
 - **2026-09-28 (UI — top card shows Firebase/Supabase last-READ age; device scope made explicit)** — Top (hero) card now carries a caption **"সব ফোন মিলিয়ে (কে কখন পড়েছে)"** with two lines — **`🔥 Firebase read: n মিনিট আগে`** and **`⚡ Supabase read: n মিনিট আগে`** — each derived from the **freshest `last_read_at` across all devices** in `sync_heartbeat`. Also clarified **which data is which**: the check-table is titled **"একসাথে সেভ হচ্ছে কি? · এই ফোন"** (it is computed from THIS device's local `sync_queue`/`sync_queue_supabase`), the queue + per-table-times cards in the technical section are tagged **এই ফোন**, and the per-device list is tagged **সব ফোন** (from the heartbeat). `npm run test:all` **green (538 assertions, EXIT 0)**.
