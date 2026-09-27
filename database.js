@@ -9,7 +9,7 @@ import {
 } from './services/aiDataset/transport/googleSheets';
 import { getFirestoreAuthHeaders, invalidateCurrentToken, isAuthCredentialKey } from './services/firebaseAuth.js';
 import { getRolePriority, remotePriorityWins } from './services/dailySubmitPriority.js';
-import { isTombstoned, clearTombstone, isResurrectBlocked } from './services/tombstoneStore.js';
+import { isTombstoned, clearTombstone, isResurrectBlocked, isTombstoneStale } from './services/tombstoneStore.js';
 
 let dbInstance = null;
 
@@ -2267,6 +2267,12 @@ async function syncCollections(collectionsList, cycleName = 'Unnamed Cycle') {
           if (table === 'deletions') {
             const targetTable = row.table_name;
             const targetId = row.record_id;
+            // FINAL-RESURRECT-3: ignore a STALE tombstone (the local row was re-created
+            // AFTER this deletion) — do not delete it and do not store the tombstone.
+            if (isTombstoneStale(db, targetTable, targetId, row.updated_at || row.created_at)) {
+              console.log(`[Pull Sync] Ignored stale tombstone (row re-created after delete): ${targetTable}/${targetId}`);
+              continue;
+            }
             console.log(`[Pull Sync] Remote deletion pulled for table "${targetTable}", record ID/Date "${targetId}"`);
             try {
               if (targetTable === 'daily_submit' || targetTable === 'daily_summary' || targetTable === 'ai_dataset_history') {

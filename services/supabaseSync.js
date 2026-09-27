@@ -20,7 +20,7 @@ import {
   isSupabaseSyncEnabled,
   withTimeout
 } from './supabaseClient.js';
-import { isTombstoned, isResurrectBlocked } from './tombstoneStore.js';
+import { isTombstoned, isResurrectBlocked, isTombstoneStale } from './tombstoneStore.js';
 import { recordSyncHeartbeat } from './supabaseHeartbeat.js';
 
 const OVERLAP_MS = 60000;          // re-read window to absorb clock drift / eventual consistency
@@ -211,6 +211,12 @@ export function mergeSupabaseRows(db, table, rows) {
     if (table === 'deletions' && (!row.table_name || !row.record_id)) continue;
 
     if (table === 'deletions') {
+      // FINAL-RESURRECT-3: ignore a STALE tombstone (local row re-created after the
+      // delete) — do not delete the row and do not store the tombstone.
+      if (isTombstoneStale(db, row.table_name, row.record_id, row.updated_at || row.created_at)) {
+        console.log(`[Sync] Ignored stale tombstone (row re-created after delete): ${row.table_name}/${row.record_id}`);
+        continue;
+      }
       deleteTargetRow(db, row.table_name, row.record_id);
     }
 

@@ -78,3 +78,41 @@ export function isResurrectBlocked(db, tableName, recordId, cloudTimestamp) {
   }
   return true;
 }
+
+/**
+ * Timestamp of the LOCAL row that a tombstone points at (null when absent).
+ * Mirrors the per-table primary key used by the delete path.
+ */
+export function getLocalRowTime(db, tableName, recordId) {
+  if (!db || !tableName || recordId === null || recordId === undefined) return null;
+  try {
+    let row = null;
+    if (tableName === 'daily_submit' || tableName === 'daily_summary' || tableName === 'ai_dataset_history') {
+      row = db.getFirstSync(`SELECT updated_at, created_at FROM ${tableName} WHERE date = ?`, [String(recordId)]);
+    } else if (tableName === 'daily_submit_priority') {
+      row = db.getFirstSync(`SELECT updated_at, created_at FROM ${tableName} WHERE business_date = ?`, [String(recordId)]);
+    } else {
+      row = db.getFirstSync(`SELECT updated_at, created_at FROM ${tableName} WHERE id = ?`, [String(recordId)]);
+    }
+    if (!row) return null;
+    return String(row.updated_at || row.created_at || '') || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * FINAL-RESURRECT-3: is a PULLED tombstone stale?
+ *
+ * True when the local row still exists and is STRICTLY NEWER than the tombstone —
+ * i.e. the record was deleted and then legitimately re-created (e.g. another device
+ * re-submitted that day). Such a tombstone must be IGNORED completely: do not delete
+ * the local row and do not store the tombstone locally. Without this, a fresh
+ * install would pull the (still cloud-resident) old tombstone and delete the
+ * freshly-restored row all over again.
+ */
+export function isTombstoneStale(db, tableName, recordId, tombTimestamp) {
+  const localAt = getLocalRowTime(db, tableName, recordId);
+  const tomb = String(tombTimestamp || '');
+  return !!(localAt && tomb && localAt > tomb);
+}
