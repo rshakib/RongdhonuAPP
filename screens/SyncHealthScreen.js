@@ -148,6 +148,11 @@ export default function SyncHealthScreen({ onBack }) {
   const problemTables = dualRows.filter((r) => r.tone !== 'ok' && !r.noInfo);
   const badDevices = deviceViews.filter((d) => d.state !== 'ok');
 
+  // Freshest READ time per backend (across all devices) — shown on the top card.
+  const newest = (vals) => vals.filter(Boolean).reduce((m, v) => (!m || v > m ? v : m), null);
+  const lastReadFB = newest(deviceViews.map((d) => d.fb && d.fb.last_read_at));
+  const lastReadSB = newest(deviceViews.map((d) => d.sb && d.sb.last_read_at));
+
   const overall = error ? 'unknown'
     : (problemTables.length > 0 || badDevices.some((d) => d.state === 'bad')) ? 'bad'
       : (badDevices.length > 0 || dualRows.some((r) => r.noInfo)) ? 'warn'
@@ -188,14 +193,27 @@ export default function SyncHealthScreen({ onBack }) {
                   : (overall === 'warn' ? 'কাজ চলবে, তবে ইন্টারনেট একবার চেক করে নিন।' : 'অ্যাপ কিছুক্ষণ চালু রাখুন, তারপর আবার দেখুন।'))}
             </Text>
             {checkedAt ? <Text style={styles.heroTime}>সর্বশেষ দেখা: {checkedAt}</Text> : null}
+
+            <View style={styles.heroReads}>
+              <Text style={styles.heroReadsCaption}>সব ফোন মিলিয়ে (কে কখন পড়েছে)</Text>
+              <View style={styles.heroReadRow}>
+                <Text style={styles.heroReadLabel}>🔥 Firebase read</Text>
+                <Text style={styles.heroReadValue}>{agoText(lastReadFB)}</Text>
+              </View>
+              <View style={styles.heroReadRow}>
+                <Text style={styles.heroReadLabel}>⚡ Supabase read</Text>
+                <Text style={styles.heroReadValue}>{agoText(lastReadSB)}</Text>
+              </View>
+            </View>
           </View>
 
           {/* ── একসাথে সেভ হচ্ছে কি? (দুই DB) ────────────────────────── */}
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>একসাথে সেভ হচ্ছে কি?</Text>
+            <Text style={styles.cardTitle}>একসাথে সেভ হচ্ছে কি? <Text style={styles.cardTitleTag}>এই ফোন</Text></Text>
             <Text style={styles.legend}>
               <Text style={styles.strong}>SB</Text> = মূল সার্ভার · <Text style={styles.strong}>FB</Text> = ব্যাকআপ{'\n'}
-              <Text style={styles.strong}>✅</Text> = পাঠানো হয়েছে · <Text style={styles.strong}>❌</Text> = বাকি
+              <Text style={styles.strong}>✅</Text> = পাঠানো হয়েছে · <Text style={styles.strong}>❌</Text> = বাকি{'\n'}
+              <Text style={styles.dim}>এটি শুধু এই ফোনের হিসাব — কোন ফোনের কী বাকি আছে সেটা প্রতিটি ফোন আলাদা দেখাবে।</Text>
             </Text>
 
             {error ? (
@@ -232,7 +250,7 @@ export default function SyncHealthScreen({ onBack }) {
           {showTech && (
             <>
               <View style={styles.card}>
-                <Text style={styles.cardTitle}>এখনো পাঠানো বাকি আছে কি?</Text>
+                <Text style={styles.cardTitle}>এখনো পাঠানো বাকি আছে কি? <Text style={styles.cardTitleTag}>এই ফোন</Text></Text>
                 {(local?.queues || []).map((q) => (
                   <View key={q.key} style={styles.techBlock}>
                     <View style={styles.rowLine}>
@@ -246,7 +264,7 @@ export default function SyncHealthScreen({ onBack }) {
               </View>
 
               <View style={styles.card}>
-                <Text style={styles.cardTitle}>টেবিল অনুযায়ী (সময়সহ)</Text>
+                <Text style={styles.cardTitle}>টেবিল অনুযায়ী (সময়সহ) <Text style={styles.cardTitleTag}>এই ফোন</Text></Text>
                 {dualRows.map((t) => (
                   <View key={t.table} style={styles.techBlock}>
                     <View style={styles.rowLine}>
@@ -263,7 +281,7 @@ export default function SyncHealthScreen({ onBack }) {
               </View>
 
               <View style={styles.card}>
-                <Text style={styles.cardTitle}>প্রতিটি ফোন</Text>
+                <Text style={styles.cardTitle}>প্রতিটি ফোন <Text style={styles.cardTitleTag}>সব ফোন</Text></Text>
                 {devices.length === 0 ? (
                   <Text style={styles.helpText}>কোনো heartbeat নেই। Supabase-এ sync_heartbeat টেবিল তৈরি করুন, তারপর নতুন build চালান।</Text>
                 ) : deviceViews.map((d) => (
@@ -309,9 +327,16 @@ const styles = StyleSheet.create({
   heroTitle: { color: '#FFF', fontSize: 18, fontWeight: '800', textAlign: 'center', letterSpacing: 0.2 },
   heroSub: { color: '#C9C9C9', fontSize: 12.5, textAlign: 'center', lineHeight: 19, marginTop: 8, paddingHorizontal: 4 },
   heroTime: { color: '#777', fontSize: 10.5, marginTop: 12 },
+  heroReads: { width: '100%', marginTop: 14, borderTopWidth: 0.5, borderColor: 'rgba(255,255,255,0.12)', paddingTop: 10 },
+  heroReadsCaption: { color: '#8A8A8A', fontSize: 10.5, marginBottom: 6, textAlign: 'center' },
+  heroReadRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 3 },
+  heroReadLabel: { color: '#BBB', fontSize: 12 },
+  heroReadValue: { color: '#FFF', fontSize: 12, fontWeight: 'bold' },
 
   card: { backgroundColor: '#111', borderRadius: 18, padding: 16, borderWidth: 1, borderColor: '#222', marginBottom: 14 },
   cardTitle: { color: '#FFB703', fontSize: 15, fontWeight: '800', marginBottom: 10 },
+  cardTitleTag: { color: '#9CA3AF', fontSize: 10.5, fontWeight: '700' },
+  dim: { color: '#666' },
   legend: { color: '#888', fontSize: 11.5, lineHeight: 18, marginBottom: 10 },
 
   rowLine: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 8, borderRadius: 10, marginBottom: 2 },
