@@ -69,6 +69,7 @@ export default function AdminSideMenu({
   onNavigateToAnalytics,
   onNavigateToItemSalesReport,
   onNavigateToSyncDiagnostics,
+  onNavigateToSyncHealth,
   onNavigateToDeleteHistory,
   onNavigateToAIDatasetMonitor,
   onNavigateToAIDatasetAuditCenter,
@@ -172,6 +173,15 @@ export default function AdminSideMenu({
               title="Sync Diagnostics"
               subtitle="Database health check"
               onPress={() => handleAction(onNavigateToSyncDiagnostics)}
+            />
+
+            <MenuRow
+              iconName="cloud"
+              iconColor="#22C55E"
+              iconBg="rgba(34, 197, 94, 0.15)"
+              title="Sync Health"
+              subtitle="Firebase vs Supabase last push"
+              onPress={() => handleAction(onNavigateToSyncHealth)}
             />
 
             <MenuRow

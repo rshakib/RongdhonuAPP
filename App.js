@@ -185,6 +185,7 @@ import DeviceBlockedScreen from './screens/DeviceBlockedScreen';
 import AppUpdateRequiredScreen from './screens/AppUpdateRequiredScreen';
 import OfflineVerificationScreen from './screens/OfflineVerificationScreen';
 import SyncDiagnosticsScreen from './screens/SyncDiagnosticsScreen';
+import SyncHealthScreen from './screens/SyncHealthScreen';
 import DeleteHistoryScreen from './screens/DeleteHistoryScreen';
 import SystemToolsScreen from './screens/SystemToolsScreen';
 import BackupRestoreScreen from './screens/BackupRestoreScreen';
@@ -1586,7 +1587,7 @@ export default function App() {
       const subScreens = [
         'TABLE_DETAIL', 'PAYMENT_SUCCESS', 'PAYMENT_CHECKOUT',
         'DAILY_SUBMIT', 'ADD_ITEM', 'EXPENSES', 'EDIT_MENU',
-        'SUPPLIER_DUE', 'ITEM_SALES_REPORT', 'SYNC_DIAGNOSTICS',
+        'SUPPLIER_DUE', 'ITEM_SALES_REPORT', 'SYNC_DIAGNOSTICS', 'SYNC_HEALTH',
         'DELETE_HISTORY', 'SYSTEM_TOOLS', 'DEVICE_MANAGEMENT',
         'ADMIN_ANALYTICS', 'OWNER_FINANCE_DASHBOARD', 'EMPLOYEE_LIST',
         'OWNER_EXPENSES', 'DATABASE_STATS', 'DATABASE_EXPLORER',
@@ -2628,6 +2629,7 @@ export default function App() {
                 onNavigateToSupplierDue={() => setCurrentScreen('SUPPLIER_DUE')}
                 onNavigateToItemSalesReport={() => setCurrentScreen('ITEM_SALES_REPORT')}
                 onNavigateToSyncDiagnostics={() => setCurrentScreen('SYNC_DIAGNOSTICS')}
+                onNavigateToSyncHealth={() => setCurrentScreen('SYNC_HEALTH')}
                 onNavigateToDeleteHistory={() => setCurrentScreen('DELETE_HISTORY')}
                 onNavigateToSystemTools={() => setCurrentScreen('SYSTEM_TOOLS')}
                 onNavigateToBackupRestore={() => setCurrentScreen('BACKUP_RESTORE')}
@@ -3180,6 +3182,13 @@ export default function App() {
         } else {
           return null;
         }
+
+      case 'SYNC_HEALTH':
+        return (
+          <SyncHealthScreen
+            onBack={() => setCurrentScreen('DASHBOARD')}
+          />
+        );
 
       case 'DB_STATS':
         if (ACTIVE_APP_PROFILE === 'ADMIN' && String(userRole || '').toLowerCase().trim() === 'admin') {
