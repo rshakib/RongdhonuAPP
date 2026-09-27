@@ -128,30 +128,60 @@ export default function SyncHealthScreen({ onBack }) {
     return { dev, fb, sb, fbOk, sbOk, lag, state, line, profile: (sb && sb.app_profile) || (fb && fb.app_profile) || '' };
   });
 
+  // Freshest READ time per backend (across all devices) — shown on the top card.
+  const newest = (vals) => vals.filter(Boolean).reduce((m, v) => (!m || v > m ? v : m), null);
+  const lastReadFB = newest(deviceViews.map((d) => d.fb && d.fb.last_read_at));
+  const lastReadSB = newest(deviceViews.map((d) => d.sb && d.sb.last_read_at));
+
+  // ── FLEET-WIDE per-table unsent counts (every device reports its own) ───────
+  const asObject = (v) => {
+    if (!v) return null;
+    if (typeof v === 'string') { try { return JSON.parse(v); } catch (_) { return null; } }
+    return typeof v === 'object' ? v : null;
+  };
+  const devName = (dev, profile) => PROFILE_BN[String(profile || '').toUpperCase()] || dev;
+  const addAll = (target, devTarget, obj, name) => {
+    for (const [t, n] of Object.entries(obj || {})) {
+      target[t] = (target[t] || 0) + (Number(n) || 0);
+      (devTarget[t] = devTarget[t] || new Set()).add(name);
+    }
+  };
+  const fleet = { sb: {}, fb: {}, sbDev: {}, fbDev: {} };
+  for (const dev of devices) {
+    const sbRow = byDevice[dev].supabase || null;
+    const fbRow = byDevice[dev].firebase || null;
+    const name = devName(dev, (sbRow && sbRow.app_profile) || (fbRow && fbRow.app_profile));
+    addAll(fleet.sb, fleet.sbDev, asObject(sbRow && sbRow.pending_tables), name);
+    addAll(fleet.fb, fleet.fbDev, asObject(fbRow && fbRow.pending_tables), name);
+  }
+  const hasFleet = Object.keys(fleet.sb).length > 0 || Object.keys(fleet.fb).length > 0;
+  const names = (set) => (set ? [...set].join(', ') : '');
+  const fleetTotal = { sb: Object.values(fleet.sb).reduce((a, b) => a + b, 0), fb: Object.values(fleet.fb).reduce((a, b) => a + b, 0) };
+
   // ── The ONE answer: per dual table, did BOTH sides get it? ──────────────────
+  // Fleet-wide when devices report their queues (new build); otherwise this device.
   const dualRows = (local?.tables || []).map((t) => {
-    const sbOk = t.sbPending === 0;
-    const fbOk = t.fbPending === 0;
+    const sbPending = hasFleet ? (fleet.sb[t.table] || 0) : t.sbPending;
+    const fbPending = hasFleet ? (fleet.fb[t.table] || 0) : t.fbPending;
+    const sbWho = names(fleet.sbDev[t.table]);
+    const fbWho = names(fleet.fbDev[t.table]);
+    const sbOk = sbPending === 0;
+    const fbOk = fbPending === 0;
     const lag = lagMin(t.fbCursor, t.sbCursor);
     const noInfo = !t.sbCursor && !t.fbCursor;
     let label = '— এখনো কিছু যায়নি';
     let tone = 'muted';
     if (!noInfo) {
-      if (!sbOk && !fbOk) { label = '🔴 দুটোই বাকি'; tone = 'bad'; }
-      else if (!sbOk) { label = '⚠️ মূল সার্ভারে বাকি'; tone = 'warn'; }
-      else if (!fbOk) { label = '⚠️ ব্যাকআপে বাকি'; tone = 'warn'; }
+      if (!sbOk && !fbOk) { label = `🔴 দুটোই বাকি${sbWho || fbWho ? ` (${[...new Set([sbWho, fbWho].filter(Boolean))].join(', ')})` : ''}`; tone = 'bad'; }
+      else if (!sbOk) { label = `⚠️ মূল সার্ভারে বাকি${sbWho ? ` (${sbWho})` : ''}`; tone = 'warn'; }
+      else if (!fbOk) { label = `⚠️ ব্যাকআপে বাকি${fbWho ? ` (${fbWho})` : ''}`; tone = 'warn'; }
       else if (lag != null && lag > SYNC_TOLERANCE_MIN) { label = `⚠️ ${lag} মিনিট ফারাক`; tone = 'warn'; }
       else { label = '✅ একসাথে'; tone = 'ok'; }
     }
-    return { ...t, sbOk, fbOk, label, tone, noInfo };
+    return { ...t, sbOk, fbOk, sbPending, fbPending, label, tone, noInfo };
   });
   const problemTables = dualRows.filter((r) => r.tone !== 'ok' && !r.noInfo);
   const badDevices = deviceViews.filter((d) => d.state !== 'ok');
-
-  // Freshest READ time per backend (across all devices) — shown on the top card.
-  const newest = (vals) => vals.filter(Boolean).reduce((m, v) => (!m || v > m ? v : m), null);
-  const lastReadFB = newest(deviceViews.map((d) => d.fb && d.fb.last_read_at));
-  const lastReadSB = newest(deviceViews.map((d) => d.sb && d.sb.last_read_at));
 
   const overall = error ? 'unknown'
     : (problemTables.length > 0 || badDevices.some((d) => d.state === 'bad')) ? 'bad'
@@ -209,11 +239,11 @@ export default function SyncHealthScreen({ onBack }) {
 
           {/* ── একসাথে সেভ হচ্ছে কি? (দুই DB) ────────────────────────── */}
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>একসাথে সেভ হচ্ছে কি? <Text style={styles.cardTitleTag}>এই ফোন</Text></Text>
+            <Text style={styles.cardTitle}>একসাথে সেভ হচ্ছে কি? <Text style={styles.cardTitleTag}>সব ফোন</Text></Text>
             <Text style={styles.legend}>
               <Text style={styles.strong}>SB</Text> = মূল সার্ভার · <Text style={styles.strong}>FB</Text> = ব্যাকআপ{'\n'}
               <Text style={styles.strong}>✅</Text> = পাঠানো হয়েছে · <Text style={styles.strong}>❌</Text> = বাকি{'\n'}
-              <Text style={styles.dim}>এটি শুধু এই ফোনের হিসাব — কোন ফোনের কী বাকি আছে সেটা প্রতিটি ফোন আলাদা দেখাবে।</Text>
+              <Text style={styles.dim}>সব ফোন মিলিয়ে — কোন ফোনে কী বাকি আছে সেটাও পাশে লেখা থাকে।</Text>
             </Text>
 
             {error ? (
@@ -250,21 +280,27 @@ export default function SyncHealthScreen({ onBack }) {
           {showTech && (
             <>
               <View style={styles.card}>
-                <Text style={styles.cardTitle}>এখনো পাঠানো বাকি আছে কি? <Text style={styles.cardTitleTag}>এই ফোন</Text></Text>
-                {(local?.queues || []).map((q) => (
-                  <View key={q.key} style={styles.techBlock}>
-                    <View style={styles.rowLine}>
-                      <Text style={styles.lineLabel}>{q.name}</Text>
-                      <Text style={[styles.lineValue, (q.pending + q.failed) > 0 ? styles.warnText : styles.okText]}>
-                        {(q.pending + q.failed) === 0 ? 'সব পাঠানো হয়েছে' : `বাকি ${q.pending} · ব্যর্থ ${q.failed}`}
-                      </Text>
+                <Text style={styles.cardTitle}>এখনো পাঠানো বাকি আছে কি? <Text style={styles.cardTitleTag}>{hasFleet ? 'সব ফোন' : 'এই ফোন'}</Text></Text>
+                {(local?.queues || []).map((q) => {
+                  const fleetPending = q.key === 'sb' ? fleetTotal.sb : fleetTotal.fb;
+                  const pending = hasFleet ? fleetPending : q.pending;
+                  const failed = hasFleet ? 0 : q.failed;
+                  return (
+                    <View key={q.key} style={styles.techBlock}>
+                      <View style={styles.rowLine}>
+                        <Text style={styles.lineLabel}>{q.name}</Text>
+                        <Text style={[styles.lineValue, (pending + failed) > 0 ? styles.warnText : styles.okText]}>
+                          {(pending + failed) === 0 ? 'সব পাঠানো হয়েছে' : `বাকি ${pending}${failed ? ` · ব্যর্থ ${failed}` : ''}`}
+                        </Text>
+                      </View>
                     </View>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
 
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>টেবিল অনুযায়ী (সময়সহ) <Text style={styles.cardTitleTag}>এই ফোন</Text></Text>
+                <Text style={styles.hintText}>সময় প্রতিটি ফোনের নিজের — তাই এটি যেই ফোনে দেখছেন তারই হিসাব।</Text>
                 {dualRows.map((t) => (
                   <View key={t.table} style={styles.techBlock}>
                     <View style={styles.rowLine}>

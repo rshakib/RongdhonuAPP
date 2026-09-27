@@ -184,9 +184,13 @@ CREATE TABLE IF NOT EXISTS public.sync_heartbeat (
     last_error    TEXT,
     last_read_at  TIMESTAMPTZ,            -- last successful READ/PULL from this backend
     last_rows     INTEGER,
+    pending_tables JSONB,                 -- { "orders": 3, ... } unsent rows for THIS backend
     updated_at    TIMESTAMPTZ DEFAULT now(),
     PRIMARY KEY (device_id, backend)
 );
+
+-- Migration for an already-created table:
+ALTER TABLE public.sync_heartbeat ADD COLUMN IF NOT EXISTS pending_tables JSONB;
 
 CREATE INDEX IF NOT EXISTS idx_sync_heartbeat_updated ON public.sync_heartbeat(updated_at DESC);
 

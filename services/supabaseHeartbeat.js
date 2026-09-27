@@ -42,13 +42,32 @@ function defaultGetAppVersion() {
   try { return require('../app.json').expo?.version || ''; } catch (_) { return ''; }
 }
 
+function defaultReadQueueCounts(queueTable) {
+  try {
+    const db = defaultGetDb();
+    if (!db) return null;
+    const rows = db.getAllSync(
+      `SELECT table_name, COUNT(*) c FROM ${queueTable} WHERE status IN ('PENDING','FAILED') GROUP BY table_name`
+    ) || [];
+    const out = {};
+    for (const r of rows) {
+      if (!r || !r.table_name) continue;
+      out[r.table_name] = (out[r.table_name] || 0) + (Number(r.c) || 0);
+    }
+    return out;
+  } catch (_) {
+    return null;
+  }
+}
+
 const productionDeps = {
   isEnabled: isSupabaseSyncEnabled,
   isConfigured: isSupabaseConfigured,
   getClient: getSupabaseClient,
   getDeviceId: defaultGetDeviceId,
   getProfile: defaultGetProfile,
-  getAppVersion: defaultGetAppVersion
+  getAppVersion: defaultGetAppVersion,
+  readQueueCounts: defaultReadQueueCounts
 };
 let deps = { ...productionDeps };
 
@@ -72,10 +91,12 @@ export function __resetHeartbeatThrottleForTesting() {
  * @param {number|null} [evt.rows]      rows written/read this cycle
  * @param {boolean} [evt.ok]
  * @param {string|null} [evt.error]
+ * @param {'sync_queue'|'sync_queue_supabase'|null} [evt.includeTables] read this queue
+ *        and publish the per-table unsent counts (so OTHER devices can see them)
  * @param {boolean} [evt.force]        bypass the throttle (tests / manual)
  * @returns {Promise<boolean>} whether a heartbeat row was written
  */
-export async function recordSyncHeartbeat({ backend, kind, rows = null, ok = true, error = null, force = false } = {}) {
+export async function recordSyncHeartbeat({ backend, kind, rows = null, ok = true, error = null, includeTables = null, force = false } = {}) {
   try {
     if (!backend || !kind) return false;
     if (!deps.isEnabled() || !deps.isConfigured()) return false;
@@ -102,6 +123,10 @@ export async function recordSyncHeartbeat({ backend, kind, rows = null, ok = tru
       row.last_push_at = iso;
       row.last_push_ok = ok !== false;
       row.last_error = error ? String(error).slice(0, 300) : null;
+      if (includeTables) {
+        const counts = deps.readQueueCounts(includeTables);
+        row.pending_tables = counts && Object.keys(counts).length ? counts : null;
+      }
     } else {
       row.last_read_at = iso;
       row.last_rows = rows == null ? null : Number(rows) || 0;

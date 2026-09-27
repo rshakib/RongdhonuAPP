@@ -1967,7 +1967,8 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
           kind: 'push',
           rows: successfulWrites,
           ok: failedWrites === 0,
-          error: failedWrites ? lastSyncError : null
+          error: failedWrites ? lastSyncError : null,
+          includeTables: 'sync_queue'
         }).catch(() => {});
       } catch (_) {}
 
