@@ -54,6 +54,7 @@
     "test:phase8": "node tests/phase8ManualCloudSupabaseFirst.test.js",
     "test:phase9": "node tests/phase9RestoreScope.test.js",
     "test:phase10": "node tests/phase10AdminRestoreScope.test.js",
+    "test:phase11": "node tests/phase11LoginConnectivity.test.js",
     "test:usage": "node tests/appUsageTracker.test.js",
     "test:firebase-auth": "node tests/firebaseAuth.test.js",
     "test:same-day-resync": "node tests/sameDayResync.test.js",
@@ -65,7 +66,7 @@
     "test:sales-report": "node tests/salesReportRedesign.test.js",
     "test:deposit-report": "node tests/depositReportRedesign.test.js",
     "test:backup-restore": "node tests/backupRestore.test.js",
-    "test:all": "node tests/builder.test.js && node tests/validator.test.js && node tests/mapper.test.js && node tests/queue.test.js && node tests/transport.test.js && node tests/e2ePipeline.test.js && node tests/activityLogger.test.js && node tests/supabaseDeviceControl.test.js && node tests/appUsageTracker.test.js && node tests/firebaseAuth.test.js && node tests/sameDayResync.test.js && node tests/adminDashboardMerge.test.js && node tests/forceLogoutAndMetadataSync.test.js && node tests/deliveryChargePersistence.test.js && node tests/pastAccountModalRedesign.test.js && node tests/salesReportRedesign.test.js && node tests/depositReportRedesign.test.js && node tests/backupRestore.test.js && node tests/supabaseDualWrite.test.js && node tests/supabaseSync.test.js && node tests/phase4Correctness.test.js && node tests/phase6VersionControl.test.js && node tests/phase7RlsFallback.test.js && node tests/phase7HeaderInjection.test.js && node tests/syncTombstoneResurrect.test.js && node tests/supabaseSyncFlag.test.js && node tests/phase8ManualCloudSupabaseFirst.test.js && node tests/phase9RestoreScope.test.js && node tests/phase10AdminRestoreScope.test.js"
+    "test:all": "node tests/builder.test.js && node tests/validator.test.js && node tests/mapper.test.js && node tests/queue.test.js && node tests/transport.test.js && node tests/e2ePipeline.test.js && node tests/activityLogger.test.js && node tests/supabaseDeviceControl.test.js && node tests/appUsageTracker.test.js && node tests/firebaseAuth.test.js && node tests/sameDayResync.test.js && node tests/adminDashboardMerge.test.js && node tests/forceLogoutAndMetadataSync.test.js && node tests/deliveryChargePersistence.test.js && node tests/pastAccountModalRedesign.test.js && node tests/salesReportRedesign.test.js && node tests/depositReportRedesign.test.js && node tests/backupRestore.test.js && node tests/supabaseDualWrite.test.js && node tests/supabaseSync.test.js && node tests/phase4Correctness.test.js && node tests/phase6VersionControl.test.js && node tests/phase7RlsFallback.test.js && node tests/phase7HeaderInjection.test.js && node tests/syncTombstoneResurrect.test.js && node tests/supabaseSyncFlag.test.js && node tests/phase8ManualCloudSupabaseFirst.test.js && node tests/phase9RestoreScope.test.js && node tests/phase10AdminRestoreScope.test.js && node tests/phase11LoginConnectivity.test.js"
   },
   "private": true,
   "devDependencies": {

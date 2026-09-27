@@ -505,9 +505,35 @@ export async function setMinimumVersion(newVersion) {
 }
 
 /**
- * Verify user credentials against Firebase during forced re-authentication.
+ * Cloud-reachability check used by the login gate (new install / first login /
+ * force-reauth). Historically this was a Firebase-only GET — which meant an
+ * exhausted Firebase read quota (HTTP 429) BLOCKED LOGIN even with Supabase healthy.
+ *
+ * Now it follows the migration's read-routing rule:
+ *   1) Supabase first (primary read path). `app_version_policy` is public-read, so
+ *      this works BEFORE device registration. No Firebase read when Supabase answers.
+ *   2) Firebase fallback — and a throttling/limit status (429/403) now counts as
+ *      REACHABLE (quota ≠ offline); only a genuine network failure blocks login.
  */
 export async function verifyForceReauthLocally(username, pin) {
+  // --- 1) Supabase (primary) -------------------------------------------------
+  if (versionDeps.isEnabled() && versionDeps.isConfigured()) {
+    try {
+      const client = versionDeps.getClient();
+      if (client) {
+        const { error } = await withTimeout(
+          client.from('app_version_policy').select('id').eq('id', 'global').maybeSingle(),
+          VERSION_TIMEOUT_MS,
+          'login connectivity (supabase)'
+        );
+        if (!error) return { verified: true, source: 'supabase' };
+      }
+    } catch (err) {
+      console.warn('[Login Connect] Supabase check failed → Firebase fallback:', err?.message || err);
+    }
+  }
+
+  // --- 2) Firebase fallback (unchanged behavior, plus throttling tolerance) ---
   const { projectId, apiKey } = getFirebaseConfig();
   if (!projectId || !apiKey) {
     return { verified: false, reason: 'Firebase configuration missing' };
@@ -530,8 +556,10 @@ export async function verifyForceReauthLocally(username, pin) {
       }
     }
 
-    if (res.ok || res.status === 404) {
-      return { verified: true };
+    // 429 (quota/rate limit) and 403 (permission/limit) mean the backend IS reachable.
+    if (res.ok || res.status === 404) return { verified: true, source: 'firebase' };
+    if (res.status === 429 || res.status === 403) {
+      return { verified: true, source: 'firebase', throttled: true, status: res.status };
     }
 
     return { verified: false, reason: `Firebase connectivity check failed (${res.status})` };
