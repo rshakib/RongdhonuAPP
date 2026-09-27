@@ -2646,12 +2646,72 @@ function fromFirestoreDocument(doc) {
   return obj;
 }
 
-export async function restoreDatabaseFromCloud({ mode = 'full' } = {}) {
-  console.log(`[Firebase-Read] restoreDatabaseFromCloud triggered (mode=${mode})`);
+/**
+ * Manual "Cloud Restore" entry point — Supabase-primary + Firebase fallback.
+ *
+ * Supabase is asked FIRST for the scope it owns in normal operation
+ * (`restaurant_tables` + the rolling 31-day transactional window + menu/daily).
+ * The remaining permanent/master tables stay Firebase-sourced, per the
+ * established read-routing rules. If Supabase is unhealthy — or its pass fails —
+ * the full Firebase restore runs exactly as before. The returned failed-collection
+ * list is the UNION of both passes, so the UI alert stays truthful.
+ *
+ * Default (`supabaseFirst=false`) is equivalent to the legacy Firebase-only
+ * behavior used by `restoreHybridDatabaseFromCloud`'s Firebase fallback.
+ */
+export async function restoreDatabaseFromCloud({ mode = 'full', supabaseFirst = false, skipCollections = null } = {}) {
+  if (!supabaseFirst) {
+    return await restoreFirebaseFromCloud({ mode, skipCollections });
+  }
+
+  let supaRes = null;
+  try {
+    const supa = require('./services/supabaseSync.js');
+    if (supa.isSupabasePrimaryHealthy()) {
+      console.log('[Restore] Supabase-primary pass (restaurant_tables + 31d window + menu/daily)');
+      supaRes = await supa.restoreSupabaseWindow({
+        profileName: ACTIVE_APP_PROFILE,
+        mode: mode === 'today' ? 'today' : '31d'
+      });
+    } else {
+      console.log('[Restore] Supabase not healthy → Firebase-only restore');
+    }
+  } catch (e) {
+    console.warn('[Restore] Supabase pass unavailable → Firebase:', e?.message || e);
+  }
+
+  if (!supaRes || !supaRes.success) {
+    // Supabase unavailable/failed → full Firebase restore (unchanged behavior).
+    return await restoreFirebaseFromCloud({ mode });
+  }
+
+  // Supabase covered its scope; Firebase restores only the remainder.
   const profile = getActiveProfileConfig();
-  const alwaysFull = profile.alwaysFull;
-  const recentOnly = profile.recentOnly;
-  const skipRestoreMarkers = profile.skipRestoreMarkers || ['deletions', 'delete_history', 'supplier_due_history'];
+  const supabaseScope = [
+    'restaurant_tables',
+    'menu_items',
+    'menu_categories',
+    'daily_submit',
+    'daily_summary',
+    ...(profile.recentOnly || [])
+  ];
+  const fbRes = await restoreFirebaseFromCloud({ mode, skipCollections: supabaseScope });
+
+  const failedCollections = [...(supaRes.failedCollections || []), ...(fbRes.failedCollections || [])];
+  return {
+    success: failedCollections.length === 0,
+    failedCollections,
+    rowsWritten: (supaRes.rowsWritten || 0) + (fbRes.rowsWritten || 0)
+  };
+}
+
+async function restoreFirebaseFromCloud({ mode = 'full', skipCollections = null } = {}) {
+  const skip = new Set(skipCollections || []);
+  console.log(`[Firebase-Read] restoreFirebaseFromCloud triggered (mode=${mode}, skip=${[...skip].join('|') || 'none'})`);
+  const profile = getActiveProfileConfig();
+  const alwaysFull = (profile.alwaysFull || []).filter((t) => !skip.has(t));
+  const recentOnly = (profile.recentOnly || []).filter((t) => !skip.has(t));
+  const skipRestoreMarkers = (profile.skipRestoreMarkers || ['deletions', 'delete_history', 'supplier_due_history']).filter((t) => !skip.has(t));
   const MASTER_TABLES = ['users', 'menu_categories', 'menu_items', 'restaurant_tables', 'app_config'];
 
   console.log(`[Restore] Starting Smart History Restoration (mode=${mode}) for profile '${profile.name}'...`);
@@ -2958,6 +3018,109 @@ async function fetchSingleDocFromFirestore(collectionName, docId) {
   return null;
 }
 
+/**
+ * Scoped local wipe of TODAY's rows in the day-scoped tables (+ their queued
+ * writes). Shared by BOTH same-day-resync paths so the manual "force-fix today"
+ * button has identical semantics on Supabase and Firebase. Only ever called by the
+ * manual resync — the periodic Supabase polls (2s/5s/15s/45s) NEVER wipe; they merge.
+ */
+function wipeLocalTodayScoped(todayStr) {
+  const localOrders = db.getAllSync("SELECT id FROM orders WHERE date(created_at, 'localtime') = ?", [todayStr]);
+  const localOrderIds = localOrders.map(o => String(o.id));
+
+  db.runSync("DELETE FROM order_items WHERE date(created_at, 'localtime') = ?", [todayStr]);
+  if (localOrderIds.length > 0) {
+    const placeholders = localOrderIds.map(() => '?').join(',');
+    db.runSync(`DELETE FROM order_items WHERE order_id IN (${placeholders})`, localOrderIds);
+    db.runSync(`DELETE FROM payments WHERE order_id IN (${placeholders})`, localOrderIds);
+    db.runSync(`DELETE FROM due_payments WHERE order_id IN (${placeholders})`, localOrderIds);
+  }
+  db.runSync("DELETE FROM payments WHERE date(created_at, 'localtime') = ?", [todayStr]);
+  db.runSync("DELETE FROM due_payments WHERE date(created_at, 'localtime') = ?", [todayStr]);
+  db.runSync("DELETE FROM orders WHERE date(created_at, 'localtime') = ?", [todayStr]);
+  db.runSync("DELETE FROM expenses WHERE date(created_at, 'localtime') = ? OR id LIKE ?", [todayStr, `exp_${todayStr}_%`]);
+  db.runSync("DELETE FROM deliveries WHERE date(created_at, 'localtime') = ? OR date(completed_at, 'localtime') = ? OR id LIKE ?", [todayStr, todayStr, `D-${todayStr}-%`]);
+  db.runSync("DELETE FROM daily_submit WHERE date = ? OR id = ?", [todayStr, todayStr]);
+  db.runSync("DELETE FROM daily_summary WHERE date = ? OR id = ?", [todayStr, todayStr]);
+  db.runSync("DELETE FROM eja_history WHERE date = ? OR date(created_at, 'localtime') = ? OR id = ?", [todayStr, todayStr, `eja_${todayStr}`]);
+  db.runSync("DELETE FROM supplier_due_history WHERE date = ? OR date(created_at, 'localtime') = ?", [todayStr, todayStr]);
+  db.runSync("DELETE FROM supplier_payment_ledger WHERE payment_date = ? OR id = ?", [todayStr, `spl_${todayStr}`]);
+
+  // Clean sync_queue for today's wiped records so stale local pending writes don't overwrite cloud data
+  db.runSync(
+    "DELETE FROM sync_queue WHERE (table_name IN ('orders', 'order_items', 'payments', 'expenses', 'deliveries', 'due_payments', 'daily_submit', 'daily_summary', 'eja_history', 'supplier_payment_ledger')) AND (record_id LIKE ? OR record_id LIKE ?)",
+    [`%${todayStr}%`, `%${todayStr.replace(/-/g, '')}%`]
+  );
+  if (localOrderIds.length > 0) {
+    const placeholders = localOrderIds.map(() => '?').join(',');
+    db.runSync(`DELETE FROM sync_queue WHERE table_name IN ('orders', 'order_items', 'payments', 'due_payments') AND record_id IN (${placeholders})`, localOrderIds);
+  }
+  return localOrderIds.length;
+}
+
+/**
+ * Supabase-primary Same-Day Resync: WIPE today's scoped local rows (same shared
+ * helper as the Firebase path — this is a "force-fix today" tool, not a merge),
+ * reset the Supabase cursors for the day-scoped tables, then re-pull today's window
+ * from Supabase. Returns null when Supabase is not healthy, so the caller falls back
+ * to the unchanged Firebase implementation.
+ */
+async function resyncSameDayFromSupabase(todayStr, status, supa) {
+  if (!supa || typeof supa.isSupabasePrimaryHealthy !== 'function') return null;
+  if (!supa.isSupabasePrimaryHealthy()) return null;
+
+  const dayScoped = [
+    'orders', 'order_items', 'payments', 'expenses', 'deliveries', 'due_payments',
+    'eja_history', 'supplier_due_history', 'daily_submit', 'daily_summary',
+    'supplier_payment_ledger', 'restaurant_tables'
+  ];
+  const sinceIso = new Date(new Date(`${todayStr}T00:00:00.000Z`).getTime() - 60000).toISOString();
+  for (const t of dayScoped) {
+    try {
+      db.runSync("INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)", [`last_sync_time_supabase_${t}`, sinceIso]);
+    } catch (_) {}
+  }
+
+  // Wipe today's scoped local rows first (the button's purpose: clear stale/junk
+  // local data), then re-populate from Supabase below.
+  try {
+    wipeLocalTodayScoped(todayStr);
+    console.log(`[SameDay Resync] Local data for ${todayStr} cleared (Supabase path).`);
+  } catch (wipeErr) {
+    return { success: false, error: `লোকাল ডাটা ক্লিয়ার ব্যর্থ: ${wipeErr.message}` };
+  }
+
+  console.log(`[SameDay Resync] Supabase-primary path: re-pulling today's window since ${sinceIso}`);
+  await supa.syncSupabaseTables();
+  await supa.syncSupabaseHighFrequencyCollections();
+  await supa.syncSupabaseLowFrequencyCollections();
+  await supa.syncSupabaseMenu();
+  await supa.syncSupabaseDeletions();
+
+  if (!supa.isSupabasePrimaryHealthy()) {
+    return { success: false, error: 'Supabase sync failed during resync' };
+  }
+
+  try {
+    calculateAndSaveDailySummary(todayStr);
+    const newCount = status.count + 1;
+    const nowIso = new Date().toISOString();
+    db.runSync(
+      "INSERT OR REPLACE INTO app_config (id, key, value, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, 0)",
+      [`same_day_resync_count_${todayStr}`, `same_day_resync_count_${todayStr}`, String(newCount), nowIso, nowIso]
+    );
+    db.runSync(
+      "INSERT OR REPLACE INTO app_config (id, key, value, created_at, updated_at, is_synced) VALUES (?, 'same_day_resync_last_at', ?, ?, ?, 0)",
+      ['same_day_resync_last_at', nowIso, nowIso, nowIso]
+    );
+    const remaining = Math.max(0, 2 - newCount);
+    console.log(`[SameDay Resync] Supabase path completed for ${todayStr}. Remaining: ${remaining}`);
+    return { success: true, count: null, remaining, businessDate: todayStr, source: 'supabase' };
+  } catch (err) {
+    return { success: false, error: `ডাটাবেজ আপডেটে সমস্যা: ${err.message}` };
+  }
+}
+
 export async function resyncSameDayFromCloud(targetDateStr = null) {
   console.log('[Firebase-Read] resyncSameDayFromCloud triggered');
   const todayStr = targetDateStr || getBusinessDate();
@@ -2974,6 +3137,21 @@ export async function resyncSameDayFromCloud(targetDateStr = null) {
       maxLimit: status.maxLimit,
       message: 'আজকের জন্য রিসিন্কের সীমা শেষ (সর্বোচ্চ ২ বার)।'
     };
+  }
+
+  // 1b. Supabase-primary path (Phase 3 pattern). On any failure we fall through to
+  // the unchanged Firebase logic below.
+  try {
+    const supa = require('./services/supabaseSync.js');
+    if (supa.isSupabasePrimaryHealthy()) {
+      const supaRes = await resyncSameDayFromSupabase(todayStr, status, supa);
+      if (supaRes && supaRes.success) return supaRes;
+      console.warn('[SameDay Resync] Supabase path failed → Firebase fallback:', supaRes && supaRes.error);
+    } else {
+      console.log('[SameDay Resync] Supabase not healthy → Firebase path');
+    }
+  } catch (supaErr) {
+    console.warn('[SameDay Resync] Supabase path unavailable → Firebase fallback:', supaErr?.message || supaErr);
   }
 
   // 2. SAFETY FIRST: Fetch raw records from Firebase Firestore BEFORE touching local SQLite data
@@ -3117,39 +3295,10 @@ export async function resyncSameDayFromCloud(targetDateStr = null) {
 
   console.log(`[SameDay Resync] Cloud download complete. Orders: ${todayOrderDocs.length}, Items: ${todayOrderItemDocs.length}, Payments: ${todayPaymentDocs.length}, Expenses: ${todayExpenseDocs.length}, Deliveries: ${todayDeliveryDocs.length}, Submits: ${todayDsDocs.length}`);
 
-  // 4. ATOMIC LOCAL WIPE OF TODAY'S DATA IN SQLITE
+  // 4. ATOMIC LOCAL WIPE OF TODAY'S DATA IN SQLITE (shared helper — the
+  //    Supabase-primary path performs the exact same wipe).
   try {
-    const localOrders = db.getAllSync("SELECT id FROM orders WHERE date(created_at, 'localtime') = ?", [todayStr]);
-    const localOrderIds = localOrders.map(o => String(o.id));
-
-    db.runSync("DELETE FROM order_items WHERE date(created_at, 'localtime') = ?", [todayStr]);
-    if (localOrderIds.length > 0) {
-      const placeholders = localOrderIds.map(() => '?').join(',');
-      db.runSync(`DELETE FROM order_items WHERE order_id IN (${placeholders})`, localOrderIds);
-      db.runSync(`DELETE FROM payments WHERE order_id IN (${placeholders})`, localOrderIds);
-      db.runSync(`DELETE FROM due_payments WHERE order_id IN (${placeholders})`, localOrderIds);
-    }
-    db.runSync("DELETE FROM payments WHERE date(created_at, 'localtime') = ?", [todayStr]);
-    db.runSync("DELETE FROM due_payments WHERE date(created_at, 'localtime') = ?", [todayStr]);
-    db.runSync("DELETE FROM orders WHERE date(created_at, 'localtime') = ?", [todayStr]);
-    db.runSync("DELETE FROM expenses WHERE date(created_at, 'localtime') = ? OR id LIKE ?", [todayStr, `exp_${todayStr}_%`]);
-    db.runSync("DELETE FROM deliveries WHERE date(created_at, 'localtime') = ? OR date(completed_at, 'localtime') = ? OR id LIKE ?", [todayStr, todayStr, `D-${todayStr}-%`]);
-    db.runSync("DELETE FROM daily_submit WHERE date = ? OR id = ?", [todayStr, todayStr]);
-    db.runSync("DELETE FROM daily_summary WHERE date = ? OR id = ?", [todayStr, todayStr]);
-    db.runSync("DELETE FROM eja_history WHERE date = ? OR date(created_at, 'localtime') = ? OR id = ?", [todayStr, todayStr, `eja_${todayStr}`]);
-    db.runSync("DELETE FROM supplier_due_history WHERE date = ? OR date(created_at, 'localtime') = ?", [todayStr, todayStr]);
-    db.runSync("DELETE FROM supplier_payment_ledger WHERE payment_date = ? OR id = ?", [todayStr, `spl_${todayStr}`]);
-
-    // Clean sync_queue for today's wiped records so stale local pending writes don't overwrite cloud data
-    db.runSync(
-      "DELETE FROM sync_queue WHERE (table_name IN ('orders', 'order_items', 'payments', 'expenses', 'deliveries', 'due_payments', 'daily_submit', 'daily_summary', 'eja_history', 'supplier_payment_ledger')) AND (record_id LIKE ? OR record_id LIKE ?)",
-      [`%${todayStr}%`, `%${todayStr.replace(/-/g, '')}%`]
-    );
-    if (localOrderIds.length > 0) {
-      const placeholders = localOrderIds.map(() => '?').join(',');
-      db.runSync(`DELETE FROM sync_queue WHERE table_name IN ('orders', 'order_items', 'payments', 'due_payments') AND record_id IN (${placeholders})`, localOrderIds);
-    }
-
+    wipeLocalTodayScoped(todayStr);
     console.log(`[SameDay Resync] Local data for ${todayStr} cleared.`);
 
     // 5. INSERT FETCHED CLOUD DOCUMENTS INTO SQLITE

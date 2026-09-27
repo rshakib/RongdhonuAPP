@@ -2316,17 +2316,18 @@ export default function App() {
               const res = await resyncSameDayFromCloud();
               if (res.success) {
                 refreshData();
+                const srcLabel = res.source === 'supabase' ? 'Supabase' : 'Firebase';
                 logActivity({
                   actionType: ACTION_TYPES.SYNC,
                   actionTitle: 'আজকের ডেটা রিসিন্ক',
-                  description: `ক্লাউড থেকে আজকের ${res.count} টি রেকর্ড পুনরায় ডাউনলোড ও সিন্ক করা হয়েছে (অবশিষ্ট সুযোগ: ${res.remaining} বার)`,
-                  metadata: { count: res.count, remaining: res.remaining, date: res.businessDate },
+                  description: `ক্লাউড (${srcLabel}) থেকে আজকের ডেটা পুনরায় সিন্ক করা হয়েছে${res.count != null ? ` (${res.count} টি রেকর্ড)` : ''} (অবশিষ্ট সুযোগ: ${res.remaining} বার)`,
+                  metadata: { count: res.count, remaining: res.remaining, date: res.businessDate, source: res.source || 'firebase' },
                   userRole: userRole,
                   userName: userDisplayName
                 }).catch(() => {});
                 Alert.alert(
                   "সফল",
-                  `Cloud থেকে আজকের ডেটা সফলভাবে রিসিন্ক করা হয়েছে।\nমোট রিস্টোর: ${res.count} টি রেকর্ড।\nআজকের অবশিষ্ট সুযোগ: ${res.remaining} বার।`
+                  `Cloud (${srcLabel}) থেকে আজকের ডেটা সফলভাবে রিসিন্ক করা হয়েছে।${res.count != null ? `\nমোট রিস্টোর: ${res.count} টি রেকর্ড।` : ''}\nআজকের অবশিষ্ট সুযোগ: ${res.remaining} বার।`
                 );
               } else {
                 Alert.alert("ব্যর্থ", res.error || res.message || "ডাটা রিসিন্ক করতে সমস্যা হয়েছে। দয়া করে নেটওয়ার্ক কানেকশন চেক করুন।");
@@ -2352,7 +2353,7 @@ export default function App() {
           onPress: async () => {
             showToast("🔄 রিস্টোর করা হচ্ছে...", "sync");
             try {
-              const restoreResult = await restoreDatabaseFromCloud();
+              const restoreResult = await restoreDatabaseFromCloud({ mode: 'full', supabaseFirst: true });
               if (restoreResult && restoreResult.success) {
                 refreshData();
                 Alert.alert("সফল", "Cloud থেকে ডাটা সফলভাবে রিস্টোর করা হয়েছে।");
