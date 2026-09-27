@@ -179,8 +179,8 @@ export default function AdminSideMenu({
               iconName="cloud"
               iconColor="#22C55E"
               iconBg="rgba(34, 197, 94, 0.15)"
-              title="Sync Health"
-              subtitle="Firebase vs Supabase last push"
+              title="ডেটা সেভের অবস্থা"
+              subtitle="মূল সার্ভার ও ব্যাকআপ ঠিক আছে কি না"
               onPress={() => handleAction(onNavigateToSyncHealth)}
             />
 
