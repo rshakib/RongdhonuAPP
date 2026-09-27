@@ -1987,12 +1987,30 @@ export async function processSyncQueue(singleRecordId = null, singleTableName = 
 }
 
 export async function syncRecordImmediately(tableName, recordId) {
-  try {
-    const result = await processSyncQueue(recordId, tableName);
-    return result.successfulWrites > 0;
-  } catch (e) {
-    return false;
-  }
+  // PUSH-ON-WRITE: send this record to BOTH clouds at once. Previously only
+  // Firebase was pushed here, so the Supabase copy (the primary read source)
+  // had to wait for its own 5s daemon — the "push is late" symptom.
+  const pushFirebase = async () => {
+    try {
+      const result = await processSyncQueue(recordId, tableName);
+      return result.successfulWrites > 0;
+    } catch (e) {
+      return false;
+    }
+  };
+
+  const pushSupabase = async () => {
+    try {
+      const { syncSupabaseRecordImmediately } = require("./services/supabaseSyncQueue.js");
+      return await syncSupabaseRecordImmediately(tableName, recordId);
+    } catch (supaErr) {
+      console.warn("[DB] Supabase immediate push skipped (isolated):", supaErr?.message || supaErr);
+      return false;
+    }
+  };
+
+  const [firebaseOk, supabaseOk] = await Promise.all([pushFirebase(), pushSupabase()]);
+  return firebaseOk || supabaseOk;
 }
 
 export function isSyncServiceRunning() {
@@ -4990,6 +5008,15 @@ export function addCompletedOrder(orderRecord) {
     }
 
     calculateAndSaveDailySummary(todayStr);
+
+    // PUSH-ON-WRITE: checkout had NO immediate push (it waited for the 5s daemon).
+    // Flush the just-queued rows (order + items + payments + delivery) on both clouds now.
+    processSyncQueue().catch(() => {});
+    try {
+      const { processSupabaseSyncQueue } = require("./services/supabaseSyncQueue.js");
+      processSupabaseSyncQueue().catch(() => {});
+    } catch (_) {}
+
     return true;
   } catch (err) {
     console.error("Add completed order error:", err);

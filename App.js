@@ -739,10 +739,10 @@ export default function App() {
       syncSupabaseMenu
     } = require('./services/supabaseSync.js');
 
-    registerSyncTimer('supabase-tables-poll', 2000, 'syncSupabaseTables');
+    registerSyncTimer('supabase-tables-poll', 1000, 'syncSupabaseTables');
     const supabaseTablesPoll = setInterval(async () => {
       await runAutoPull('supabase-tables-poll', syncSupabaseTables, refreshData);
-    }, 2000);
+    }, 1000);
 
     registerSyncTimer('supabase-high-frequency-poll', 5000, 'syncSupabaseHighFrequencyCollections');
     const supabaseHighPoll = setInterval(async () => {
@@ -759,10 +759,10 @@ export default function App() {
       await runAutoPull('supabase-low-frequency-poll', syncSupabaseLowFrequencyCollections, refreshData);
     }, 45000);
 
-    registerSyncTimer('supabase-menu-poll', 45000, 'syncSupabaseMenu');
+    registerSyncTimer('supabase-menu-poll', 60000, 'syncSupabaseMenu');
     const supabaseMenuPoll = setInterval(async () => {
       await runAutoPull('supabase-menu-poll', syncSupabaseMenu, refreshData);
-    }, 45000);
+    }, 60000);
 
     return () => {
       clearInterval(supabaseTablesPoll);

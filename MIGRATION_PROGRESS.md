@@ -160,6 +160,7 @@ Implemented:
 - `[Firebase-Read] login-high-frequency-pull / login-tables-pull / login-low-frequency-pull / login-deletions-pull / startup-low-frequency-pull SKIPPED — Supabase route (reason=healthy)`
 - **Zero `[Pull Sync]` lines** in the 90s+ window (the Firebase-only pull marker) ⇒ **no Firestore collection reads**.
 - Meanwhile the Supabase polls ran continuously (`supabase-tables-poll` 2s, `supabase-high-frequency-poll` 5s, `supabase-deletions-poll` 15s, `supabase-low-frequency-poll` 45s, `supabase-menu-poll` 45s) and `queue-push-daemon` drained **0 writes** each cycle.
+  - *(intervals as measured at this session; later retuned: `supabase-tables-poll` 2s → **1s** for table-cart latency, `supabase-menu-poll` 45s → **60s**)*
 
 ⇒ **Firebase reads = ≈0/hour when Supabase is healthy — confirmed empirically (live logs), not theoretically.** This **supersedes** the earlier unverified "≈0" statement, which was wrong for the pre-gating build.
 
