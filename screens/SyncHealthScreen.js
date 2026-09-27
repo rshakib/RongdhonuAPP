@@ -43,19 +43,44 @@ function lagMin(a, b) {
   return Number.isFinite(d) ? Math.round(d / 60000) : null;
 }
 
-/** LOCAL state — per-cloud queues + per-table dual cursors. No cloud call. */
+/** LOCAL state — 3 aggregate queries total (was ~100 → this was the lag). */
 function readLocalState() {
-  const queues = [
-    { key: 'sb', name: 'মূল সার্ভার (Supabase)', pending: safeQ("SELECT COUNT(*) c FROM sync_queue_supabase WHERE status='PENDING'")[0]?.c || 0, failed: safeQ("SELECT COUNT(*) c FROM sync_queue_supabase WHERE status='FAILED'")[0]?.c || 0 },
-    { key: 'fb', name: 'ব্যাকআপ (Firebase)', pending: safeQ("SELECT COUNT(*) c FROM sync_queue WHERE status='PENDING'")[0]?.c || 0, failed: safeQ("SELECT COUNT(*) c FROM sync_queue WHERE status='FAILED'")[0]?.c || 0 }
-  ];
+  // 1) queues, grouped by table+status
+  const sbQ = safeQ("SELECT table_name, status, COUNT(*) c FROM sync_queue_supabase GROUP BY table_name, status");
+  const fbQ = safeQ("SELECT table_name, status, COUNT(*) c FROM sync_queue GROUP BY table_name, status");
+
+  const sbPerTable = {}; const fbPerTable = {};
+  let sbPending = 0, sbFailed = 0, fbPending = 0, fbFailed = 0;
+  for (const r of sbQ) {
+    const n = Number(r.c) || 0;
+    sbPerTable[r.table_name] = (sbPerTable[r.table_name] || 0) + n;
+    if (r.status === 'FAILED') sbFailed += n; else sbPending += n;
+  }
+  for (const r of fbQ) {
+    const n = Number(r.c) || 0;
+    fbPerTable[r.table_name] = (fbPerTable[r.table_name] || 0) + n;
+    if (r.status === 'FAILED') fbFailed += n; else fbPending += n;
+  }
+
+  // 2) every sync cursor in ONE query
+  const cursors = {};
+  for (const row of safeQ("SELECT key, value FROM app_config WHERE key LIKE 'last_sync_time%'")) {
+    if (row && row.key) cursors[row.key] = row.value;
+  }
+
   const tables = DUAL_TABLES.map((t) => ({
     table: t,
-    sbCursor: safeQ(`SELECT value FROM app_config WHERE key='last_sync_time_supabase_${t}'`)[0]?.value || null,
-    fbCursor: safeQ(`SELECT value FROM app_config WHERE key='last_sync_time_${t}'`)[0]?.value || null,
-    sbPending: safeQ(`SELECT COUNT(*) c FROM sync_queue_supabase WHERE table_name='${t}' AND status IN ('PENDING','FAILED')`)[0]?.c || 0,
-    fbPending: safeQ(`SELECT COUNT(*) c FROM sync_queue WHERE table_name='${t}' AND status IN ('PENDING','FAILED')`)[0]?.c || 0
+    sbCursor: cursors[`last_sync_time_supabase_${t}`] || null,
+    fbCursor: cursors[`last_sync_time_${t}`] || null,
+    sbPending: sbPerTable[t] || 0,
+    fbPending: fbPerTable[t] || 0
   }));
+
+  const queues = [
+    { key: 'sb', name: 'মূল সার্ভার (Supabase)', pending: sbPending, failed: sbFailed },
+    { key: 'fb', name: 'ব্যাকআপ (Firebase)', pending: fbPending, failed: fbFailed }
+  ];
+
   return { queues, tables };
 }
 
@@ -178,14 +203,13 @@ export default function SyncHealthScreen({ onBack }) {
             ) : dualRows.length === 0 ? (
               <Text style={styles.helpText}>কোনো তথ্য নেই।</Text>
             ) : (
-              dualRows.map((r) => (
-                <View key={r.table} style={styles.rowLine}>
+              dualRows.map((r, i) => (
+                <View key={r.table} style={[styles.rowLine, i % 2 === 1 && styles.rowAlt]}>
                   <Text style={styles.tableName} numberOfLines={1}>{r.table}</Text>
-                  <Text style={styles.flags}>
-                    <Text style={r.sbOk ? styles.okText : styles.badText}>SB {r.sbOk ? '✅' : '❌'}</Text>
-                    <Text>  </Text>
-                    <Text style={r.fbOk ? styles.okText : styles.badText}>FB {r.fbOk ? '✅' : '❌'}</Text>
-                  </Text>
+                  <View style={styles.flags}>
+                    <Text style={[styles.badge, r.sbOk ? styles.badgeOk : styles.badgeBad]}>SB {r.sbOk ? '✅' : '❌'}</Text>
+                    <Text style={[styles.badge, r.fbOk ? styles.badgeOk : styles.badgeBad]}>FB {r.fbOk ? '✅' : '❌'}</Text>
+                  </View>
                   <Text style={[styles.verdict, r.tone === 'ok' ? styles.okText : (r.tone === 'bad' ? styles.badText : (r.tone === 'warn' ? styles.warnText : styles.mutedText))]}>
                     {r.label}
                   </Text>
@@ -277,23 +301,27 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   content: { padding: 16 },
 
-  heroCard: { borderRadius: 20, padding: 20, alignItems: 'center', borderWidth: 1, marginBottom: 16 },
+  heroCard: { borderRadius: 22, padding: 22, alignItems: 'center', borderWidth: 1, marginBottom: 16 },
   heroOk: { backgroundColor: 'rgba(16, 185, 129, 0.12)', borderColor: 'rgba(16, 185, 129, 0.5)' },
   heroWarn: { backgroundColor: 'rgba(245, 158, 11, 0.12)', borderColor: 'rgba(245, 158, 11, 0.5)' },
   heroBad: { backgroundColor: 'rgba(239, 68, 68, 0.12)', borderColor: 'rgba(239, 68, 68, 0.5)' },
-  heroIcon: { fontSize: 34, marginBottom: 6 },
-  heroTitle: { color: '#FFF', fontSize: 17, fontWeight: 'bold', textAlign: 'center' },
-  heroSub: { color: '#C9C9C9', fontSize: 12.5, textAlign: 'center', lineHeight: 19, marginTop: 6 },
-  heroTime: { color: '#777', fontSize: 11, marginTop: 10 },
+  heroIcon: { fontSize: 38, marginBottom: 6 },
+  heroTitle: { color: '#FFF', fontSize: 18, fontWeight: '800', textAlign: 'center', letterSpacing: 0.2 },
+  heroSub: { color: '#C9C9C9', fontSize: 12.5, textAlign: 'center', lineHeight: 19, marginTop: 8, paddingHorizontal: 4 },
+  heroTime: { color: '#777', fontSize: 10.5, marginTop: 12 },
 
-  card: { backgroundColor: '#111', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#222', marginBottom: 14 },
-  cardTitle: { color: '#FFB703', fontSize: 15, fontWeight: 'bold', marginBottom: 10 },
+  card: { backgroundColor: '#111', borderRadius: 18, padding: 16, borderWidth: 1, borderColor: '#222', marginBottom: 14 },
+  cardTitle: { color: '#FFB703', fontSize: 15, fontWeight: '800', marginBottom: 10 },
   legend: { color: '#888', fontSize: 11.5, lineHeight: 18, marginBottom: 10 },
 
-  rowLine: { flexDirection: 'row', alignItems: 'center', paddingVertical: 7, borderTopWidth: 0.5, borderColor: '#1C1C1C' },
-  tableName: { color: '#FFF', fontSize: 12.5, fontWeight: 'bold', flex: 1.2, paddingRight: 6 },
-  flags: { fontSize: 11, marginRight: 8 },
-  verdict: { fontSize: 11, fontWeight: 'bold', flex: 1.4, textAlign: 'right' },
+  rowLine: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 8, borderRadius: 10, marginBottom: 2 },
+  rowAlt: { backgroundColor: '#161616' },
+  tableName: { color: '#FFF', fontSize: 12.5, fontWeight: '700', flex: 1.25, paddingRight: 6 },
+  flags: { flexDirection: 'row', marginRight: 8 },
+  badge: { fontSize: 10.5, fontWeight: '800', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, overflow: 'hidden', marginRight: 4 },
+  badgeOk: { backgroundColor: 'rgba(16, 185, 129, 0.16)', color: '#34D399' },
+  badgeBad: { backgroundColor: 'rgba(239, 68, 68, 0.16)', color: '#F87171' },
+  verdict: { fontSize: 11, fontWeight: '700', flex: 1.3, textAlign: 'right' },
 
   okText: { color: '#10B981' },
   warnText: { color: '#F59E0B' },

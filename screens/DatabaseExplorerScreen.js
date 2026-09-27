@@ -99,12 +99,29 @@ export default function DatabaseExplorerScreen({ onBack, onSelectTable }) {
               autoCapitalize="none"
               autoCorrect={false}
             />
+
+            <View style={styles.chipRow}>
+              <TouchableOpacity
+                style={styles.chip}
+                onPress={() => setWriteSql("DELETE FROM deletions WHERE table_name='daily_submit' AND record_id='2026-09-27'")}
+              >
+                <Text style={styles.chipText}>বাদ পড়া “delete note” মুছুন</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.chip}
+                onPress={() => setWriteSql("DELETE FROM app_config WHERE key='last_sync_time_supabase_daily_submit'")}
+              >
+                <Text style={styles.chipText}>cursor রিসেট</Text>
+              </TouchableOpacity>
+            </View>
+
             <TouchableOpacity style={styles.runBtn} onPress={runWrite}>
-              <Text style={styles.runBtnText}>▶ Run (DELETE / UPDATE / INSERT)</Text>
+              <Text style={styles.runBtnText}>▶ চালান (DELETE / UPDATE / INSERT)</Text>
             </TouchableOpacity>
             {lastResult ? <Text style={styles.resultText}>{lastResult}</Text> : null}
             <Text style={styles.hintText}>
               শুধু DELETE / UPDATE / INSERT চলবে (DROP / ALTER বন্ধ)। একবারে একটি statement।
+              উপরের চিপে চাপলে উদাহরণ বসে যাবে — তারপর তারিখ/id নিজের মতো বদলে নিন।
             </Text>
           </View>
 
@@ -115,11 +132,17 @@ export default function DatabaseExplorerScreen({ onBack, onSelectTable }) {
               style={styles.card}
               onPress={() => onSelectTable(table.name)}
             >
-              <View>
-                <Text style={styles.cardTitle}>{table.name}</Text>
-                <Text style={styles.cardDesc}>{table.count} rows stored</Text>
+              <View style={styles.rowLeft}>
+                <Text style={styles.rowIcon}>🗂</Text>
+                <View>
+                  <Text style={styles.cardTitle}>{table.name}</Text>
+                  <Text style={styles.cardDesc}>ট্যাপ করে ডেটা দেখুন</Text>
+                </View>
               </View>
-              <Text style={styles.arrow}>❯</Text>
+              <View style={styles.rowRight}>
+                <Text style={styles.countPill}>{table.count}</Text>
+                <Text style={styles.arrow}>❯</Text>
+              </View>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -139,13 +162,20 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   content: { padding: 16 },
   sectionTitle: { color: '#888', fontSize: 13, fontWeight: 'bold', marginBottom: 16, textTransform: 'uppercase' },
-  card: { backgroundColor: '#111', borderRadius: 16, padding: 20, borderWidth: 1, borderColor: '#222', marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  cardTitle: { color: '#FFF', fontSize: 15, fontWeight: 'bold' },
-  cardDesc: { color: '#888', fontSize: 12, marginTop: 4 },
-  arrow: { color: '#FFB703', fontSize: 16, fontWeight: 'bold' },
-  writeCard: { backgroundColor: '#111', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#222', marginBottom: 20 },
-  sqlInput: { backgroundColor: '#0A0A0A', color: '#FFF', borderWidth: 1, borderColor: '#333', borderRadius: 10, padding: 12, minHeight: 76, fontSize: 12, textAlignVertical: 'top' },
-  runBtn: { backgroundColor: 'rgba(245, 158, 11, 0.18)', borderRadius: 10, paddingVertical: 10, alignItems: 'center', marginTop: 10, borderWidth: 1, borderColor: '#F59E0B' },
+  card: { backgroundColor: '#111', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#222', marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  rowLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  rowIcon: { fontSize: 16, marginRight: 12, opacity: 0.8 },
+  rowRight: { flexDirection: 'row', alignItems: 'center' },
+  countPill: { color: '#FFB703', fontSize: 11.5, fontWeight: 'bold', backgroundColor: 'rgba(255, 183, 3, 0.12)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, overflow: 'hidden', marginRight: 10 },
+  cardTitle: { color: '#FFF', fontSize: 14.5, fontWeight: 'bold' },
+  cardDesc: { color: '#777', fontSize: 11.5, marginTop: 3 },
+  arrow: { color: '#FFB703', fontSize: 16, fontWeight: 'bold', opacity: 0.85 },
+  writeCard: { backgroundColor: '#111', borderRadius: 18, padding: 16, borderWidth: 1, borderColor: '#222', marginBottom: 20 },
+  sqlInput: { backgroundColor: '#0A0A0A', color: '#FFF', borderWidth: 1, borderColor: '#333', borderRadius: 12, padding: 12, minHeight: 76, fontSize: 12, textAlignVertical: 'top' },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 10 },
+  chip: { backgroundColor: '#1A1A1A', borderWidth: 1, borderColor: '#2A2A2A', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6, marginRight: 8, marginBottom: 8 },
+  chipText: { color: '#C9C9C9', fontSize: 11 },
+  runBtn: { backgroundColor: 'rgba(245, 158, 11, 0.18)', borderRadius: 12, paddingVertical: 12, alignItems: 'center', marginTop: 4, borderWidth: 1, borderColor: '#F59E0B' },
   runBtnText: { color: '#F59E0B', fontWeight: 'bold', fontSize: 13 },
   resultText: { color: '#10B981', fontSize: 12, marginTop: 10 },
   hintText: { color: '#555', fontSize: 11, marginTop: 8, lineHeight: 16 }
