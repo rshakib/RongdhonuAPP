@@ -6,6 +6,22 @@
 
 ---
 
+## 0. ▶ RESUME HERE — NEXT ACTION (read this first after any session reset)
+
+**We are BLOCKED on a manual step, then Phase 6.** The agent must NOT start Phase 6 until the owner confirms the step below.
+
+1. **Owner runs `supabase_cron.sql`** in the Supabase SQL Editor (schedules the Phase 5 retention job). Server-side only — no app code involved.
+2. **Owner verifies:**
+   ```sql
+   SELECT jobid, jobname, schedule, active FROM cron.job WHERE jobname = 'rongdhonu_retention_31d';
+   ```
+   Expect **exactly one** row: `schedule = '30 21 * * *'`, `active = true`.
+3. **Owner tells the agent it's confirmed → agent starts PHASE 6** (Version control migration, `IMPLEMENTATION_PLAN.md` §6).
+
+> Reminder recorded 2026-09-27 at the owner's request (owner was shutting the session down and resuming later). Phase 5 status: 🟡 **SQL ready — pending manual run**. Phase 6: **NOT started**.
+
+---
+
 ## 1. Overall Status (per IMPLEMENTATION_PLAN.md's 7 phases)
 
 | Phase | Name | Status |
@@ -134,12 +150,7 @@ Delivered:
 - ✅ **Supabase project RESOLVED (2026-09-27).** `.env` + `eas.json` (×4) both carry `gdqnfwccohxgaywzoysc` (URL host == anon-key `ref`, verified). **Live check:** project reachable; **all 30 tables present**; `app_version_policy` seeded (`1.0.5`). Only remaining: the parent **shell export** still holds the old `zdruassdewwjbexximkj` — restart the terminal / Command Code to clear it (a tool subshell cannot mutate the parent env).
 - _Stale old-ref leftovers (not config, harmless):_ `.expo/dev/logs/*` (regenerated on next `expo start`) and `.commandcode/settings.json` (tooling permission cache).
 - ✅ **`example.env` is a template and must keep PLACEHOLDERS only** (owner decision) — do NOT put the real Supabase URL/anon key there. Real values live in `.env` + `eas.json` only.
-- **NOW (Phase 4): run the `daily_submit_priority` column adds on Supabase.** Re-run `supabase_full_setup.sql` (idempotent), or just:
-  ```sql
-  ALTER TABLE public.daily_submit_priority ADD COLUMN IF NOT EXISTS device_id TEXT;
-  ALTER TABLE public.daily_submit_priority ADD COLUMN IF NOT EXISTS submitted_at TEXT;
-  ```
-  Until this runs, Supabase upserts of `daily_submit_priority` will fail (unknown column) and those queue rows sit `FAILED` with backoff — **no crash, Firebase sync unaffected**. Local SQLite migrates automatically on next app start.
+- ✅ **DONE (2026-09-27) — Phase 4 `daily_submit_priority` column adds on Supabase** (`device_id`, `submitted_at`). Owner ran them in the SQL Editor; Supabase upserts of `daily_submit_priority` now succeed.
 - **NOW (Phase 5): run `supabase_cron.sql` in the Supabase SQL Editor** to schedule the 31-day retention job. Then verify with:
   ```sql
   SELECT jobid, jobname, schedule, active, command FROM cron.job WHERE jobname = 'rongdhonu_retention_31d';
