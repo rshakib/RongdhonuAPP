@@ -2885,6 +2885,24 @@ const USERS_ROLE_FILTER = {
 export async function restoreUsersOnlyForProfile() {
   const profile = getActiveProfileConfig();
   const roles = USERS_ROLE_FILTER[profile.name] || ['admin'];
+
+  // 1) Supabase FIRST (primary read path). Avoids a hard dependency on Firebase reads:
+  //    with an exhausted Firebase quota and a healthy Supabase, login still works.
+  //    `users` is device-gated, so an ACTIVE device gets rows here; a PENDING device
+  //    gets 0 → we fall through to the Firebase pre-approval path below.
+  try {
+    const { restoreUsersFromSupabase } = require('./services/supabaseSync.js');
+    const supaRes = await restoreUsersFromSupabase(roles);
+    if (supaRes && supaRes.success && supaRes.count > 0) {
+      console.log(`[UsersBootstrap] Restored ${supaRes.count} users from SUPABASE (roles=${roles.join(',')}).`);
+      return supaRes;
+    }
+    console.log(`[UsersBootstrap] Supabase users unavailable (${supaRes && supaRes.error}) → Firebase fallback`);
+  } catch (supaErr) {
+    console.warn('[UsersBootstrap] Supabase users path failed → Firebase fallback:', supaErr?.message || supaErr);
+  }
+
+  // 2) Firebase fallback (unchanged behavior).
   const projectId = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID);
   const apiKey = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_API_KEY);
   if (!projectId || !apiKey || roles.length === 0) return { success: false, count: 0 };

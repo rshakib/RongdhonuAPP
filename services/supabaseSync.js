@@ -564,6 +564,67 @@ function stampSupabaseRestoreMarkers(db, tables) {
 }
 
 /**
+ * Users bootstrap (fresh install) — Supabase-primary.
+ *
+ * Reads `public.users` (role-filtered) and inserts into local SQLite with the same
+ * Schema-Guardian rules as the pull merge. `users` is DEVICE-GATED by RLS, so this
+ * succeeds for an ACTIVE device and returns 0 rows for a PENDING one — the caller
+ * then falls back to the Firebase pre-approval path.
+ *
+ * Returns { success, count, error? }.
+ */
+export async function restoreUsersFromSupabase(roles = []) {
+  const wanted = Array.isArray(roles) && roles.length ? roles : null;
+  if (!wanted) return { success: false, count: 0, error: 'no roles' };
+  if (!deps.isEnabled() || !deps.isConfigured()) return { success: false, count: 0, error: 'supabase disabled' };
+
+  let db = null;
+  try { db = deps.getDb(); } catch (_) { db = null; }
+  if (!db) return { success: false, count: 0, error: 'no db' };
+
+  try {
+    const client = deps.getClient();
+    if (!client) return { success: false, count: 0, error: 'no client' };
+
+    let q = client.from('users').select('*');
+    if (typeof q.in === 'function') q = q.in('role', wanted);
+    const { data, error } = await withTimeout(q, 8000, 'users bootstrap (supabase)');
+    if (error || !Array.isArray(data) || data.length === 0) {
+      return { success: false, count: 0, error: error?.message || 'no rows' };
+    }
+
+    let validColumns = [];
+    try { validColumns = db.getAllSync('PRAGMA table_info(users)').map((c) => c.name); }
+    catch (_) { return { success: false, count: 0, error: 'schema read failed' }; }
+
+    let inserted = 0;
+    for (const row of data) {
+      const filtered = {};
+      for (const key of Object.keys(row)) {
+        if (validColumns.includes(key) && key !== 'is_synced' && key !== 'is_synced_supabase') {
+          filtered[key] = row[key];
+        }
+      }
+      const keys = Object.keys(filtered);
+      if (keys.length === 0) continue;
+      const cols = keys.slice();
+      const vals = keys.map((k) => filtered[k]);
+      if (validColumns.includes('is_synced')) { cols.push('is_synced'); vals.push(1); }
+      if (validColumns.includes('is_synced_supabase')) { cols.push('is_synced_supabase'); vals.push(1); }
+      try {
+        db.runSync(`INSERT OR REPLACE INTO users (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`, vals);
+        inserted++;
+      } catch (e) {
+        console.warn('[SupabaseSync] users bootstrap: skipped a row:', e?.message || e);
+      }
+    }
+    return { success: inserted > 0, count: inserted };
+  } catch (err) {
+    return { success: false, count: 0, error: err?.message || String(err) };
+  }
+}
+
+/**
  * Fresh-install restore from Supabase.
  *
  * Scope comes from ONE source of truth (`getRestoreMode` on the db module):
