@@ -2,6 +2,26 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { fetchSyncHeartbeats } from '../services/supabaseHeartbeat';
+import { executeInspectorQuery } from '../database';
+
+const CURSOR_TABLES = ['orders', 'order_items', 'payments', 'deliveries', 'daily_submit', 'restaurant_tables', 'menu_items'];
+
+const safeQ = (sql) => { try { return executeInspectorQuery(sql) || []; } catch (_) { return []; } };
+
+/** LOCAL state (no cloud call, no schema change): queues + per-table cursors. */
+function readLocalState() {
+  const queues = [
+    { name: 'Firebase queue', pending: safeQ("SELECT COUNT(*) c FROM sync_queue WHERE status='PENDING'")[0]?.c || 0, failed: safeQ("SELECT COUNT(*) c FROM sync_queue WHERE status='FAILED'")[0]?.c || 0 },
+    { name: 'Supabase queue', pending: safeQ("SELECT COUNT(*) c FROM sync_queue_supabase WHERE status='PENDING'")[0]?.c || 0, failed: safeQ("SELECT COUNT(*) c FROM sync_queue_supabase WHERE status='FAILED'")[0]?.c || 0 }
+  ];
+  const cursors = CURSOR_TABLES.map((t) => ({
+    table: t,
+    fb: safeQ(`SELECT value FROM app_config WHERE key='last_sync_time_${t}'`)[0]?.value || null,
+    sb: safeQ(`SELECT value FROM app_config WHERE key='last_sync_time_supabase_${t}'`)[0]?.value || null
+  }));
+  const pending = safeQ("SELECT table_name, action, status FROM sync_queue ORDER BY id DESC LIMIT 5");
+  return { queues, cursors, pending };
+}
 
 /**
  * Sync Health — dual-DB observability.
@@ -26,10 +46,12 @@ export default function SyncHealthScreen({ onBack }) {
   const [rows, setRows] = useState([]);
   const [error, setError] = useState(null);
   const [checkedAt, setCheckedAt] = useState(null);
+  const [local, setLocal] = useState(null);
 
   const load = async () => {
     setLoading(true);
     setError(null);
+    setLocal(readLocalState());
     const res = await fetchSyncHeartbeats();
     if (res && res.success) {
       setRows(res.rows || []);
@@ -139,6 +161,37 @@ export default function SyncHealthScreen({ onBack }) {
           </View>
 
           <View style={styles.listCard}>
+            <Text style={styles.listCardTitle}>Local Queue & Cursors (এই device)</Text>
+            {(local?.queues || []).map((q) => (
+              <View key={q.name} style={styles.row}>
+                <Text style={styles.key}>{q.name}</Text>
+                <Text style={[styles.val, q.failed > 0 ? styles.errorText : styles.successText]}>
+                  pending {q.pending} · failed {q.failed}
+                </Text>
+              </View>
+            ))}
+            {(local?.cursors || []).map((c) => {
+              const lag = lagMin(c.fb, c.sb);
+              return (
+                <View key={c.table} style={styles.row}>
+                  <Text style={styles.key}>{c.table}</Text>
+                  <Text style={[styles.val, lag != null && lag > 5 ? styles.warningText : styles.val]}>
+                    {lag == null ? '—' : (lag <= 2 ? '✅ same' : `⚠️ ${lag}m apart`)}
+                  </Text>
+                </View>
+              );
+            })}
+            {(local?.pending || []).length > 0 && (
+              <Text style={styles.itemError} numberOfLines={3}>
+                Last queued: {(local.pending || []).map((p) => `${p.table_name}/${p.status}`).join(', ')}
+              </Text>
+            )}
+            <Text style={styles.hintText}>
+              FB/SB = Firebase vs Supabase push cursor (local app_config) — "same" = দুটোই একই সময় পর্যন্ত push হয়েছে
+            </Text>
+          </View>
+
+          <View style={styles.listCard}>
             <Text style={styles.listCardTitle}>কীভাবে পড়বেন</Text>
             <Text style={styles.helpText}>
               • প্রতি ডিভাইসে দুটি row: <Text style={styles.helpStrong}>firebase</Text> ও <Text style={styles.helpStrong}>supabase</Text>{'\n'}
@@ -179,5 +232,6 @@ const styles = StyleSheet.create({
   listCard: { backgroundColor: '#111', borderRadius: 16, padding: 20, borderWidth: 1, borderColor: '#222' },
   listCardTitle: { color: '#FFB703', fontSize: 16, fontWeight: 'bold', marginBottom: 12 },
   helpText: { color: '#888', fontSize: 12, lineHeight: 20 },
-  helpStrong: { color: '#FFF', fontWeight: 'bold' }
+  helpStrong: { color: '#FFF', fontWeight: 'bold' },
+  hintText: { color: '#555', fontSize: 11, marginTop: 10, lineHeight: 16 }
 });

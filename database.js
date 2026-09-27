@@ -6326,6 +6326,35 @@ export function executeInspectorQuery(rawSql, params = []) {
   }
 }
 
+/**
+ * Admin-only WRITE access to the local SQLite DB (System Tools → Database Explorer).
+ * Deliberately narrow: DELETE / UPDATE / INSERT only — no DDL, no ATTACH/PRAGMA.
+ * The UI shows a destructive-confirm dialog before calling this. Returns `changes`.
+ */
+export function executeInspectorWrite(rawSql, params = []) {
+  const sql = String(rawSql || '').trim();
+  if (!sql) throw new Error('Empty statement.');
+  const normalized = sql.toUpperCase();
+  const allowed =
+    normalized.startsWith('DELETE') ||
+    normalized.startsWith('UPDATE') ||
+    normalized.startsWith('INSERT');
+  if (!allowed) {
+    throw new Error('Only DELETE / UPDATE / INSERT are allowed here.');
+  }
+  if (normalized.includes(';') && sql.indexOf(';') !== sql.length - 1) {
+    throw new Error('Run one statement at a time.');
+  }
+  try {
+    const res = db.runSync(sql, params);
+    const changes = res && typeof res.changes === 'number' ? res.changes : null;
+    console.log(`[InspectorWrite] ${sql.slice(0, 120)} → changes=${changes}`);
+    return { success: true, changes };
+  } catch (e) {
+    throw new Error(e.message);
+  }
+}
+
 export function getFirebaseUsageStats() {
   const pendingCount = getPendingSyncCount();
   

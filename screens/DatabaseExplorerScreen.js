@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, ActivityIndicator, TextInput, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { executeInspectorQuery } from '../database';
+import { executeInspectorQuery, executeInspectorWrite } from '../database';
 
 export default function DatabaseExplorerScreen({ onBack, onSelectTable }) {
   const [loading, setLoading] = useState(true);
   const [tables, setTables] = useState([]);
+  const [writeSql, setWriteSql] = useState('');
+  const [lastResult, setLastResult] = useState('');
 
   useEffect(() => {
     loadTables();
@@ -41,6 +43,31 @@ export default function DatabaseExplorerScreen({ onBack, onSelectTable }) {
     }
   };
 
+  const runWrite = () => {
+    const sql = writeSql.trim();
+    if (!sql) return;
+    Alert.alert(
+      'SQLite Write (Admin)',
+      `এই statement টি চলবে:\n\n${sql}\n\nনিশ্চিত?`,
+      [
+        { text: 'বাতিল', style: 'cancel' },
+        {
+          text: 'Run',
+          style: 'destructive',
+          onPress: () => {
+            try {
+              const r = executeInspectorWrite(sql);
+              setLastResult(`✅ Done. changes=${r && r.changes != null ? r.changes : '?'}`);
+              loadTables();
+            } catch (e) {
+              setLastResult(`❌ ${e.message}`);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -59,7 +86,29 @@ export default function DatabaseExplorerScreen({ onBack, onSelectTable }) {
         </View>
       ) : (
         <ScrollView style={styles.content}>
-          <Text style={styles.sectionTitle}>Local SQLite Tables</Text>
+          {/* Write console (Admin troubleshooting) — lets you clear a stale tombstone etc. */}
+          <Text style={styles.sectionTitle}>Run SQL — Write (Admin)</Text>
+          <View style={styles.writeCard}>
+            <TextInput
+              style={styles.sqlInput}
+              value={writeSql}
+              onChangeText={setWriteSql}
+              placeholder="DELETE FROM deletions WHERE table_name='daily_submit' AND record_id='2026-09-27'"
+              placeholderTextColor="#555"
+              multiline
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <TouchableOpacity style={styles.runBtn} onPress={runWrite}>
+              <Text style={styles.runBtnText}>▶ Run (DELETE / UPDATE / INSERT)</Text>
+            </TouchableOpacity>
+            {lastResult ? <Text style={styles.resultText}>{lastResult}</Text> : null}
+            <Text style={styles.hintText}>
+              শুধু DELETE / UPDATE / INSERT চলবে (DROP / ALTER বন্ধ)। একবারে একটি statement।
+            </Text>
+          </View>
+
+          <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Local SQLite Tables</Text>
           {tables.map((table) => (
             <TouchableOpacity 
               key={table.name} 
@@ -93,5 +142,11 @@ const styles = StyleSheet.create({
   card: { backgroundColor: '#111', borderRadius: 16, padding: 20, borderWidth: 1, borderColor: '#222', marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   cardTitle: { color: '#FFF', fontSize: 15, fontWeight: 'bold' },
   cardDesc: { color: '#888', fontSize: 12, marginTop: 4 },
-  arrow: { color: '#FFB703', fontSize: 16, fontWeight: 'bold' }
+  arrow: { color: '#FFB703', fontSize: 16, fontWeight: 'bold' },
+  writeCard: { backgroundColor: '#111', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#222', marginBottom: 20 },
+  sqlInput: { backgroundColor: '#0A0A0A', color: '#FFF', borderWidth: 1, borderColor: '#333', borderRadius: 10, padding: 12, minHeight: 76, fontSize: 12, textAlignVertical: 'top' },
+  runBtn: { backgroundColor: 'rgba(245, 158, 11, 0.18)', borderRadius: 10, paddingVertical: 10, alignItems: 'center', marginTop: 10, borderWidth: 1, borderColor: '#F59E0B' },
+  runBtnText: { color: '#F59E0B', fontWeight: 'bold', fontSize: 13 },
+  resultText: { color: '#10B981', fontSize: 12, marginTop: 10 },
+  hintText: { color: '#555', fontSize: 11, marginTop: 8, lineHeight: 16 }
 });
