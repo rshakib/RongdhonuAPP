@@ -11,7 +11,18 @@ import { executeInspectorQuery } from '../database';
 const SYNC_TOLERANCE_MIN = 2;   // both clouds within this → "ঠিক আছে"
 const WARN_LAG_MIN = 10;        // more than this → show a warning
 
-const CURSOR_TABLES = ['orders', 'order_items', 'payments', 'deliveries', 'daily_submit', 'restaurant_tables', 'menu_items'];
+// Tables that are written to BOTH clouds (dual-DB). `app_config` is deliberately
+// EXCLUDED (Firebase-only: version policy + tombstones), and the ai_dataset/queue
+// tables are local-only — so they are not shown here.
+const DUAL_TABLES = [
+  'orders', 'order_items', 'payments', 'deliveries', 'expenses',
+  'daily_submit', 'daily_summary', 'due_payments', 'eja_history',
+  'restaurant_tables', 'menu_items', 'menu_categories', 'users',
+  'supplier_due', 'supplier_due_history', 'supplier_payment_ledger',
+  'deletions', 'delete_history',
+  'owner_employees', 'owner_salary_ledger', 'owner_expenses', 'owner_deposits', 'owner_home_deposits',
+  'off_days', 'weather_data'
+];
 const PROFILE_BN = { ADMIN: 'অ্যাডমিন অ্যাপ', OWNER: 'মালিক অ্যাপ', MANAGER: 'ম্যানেজার অ্যাপ' };
 
 const safeQ = (sql) => { try { return executeInspectorQuery(sql) || []; } catch (_) { return []; } };
@@ -35,17 +46,34 @@ function lagMin(a, b) {
   return Number.isFinite(d) ? Math.round(d / 60000) : null;
 }
 
+/** LOCAL state (no cloud call, no schema change): per-cloud queues + per-table dual cursors. */
 function readLocalState() {
   const queues = [
-    { name: 'মূল সার্ভারে পাঠানো বাকি', pending: safeQ("SELECT COUNT(*) c FROM sync_queue_supabase WHERE status='PENDING'")[0]?.c || 0, failed: safeQ("SELECT COUNT(*) c FROM sync_queue_supabase WHERE status='FAILED'")[0]?.c || 0 },
-    { name: 'ব্যাকআপে পাঠানো বাকি', pending: safeQ("SELECT COUNT(*) c FROM sync_queue WHERE status='PENDING'")[0]?.c || 0, failed: safeQ("SELECT COUNT(*) c FROM sync_queue WHERE status='FAILED'")[0]?.c || 0 }
+    {
+      key: 'sb',
+      name: 'মূল সার্ভার (Supabase)',
+      sub: 'এখানে যে সংখ্যা বাকি — সেগুলো এখনো মূল সার্ভারে পাঠানো হয়নি',
+      pending: safeQ("SELECT COUNT(*) c FROM sync_queue_supabase WHERE status='PENDING'")[0]?.c || 0,
+      failed: safeQ("SELECT COUNT(*) c FROM sync_queue_supabase WHERE status='FAILED'")[0]?.c || 0
+    },
+    {
+      key: 'fb',
+      name: 'ব্যাকআপ (Firebase)',
+      sub: 'এখানে যে সংখ্যা বাকি — সেগুলো এখনো ব্যাকআপে পাঠানো হয়নি',
+      pending: safeQ("SELECT COUNT(*) c FROM sync_queue WHERE status='PENDING'")[0]?.c || 0,
+      failed: safeQ("SELECT COUNT(*) c FROM sync_queue WHERE status='FAILED'")[0]?.c || 0
+    }
   ];
-  const cursors = CURSOR_TABLES.map((t) => ({
+
+  const tables = DUAL_TABLES.map((t) => ({
     table: t,
-    fb: safeQ(`SELECT value FROM app_config WHERE key='last_sync_time_${t}'`)[0]?.value || null,
-    sb: safeQ(`SELECT value FROM app_config WHERE key='last_sync_time_supabase_${t}'`)[0]?.value || null
+    fbCursor: safeQ(`SELECT value FROM app_config WHERE key='last_sync_time_${t}'`)[0]?.value || null,
+    sbCursor: safeQ(`SELECT value FROM app_config WHERE key='last_sync_time_supabase_${t}'`)[0]?.value || null,
+    fbPending: safeQ(`SELECT COUNT(*) c FROM sync_queue WHERE table_name='${t}' AND status IN ('PENDING','FAILED')`)[0]?.c || 0,
+    sbPending: safeQ(`SELECT COUNT(*) c FROM sync_queue_supabase WHERE table_name='${t}' AND status IN ('PENDING','FAILED')`)[0]?.c || 0
   }));
-  return { queues, cursors };
+
+  return { queues, tables };
 }
 
 export default function SyncHealthScreen({ onBack }) {
@@ -194,50 +222,94 @@ export default function SyncHealthScreen({ onBack }) {
           {showTech && (
             <>
               {error ? (
-                <View style={styles.card}><Text style={styles.badText}>{error}</Text></View>
+                <View style={styles.card}>
+                  <Text style={styles.cardTitle}>সংযোগের তথ্য</Text>
+                  <Text style={styles.badText}>{error}</Text>
+                  <Text style={styles.helpText}>
+                    Supabase-এ sync_heartbeat টেবিল তৈরি করা হয়েছে কি না দেখুন, তারপর নতুন build চালান।
+                  </Text>
+                </View>
               ) : (
-                <View style={styles.card}>
-                  <Text style={styles.cardTitle}>Raw heartbeat (device × backend)</Text>
-                  {devices.length === 0 ? (
-                    <Text style={styles.helpText}>
-                      কোনো row নেই। Supabase-এ <Text style={styles.strong}>sync_heartbeat</Text> টেবিল তৈরি করুন, তারপর নতুন build চালান।
-                    </Text>
-                  ) : devices.map((dev) => {
-                    const fb = byDevice[dev].firebase || null;
-                    const sb = byDevice[dev].supabase || null;
-                    return (
-                      <View key={dev} style={styles.deviceBlock}>
-                        <Text style={styles.deviceTitle}>{dev}</Text>
-                        <Text style={styles.mono}>firebase  push={fmt(fb && fb.last_push_at)} ok={fb ? String(fb.last_push_ok !== false) : '—'}  read={fmt(fb && fb.last_read_at)}</Text>
-                        <Text style={styles.mono}>supabase  push={fmt(sb && sb.last_push_at)} ok={sb ? String(sb.last_push_ok !== false) : '—'}  read={fmt(sb && sb.last_read_at)}</Text>
-                        {(fb && fb.last_error) || (sb && sb.last_error) ? (
-                          <Text style={styles.itemError}>err: {(fb && fb.last_error) || (sb && sb.last_error)}</Text>
-                        ) : null}
+                <>
+                  {/* ১) এখনো পাঠানো বাকি আছে কি? */}
+                  <View style={styles.card}>
+                    <Text style={styles.cardTitle}>১) এখনো পাঠানো বাকি আছে কি?</Text>
+                    {(local?.queues || []).map((q) => (
+                      <View key={q.key} style={styles.block}>
+                        <View style={styles.lineRow}>
+                          <Text style={styles.lineLabel}>{q.name}</Text>
+                          <Text style={[styles.lineValue, (q.pending + q.failed) > 0 ? styles.warnText : styles.okText]}>
+                            {(q.pending + q.failed) === 0 ? '✅ সব পাঠানো হয়েছে' : `বাকি ${q.pending} · ব্যর্থ ${q.failed}`}
+                          </Text>
+                        </View>
+                        <Text style={styles.lineSub}>{q.sub}</Text>
                       </View>
-                    );
-                  })}
-                </View>
-              )}
+                    ))}
+                  </View>
 
-              {local && (
-                <View style={styles.card}>
-                  <Text style={styles.cardTitle}>Local queue & cursors (this device)</Text>
-                  {local.queues.map((q) => (
-                    <View key={q.name} style={styles.techRow}>
-                      <Text style={styles.techKey}>{q.name}</Text>
-                      <Text style={styles.techVal}>pending {q.pending} · failed {q.failed}</Text>
-                    </View>
-                  ))}
-                  {local.cursors.map((c) => {
-                    const lag = lagMin(c.fb, c.sb);
-                    return (
-                      <View key={c.table} style={styles.techRow}>
-                        <Text style={styles.techKey}>{c.table}</Text>
-                        <Text style={styles.techVal}>{lag == null ? '—' : `${lag} min apart`}</Text>
-                      </View>
-                    );
-                  })}
-                </View>
+                  {/* ২) টেবিল অনুযায়ী (dual-DB) */}
+                  <View style={styles.card}>
+                    <Text style={styles.cardTitle}>২) কোন টেবিল কোথায় পৌঁছেছে</Text>
+                    <Text style={styles.helpText}>
+                      শুধু সেই টেবিলগুলো যেগুলো <Text style={styles.strong}>দুই জায়গাতেই</Text> যায়।{'\n'}
+                      <Text style={styles.strong}>FB</Text> = ব্যাকআপ · <Text style={styles.strong}>SB</Text> = মূল সার্ভার ·{' '}
+                      <Text style={styles.strong}>“বাকি”</Text> = এখনো পাঠানো হয়নি।
+                    </Text>
+                    {(local?.tables || []).map((t) => {
+                      const lag = lagMin(t.fbCursor, t.sbCursor);
+                      const nothing = !t.fbCursor && !t.sbCursor;
+                      const pendingTotal = t.fbPending + t.sbPending;
+                      let verdict = '— এখনো কিছু যায়নি';
+                      let vStyle = styles.mutedText;
+                      if (!nothing) {
+                        if (t.fbCursor && !t.sbCursor) { verdict = '⚠️ শুধু ব্যাকআপে গেছে'; vStyle = styles.warnText; }
+                        else if (t.sbCursor && !t.fbCursor) { verdict = '⚠️ শুধু মূল সার্ভারে গেছে'; vStyle = styles.warnText; }
+                        else if (lag != null && lag <= SYNC_TOLERANCE_MIN) { verdict = '✅ দুটোই সমান'; vStyle = styles.okText; }
+                        else if (lag != null) { verdict = `⚠️ ${lag} মিনিট ফারাক`; vStyle = styles.warnText; }
+                      }
+                      return (
+                        <View key={t.table} style={styles.block}>
+                          <View style={styles.lineRow}>
+                            <Text style={styles.tableName}>{t.table}</Text>
+                            <Text style={[styles.lineValue, vStyle]}>{verdict}</Text>
+                          </View>
+                          <Text style={styles.lineSub}>
+                            FB {agoText(t.fbCursor)} · SB {agoText(t.sbCursor)}
+                            {pendingTotal > 0 ? `   ·   বাকি ${pendingTotal}` : ''}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                    <Text style={styles.hintText}>
+                      নোট: app_config শুধু ব্যাকআপে থাকে (Firebase-only), তাই এখানে নেই।
+                    </Text>
+                  </View>
+
+                  {/* ৩) খাঁটি তথ্য */}
+                  <View style={styles.card}>
+                    <Text style={styles.cardTitle}>৩) প্রতিটি ফোনের সর্বশেষ সেভ (খাঁটি তথ্য)</Text>
+                    {devices.length === 0 ? (
+                      <Text style={styles.helpText}>
+                        কোনো তথ্য নেই। Supabase-এ <Text style={styles.strong}>sync_heartbeat</Text> টেবিল তৈরি করুন, তারপর নতুন build চালান।
+                      </Text>
+                    ) : devices.map((dev) => {
+                      const fb = byDevice[dev].firebase || null;
+                      const sb = byDevice[dev].supabase || null;
+                      const label = PROFILE_BN[String((sb && sb.app_profile) || (fb && fb.app_profile) || '').toUpperCase()] || 'ফোন';
+                      return (
+                        <View key={dev} style={styles.block}>
+                          <Text style={styles.tableName}>{label}</Text>
+                          <Text style={styles.mono}>{dev}</Text>
+                          <Text style={styles.mono}>FB — শেষ সেভ: {fmt(fb && fb.last_push_at)} · শেষ পড়া: {fmt(fb && fb.last_read_at)} · ঠিক আছে: {fb ? String(fb.last_push_ok !== false) : '—'}</Text>
+                          <Text style={styles.mono}>SB — শেষ সেভ: {fmt(sb && sb.last_push_at)} · শেষ পড়া: {fmt(sb && sb.last_read_at)} · ঠিক আছে: {sb ? String(sb.last_push_ok !== false) : '—'}</Text>
+                          {(fb && fb.last_error) || (sb && sb.last_error) ? (
+                            <Text style={styles.itemError}>সমস্যা: {(fb && fb.last_error) || (sb && sb.last_error)}</Text>
+                          ) : null}
+                        </View>
+                      );
+                    })}
+                  </View>
+                </>
               )}
             </>
           )}
@@ -289,9 +361,13 @@ const styles = StyleSheet.create({
 
   techToggle: { paddingVertical: 12, alignItems: 'center', marginBottom: 8 },
   techToggleText: { color: '#FFB703', fontSize: 13, fontWeight: 'bold' },
-  techRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 },
-  techKey: { color: '#888', fontSize: 12 },
-  techVal: { color: '#DDD', fontSize: 12 },
-  mono: { color: '#9CA3AF', fontSize: 11, marginTop: 4 },
+  block: { borderTopWidth: 0.5, borderColor: '#222', paddingTop: 10, marginTop: 8 },
+  lineRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  lineLabel: { color: '#DDD', fontSize: 13, flex: 1, paddingRight: 8 },
+  tableName: { color: '#FFF', fontSize: 13, fontWeight: 'bold', flex: 1, paddingRight: 8 },
+  lineValue: { fontSize: 12, fontWeight: 'bold', textAlign: 'right', maxWidth: '48%' },
+  lineSub: { color: '#777', fontSize: 11, marginTop: 3 },
+  mutedText: { color: '#666' },
+  mono: { color: '#9CA3AF', fontSize: 10.5, marginTop: 3 },
   itemError: { color: '#EF4444', fontSize: 11, marginTop: 6 }
 });
