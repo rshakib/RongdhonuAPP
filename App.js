@@ -156,7 +156,8 @@ import {
   getSyncRuntimeDiagnostics,
   executeInspectorQuery,
   formatDisplayDate,
-  ACTIVE_APP_PROFILE
+  ACTIVE_APP_PROFILE,
+  APP_PROFILE_RESOLVED
 } from './database';
 
 // Import all 9 high-fidelity screens
@@ -483,7 +484,7 @@ export default function App() {
 
     const checkAndInitialize = async () => {
       try {
-        console.log(`[App] Startup Initializing... Platform: ${Platform.OS}, Build: ${__DEV__ ? 'Development/ExpoGo' : 'Production/APK'}`);
+        console.log(`[App] Startup Initializing... Platform: ${Platform.OS}, Build: ${__DEV__ ? 'Development/ExpoGo' : 'Production/APK'}, AppProfile: ${ACTIVE_APP_PROFILE}${APP_PROFILE_RESOLVED ? '' : ' (UNRESOLVED — EXPO_PUBLIC_APP_PROFILE missing; restore scope = running-day only)'}`);
         console.log(`[App] Firebase Config Check - ID: ${process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID ? 'OK' : 'MISSING'}, Key: ${process.env.EXPO_PUBLIC_FIREBASE_API_KEY ? 'OK' : 'MISSING'}`);
 
         // 1. Just create schemas (no seeding yet)

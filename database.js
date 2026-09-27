@@ -2409,7 +2409,25 @@ export async function syncDailyAndMenuFromFirebase() {
 }
 
 // --- APP PROFILE & CENTRALIZED SYNC COLLECTION REGISTRY ---
-export const ACTIVE_APP_PROFILE = String(process.env.EXPO_PUBLIC_APP_PROFILE || 'ADMIN').toUpperCase().trim();
+const RAW_APP_PROFILE = String(process.env.EXPO_PUBLIC_APP_PROFILE || '').toUpperCase().trim();
+const VALID_APP_PROFILES = ['ADMIN', 'OWNER', 'MANAGER'];
+/** false ⇒ the build never set EXPO_PUBLIC_APP_PROFILE (mis-built APK). */
+export const APP_PROFILE_RESOLVED = VALID_APP_PROFILES.includes(RAW_APP_PROFILE);
+export const ACTIVE_APP_PROFILE = APP_PROFILE_RESOLVED ? RAW_APP_PROFILE : 'ADMIN';
+
+/**
+ * Restore scope — the SINGLE source of truth for "how far back do we restore".
+ *   MANAGER        → running business day only
+ *   ADMIN / OWNER  → last 31 days
+ *   unresolved ''  → running-day only (FAIL-CONSERVATIVE: a mis-built APK must
+ *                    never silently pull the full 31-day scope)
+ */
+export function getRestoreMode(profileName) {
+  const p = String(profileName || '').toUpperCase().trim();
+  if (p === 'MANAGER') return 'today';
+  if (p === 'ADMIN' || p === 'OWNER') return '31d';
+  return 'today';
+}
 
 export const APP_PROFILES = {
   ADMIN: {

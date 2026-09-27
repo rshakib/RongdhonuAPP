@@ -564,38 +564,62 @@ function stampSupabaseRestoreMarkers(db, tables) {
 }
 
 /**
- * Restore from Supabase: restaurant_tables in full + transactional tables for the
- * window + permanent tables (menu, daily) in full. Firebase is used only when
- * Supabase cannot serve a portion of it.
+ * Fresh-install restore from Supabase.
+ *
+ * Scope comes from ONE source of truth (`getRestoreMode` on the db module):
+ *   MANAGER       → running business day only
+ *   ADMIN / OWNER → last 31 days
+ *   unresolved '' → running business day only (fail-conservative)
+ *
+ * MASTER data (menu_items, menu_categories, restaurant_tables) is pulled in full —
+ * it is required to operate. Everything TRANSACTIONAL (orders, order_items,
+ * payments, expenses, deliveries, due_payments, eja_history, … AND daily_submit /
+ * daily_summary) is date-bounded to the restore window. Firebase is used by the
+ * CALLER (`restoreHybridDatabaseFromCloud`) as the fallback when this returns
+ * `success:false`.
  */
-export async function restoreSupabaseWindow({ profileName, mode = '31d' } = {}) {
+export async function restoreSupabaseWindow({ profileName, mode } = {}) {
   const fb = deps.getFirebase();
   let db = null;
   try { db = deps.getDb(); } catch (_) { db = null; }
   if (!db) return { success: false, failedCollections: ['supabase-restore'], rowsWritten: 0 };
 
+  // Fail-conservative: an unresolved build profile must never widen the scope.
+  const resolvedName = fb.APP_PROFILE_RESOLVED === false ? '' : profileName;
   const profiles = fb.APP_PROFILES || {};
-  const profile = profiles[profileName] || profiles.ADMIN || { recentOnly: [] };
-  const txTables = (profile.recentOnly || []).filter((t) => t !== 'daily_submit' && t !== 'daily_summary');
+  const profile = profiles[resolvedName] || profiles.ADMIN || { recentOnly: [] };
 
-  const sinceIso = mode === 'today'
+  const restoreMode = mode || (typeof fb.getRestoreMode === 'function'
+    ? fb.getRestoreMode(resolvedName)
+    : (String(resolvedName).toUpperCase().trim() === 'MANAGER' ? 'today' : '31d'));
+
+  const txTables = (profile.recentOnly || []).filter((t) => t !== 'daily_submit' && t !== 'daily_summary');
+  // daily_submit / daily_summary are TRANSACTIONAL per-day rows → windowed (NOT full).
+  const windowedTables = [...txTables, 'daily_submit', 'daily_summary'];
+  // Master/reference data → always full (needed to operate).
+  const masterTables = ['restaurant_tables', 'menu_items', 'menu_categories'];
+
+  const sinceIso = restoreMode === 'today'
     ? new Date(`${fb.getBusinessDate()}T00:00:00`).toISOString()
     : new Date(Date.now() - 31 * 86400000).toISOString();
 
   const failedCollections = [];
   let rowsWritten = 0;
 
-  // restaurant_tables — full snapshot.
-  try {
-    const rows = await fetchSupabaseRows(db, 'restaurant_tables', getSupabaseCursorColumn(db, 'restaurant_tables'), null);
-    mergeSupabaseRows(db, 'restaurant_tables', rows);
-    rowsWritten += rows.length;
-  } catch (err) {
-    failedCollections.push('restaurant_tables');
+  // 1. Master tables — full snapshot.
+  for (const table of masterTables) {
+    try {
+      const col = getSupabaseCursorColumn(db, table);
+      const rows = await fetchSupabaseRows(db, table, col, null);
+      mergeSupabaseRows(db, table, rows);
+      rowsWritten += rows.length;
+    } catch (err) {
+      failedCollections.push(table);
+    }
   }
 
-  // transactional window.
-  for (const table of txTables) {
+  // 2. Transactional window (incl. daily_submit/daily_summary) — date-bounded.
+  for (const table of windowedTables) {
     try {
       const col = getSupabaseCursorColumn(db, table);
       const rows = await fetchSupabaseRows(db, table, col, sinceIso);
@@ -606,35 +630,18 @@ export async function restoreSupabaseWindow({ profileName, mode = '31d' } = {}) 
     }
   }
 
-  // Permanent tables (menu + daily) — Supabase-backed; full snapshot.
-  const permanentTables = ['menu_items', 'menu_categories', 'daily_submit', 'daily_summary'];
-  let permanentFromSupabase = true;
-  for (const table of permanentTables) {
-    try {
-      const col = getSupabaseCursorColumn(db, table);
-      const rows = await fetchSupabaseRows(db, table, col, null);
-      mergeSupabaseRows(db, table, rows);
-      rowsWritten += rows.length;
-    } catch (err) {
-      permanentFromSupabase = false;
-      failedCollections.push(table);
-    }
-  }
+  // 3. Stamp cursors for the WHOLE profile set (not just what we restored) so the
+  //    first periodic polls don't fall back to a full-collection fetch.
+  const markerTables = Array.from(new Set([
+    ...masterTables,
+    ...windowedTables,
+    ...(profile.alwaysFull || []),
+    ...(profile.recentOnly || []),
+    ...(profile.skipRestoreMarkers || [])
+  ]));
+  stampSupabaseRestoreMarkers(db, markerTables);
 
-  stampSupabaseRestoreMarkers(db, ['restaurant_tables', ...txTables, ...permanentTables]);
-
-  // Firebase fallback ONLY if Supabase could not serve the permanent tables.
-  if (!permanentFromSupabase) {
-    try {
-      if (typeof fb.syncDailyAndMenuFromFirebase === 'function') {
-        await fb.syncDailyAndMenuFromFirebase();
-      } else if (typeof fb.syncMenuOnly === 'function') {
-        await fb.syncMenuOnly();
-      }
-    } catch (err) {
-      console.warn('[SupabaseSync] Firebase fallback for permanent tables failed:', err?.message || err);
-    }
-  }
+  console.log(`[SupabaseSync] restoreSupabaseWindow profile=${resolvedName || '<unresolved>'} mode=${restoreMode} since=${sinceIso} master=${masterTables.length} windowed=${windowedTables.length} rows=${rowsWritten} failed=${failedCollections.length}`);
 
   return { success: failedCollections.length === 0, failedCollections, rowsWritten };
 }
@@ -666,12 +673,17 @@ export async function restoreHybridDatabaseFromCloud({ mode = 'today' } = {}) {
       return await fb.restoreDatabaseFromCloud({ mode: 'today' });
     }
 
-    const profileName = fb.ACTIVE_APP_PROFILE || 'ADMIN';
-    const isManager = String(profileName).toUpperCase().trim() === 'MANAGER';
+    // Fail-conservative: an unresolved build profile must never widen the scope.
+    const resolved = fb.APP_PROFILE_RESOLVED !== false;
+    const profileName = resolved ? (fb.ACTIVE_APP_PROFILE || 'ADMIN') : '';
+    const mode = typeof fb.getRestoreMode === 'function'
+      ? fb.getRestoreMode(profileName)
+      : (String(profileName).toUpperCase().trim() === 'MANAGER' ? 'today' : '31d');
+    console.log(`[SupabaseSync] hybrid restore profile=${profileName || '<unresolved>'} mode=${mode}`);
 
     let res = { success: false, rowsWritten: 0, failedCollections: ['supabase-restore'] };
     try {
-      res = await restoreSupabaseWindow({ profileName, mode: isManager ? 'today' : '31d' });
+      res = await restoreSupabaseWindow({ profileName, mode });
     } catch (err) {
       res = { success: false, rowsWritten: 0, failedCollections: ['supabase-restore'] };
     }
