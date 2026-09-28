@@ -3028,7 +3028,8 @@ async function fetchSingleDocFromFirestore(collectionName, docId) {
  * Scoped local wipe of TODAY's rows in the day-scoped tables (+ their queued
  * writes). Shared by BOTH same-day-resync paths so the manual "force-fix today"
  * button has identical semantics on Supabase and Firebase. Only ever called by the
- * manual resync — the periodic Supabase polls (2s/5s/15s/45s) NEVER wipe; they merge.
+ * manual resync — the periodic Supabase polls (signal-driven 30s safety for tables/high/
+ * deletions, 60s low-freq, 300s menu) NEVER wipe; they merge.
  */
 function wipeLocalTodayScoped(todayStr) {
   const localOrders = db.getAllSync("SELECT id FROM orders WHERE date(created_at, 'localtime') = ?", [todayStr]);

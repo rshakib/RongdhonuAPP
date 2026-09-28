@@ -478,7 +478,8 @@ let isSupabasePullingDeletions = false;
 let isSupabasePullingLow = false;
 let isSupabasePullingMenu = false;
 
-/** restaurant_tables — scheduled ~2s by the caller (polling, NOT Realtime). */
+/** restaurant_tables — signal-driven by the caller: 30s safety poll while the Realtime
+ *  channel is SUBSCRIBED, otherwise 1s (see App.js supabase-tables-poll). */
 export async function syncSupabaseTables() {
   if (isSupabasePullingTables) return false;
   isSupabasePullingTables = true;
@@ -492,7 +493,8 @@ export async function syncSupabaseTables() {
   }
 }
 
-/** orders / order_items / payments / deliveries — scheduled 5s by the caller. */
+/** orders / order_items / payments / deliveries — signal-driven: 30s safety poll while
+ *  SUBSCRIBED, otherwise 5s (see App.js supabase-high-frequency-poll). */
 export async function syncSupabaseHighFrequencyCollections() {
   if (isSupabasePullingHigh) return false;
   isSupabasePullingHigh = true;
@@ -506,7 +508,7 @@ export async function syncSupabaseHighFrequencyCollections() {
   }
 }
 
-/** deletions tombstones — scheduled 15s by the caller. */
+/** deletions tombstones — signal-driven: 30s safety poll while SUBSCRIBED, else 15s. */
 export async function syncSupabaseDeletions() {
   if (isSupabasePullingDeletions) return false;
   isSupabasePullingDeletions = true;
@@ -520,7 +522,7 @@ export async function syncSupabaseDeletions() {
   }
 }
 
-/** Low-frequency tables (profile lowFreq minus app_config) — 45s. */
+/** Low-frequency tables (profile lowFreq minus app_config) — scheduled 60s by the caller. */
 export async function syncSupabaseLowFrequencyCollections() {
   if (isSupabasePullingLow) return false;
   isSupabasePullingLow = true;
@@ -536,7 +538,7 @@ export async function syncSupabaseLowFrequencyCollections() {
   }
 }
 
-/** menu_items / menu_categories — scheduled 45s by the caller. */
+/** menu_items / menu_categories — scheduled 300s by the caller. */
 export async function syncSupabaseMenu() {
   if (isSupabasePullingMenu) return false;
   isSupabasePullingMenu = true;

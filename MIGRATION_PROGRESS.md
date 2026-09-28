@@ -29,7 +29,7 @@
 
 **Architecture**
 - **Writes = dual** (Firebase `sync_queue` + Supabase `sync_queue_supabase`), independent queues, per-backend retry.
-- **Reads = Supabase-primary**: tables 2s · high 5s · deletions 15s · low 45s · menu 45s.
+- **Reads = Supabase-primary**: signal-driven for tables / high / deletions (**30 s safety poll** while the Realtime channel is SUBSCRIBED; 1 s / 5 s / 15 s fallback) · low-freq 60 s · menu 300 s.
 - **Firebase reads are health-gated** — skipped when Supabase is healthy (**live-verified ≈0/hr**), run only on Supabase failure / unconfigured / kill-switch / Supabase-write-FAILED (stale-read guard). Diagnostics: `[Firebase-Read] … reason=killswitch|unconfigured|read-failed|failed-writes:<n>|healthy`.
 - **Login cloud-check is Supabase-first** (fixed 2026-09-28) — `verifyForceReauthLocally()` probes `app_version_policy` on Supabase and does **no Firebase read** when Supabase answers; a Firebase **429** no longer blocks login. *(Was the last Firebase-only read in a user-critical path — a quota-exhausted Firebase used to make login impossible.)*
 - **Observability — `public.sync_heartbeat`** (2026-09-28): per `device_id × backend`, `last_push_at`/`last_push_ok`/`last_error` + `last_read_at`/`last_rows`, written throttled (60s) by `services/supabaseHeartbeat.js` from all four sync paths. Lets you confirm from Supabase Studio that **Firebase and Supabase are both actually receiving writes**, and which side lags.
@@ -146,7 +146,7 @@ Implemented:
 
 | Situation | Reads |
 |---|---|
-| Supabase healthy (normal) | **Supabase only** (tables 2s, high 5s, deletions 15s, low 45s, menu 45s) |
+| Supabase healthy (normal) | **Supabase only** (tables/high/deletions signal-driven with a 30 s safety poll; low-freq 60 s; menu 300 s) |
 | Supabase request fails/timeout | Supabase syncer → **Firebase fallback same tick** |
 | Supabase **write FAILED** (quota / storage full / 5xx) | **Firebase** (Supabase copy is stale) until the write queue drains |
 | Supabase unconfigured / kill-switch off | **Firebase only** (gated timers run) |
