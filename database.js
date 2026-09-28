@@ -1199,79 +1199,11 @@ export function initDatabase(skipSeeding = false) {
       console.error("[DB Audit] Failed to audit order_items:", err);
     }
 
-    // Execute local test rollback for 2026-07-26 on app startup
-    executeLocalTestRollback('2026-07-26');
-
     console.log("[DB] Auto Initialization Completed successfully.");
     return true;
   } catch (error) {
     console.error("[DB] Critical DB initialization error:", error);
     return false;
-  }
-}
-
-export function executeLocalTestRollback(targetDateStr = '2026-07-26') {
-  try {
-    console.log(`========================================================`);
-    console.log(`[LOCAL TEST ROLLBACK] Executing rollback for: ${targetDateStr}`);
-    console.log(`========================================================`);
-
-    const backupLocation = `/home/shaki/.gemini/antigravity-cli/brain/41c70c17-587e-433e-a377-d0fc3d0a07c5/scratch/sqlite_backups/backup_${targetDateStr}.json`;
-    console.log(`[STEP 1 BACKUP LOCATION]: ${backupLocation}`);
-
-    const [bY, bM, bD] = targetDateStr.split('-').map(Number);
-    const submittedDateObj = new Date(bY, bM - 1, bD);
-    submittedDateObj.setDate(submittedDateObj.getDate() + 1);
-
-    const nY = submittedDateObj.getFullYear();
-    const nM = String(submittedDateObj.getMonth() + 1).padStart(2, '0');
-    const nDay = String(submittedDateObj.getDate()).padStart(2, '0');
-    const nextBizDateStr = `${nY}-${nM}-${nDay}`;
-
-    const splId = `spl_${targetDateStr}`;
-    const expId = `exp_${nextBizDateStr}_ijara`;
-    const ejaId = `eja_${nextBizDateStr}`;
-
-    // 1. daily_submit
-    db.runSync("DELETE FROM daily_submit WHERE id = ? OR date = ?", [targetDateStr, targetDateStr]);
-    console.log(`✓ Deleted daily_submit row: ${targetDateStr}`);
-
-    // 2. supplier_payment_ledger
-    db.runSync("DELETE FROM supplier_payment_ledger WHERE id = ? OR payment_date = ?", [splId, targetDateStr]);
-    console.log(`✓ Deleted supplier_payment_ledger row: ${splId}`);
-
-    // 3. daily_summary
-    db.runSync("DELETE FROM daily_summary WHERE id = ? OR date = ?", [targetDateStr, targetDateStr]);
-    console.log(`✓ Deleted daily_summary row: ${targetDateStr}`);
-
-    // 4. orders (locked_at = NULL)
-    db.runSync("UPDATE orders SET locked_at = NULL WHERE date(created_at, 'localtime') = ?", [targetDateStr]);
-    console.log(`✓ Restored orders locked_at = NULL for date: ${targetDateStr}`);
-
-    // 5. app_config pending ijara keys
-    db.runSync("DELETE FROM app_config WHERE key IN ('pending_ijara_amount', 'pending_ijara_date')");
-    console.log(`✓ Deleted app_config pending_ijara_amount & pending_ijara_date`);
-
-    // 6. expenses (exp_2026-07-27_ijara)
-    db.runSync("DELETE FROM expenses WHERE id = ?", [expId]);
-    console.log(`✓ Deleted expenses row: ${expId}`);
-
-    // 7. eja_history (eja_2026-07-27)
-    db.runSync("DELETE FROM eja_history WHERE id = ?", [ejaId]);
-    console.log(`✓ Deleted eja_history row: ${ejaId}`);
-
-    // 8. sync_queue cleanup
-    db.runSync(
-      "DELETE FROM sync_queue WHERE record_id IN (?, ?, ?, ?, 'pending_ijara_amount', 'pending_ijara_date')",
-      [targetDateStr, splId, expId, ejaId]
-    );
-    console.log(`✓ Cleaned local sync_queue items for target date`);
-
-    console.log(`[LOCAL TEST ROLLBACK] Execution finished successfully.`);
-    return { success: true, backupLocation };
-  } catch (err) {
-    console.error("[LOCAL TEST ROLLBACK] Execution failed:", err);
-    return { success: false, error: err };
   }
 }
 

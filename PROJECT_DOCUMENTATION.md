@@ -627,7 +627,7 @@ Concurrency guards (`isPullingSync*` flags) + 25 s `runAutoPull` watchdog.
 
 The POS data + sync engine (7128 lines). Grouped exports:
 
-**Core / init:** `getDb()`, `db` (Proxy), `initDatabase(skipSeeding?)`, `seedDefaultMenu()`, `cleanupDuplicateMenuItems()`, `isDbInitialized()`, `isDatabaseEmpty()`, `executeLocalTestRollback(date)`.
+**Core / init:** `getDb()`, `db` (Proxy), `initDatabase(skipSeeding?)`, `seedDefaultMenu()`, `cleanupDuplicateMenuItems()`, `isDbInitialized()`, `isDatabaseEmpty()`.
 
 **Migrations:** `migrateMenuItemsTable()`, `migrateDeliveryCharge()`, `migrateSplitPayments()`, `migrateSyncQueueDiagnostics()`, `migrateDailySubmitUnified()`, `migrateDeleteHistory()`, `migrateSupplierDue()`, `migrateAIDatasetTables()`.
 
