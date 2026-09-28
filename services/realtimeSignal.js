@@ -44,9 +44,10 @@ const RECONNECT_BACKOFF_MS = [3000, 6000, 12000, 30000];
 // Only tables written to BOTH clouds may be signalled (never app_config / local-only).
 const KNOWN_TABLES = new Set([...(SIGNAL_GROUPS.tables || []), ...(SIGNAL_GROUPS.high || [])]);
 
-// STAGE SWITCH — Stage A ships with 'tables' only; Stage B flips `high: true`.
-// A group whose flag is false keeps today's fast poll and ignores signals entirely.
-export const ENABLED_GROUPS = { tables: true, high: false };
+// STAGE SWITCH — Stage A shipped 'tables' only; Stage B (this revision) enables 'high'.
+// A group whose flag is false keeps today's fast poll and ignores signals entirely, so
+// setting a flag back to false is the per-group rollback (no other change needed).
+export const ENABLED_GROUPS = { tables: true, high: true };
 
 // --- dependency seams (production defaults; overridable in unit tests) --------
 const productionDeps = {
