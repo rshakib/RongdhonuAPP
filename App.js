@@ -389,66 +389,18 @@ export default function App() {
     isLoggedInRef.current = isLoggedIn;
   }, [isLoggedIn]);
 
-  // Module-level flag: prevents overlapping async force-logout checks from stacking up.
-  // Declared outside React so it persists across re-renders without causing re-renders.
-  const _forceLogoutCheckRef = useRef(false);
-  const _forceLogoutCheckAtRef = useRef(0);
-
   // Concurrency lock for ensureInitialData() so overlapping calls return immediately.
   const ensureInitialDataLockRef = useRef(false);
 
   useEffect(() => {
+    // UI-only countdown rings. The device force-logout check is NOT run from here: it is
+    // delivered instantly over Realtime and polled on a 60s timer + on every foreground
+    // resume (see the FORCE LOGOUT POLLING effect below). Running it here as well meant one
+    // Supabase REST GET per second per logged-in device (~3,600 req/hr/device) for no gain.
     const t = setInterval(() => {
       setDelCountdown(prev => (prev <= 0 ? 90 : prev - 1));
       setTabCountdown(prev => (prev <= 0 ? 15 : prev - 1));
       setFullCountdown(prev => (prev <= 0 ? 30 : prev - 1));
-
-      // Periodic Device Force Logout Check (DEVICE BASED — ALL ROLES: ADMIN, OWNER, MANAGER)
-      // GUARD 1: Only run when the user is currently logged in.
-      //          The setInterval closure captures `isLoggedIn` at mount (always false).
-      //          We use isLoggedInRef.current which is kept in sync via a useEffect above.
-      // GUARD 2: Skip if a previous async check hasn't finished yet (prevents queue buildup).
-      if (!isLoggedInRef.current) return;
-      if (_forceLogoutCheckRef.current) {
-        // Watchdog: a hung check must not disable the 1s poll forever (e.g. a fetch that never
-        // settles after a network change). Force-release after 20s so the next tick retries.
-        if (Date.now() - _forceLogoutCheckAtRef.current > 20000) {
-          console.warn('[ForceLogout] stage=periodic_check watchdog release (previous check hung)');
-          _forceLogoutCheckRef.current = false;
-        } else {
-          return;
-        }
-      }
-
-      _forceLogoutCheckRef.current = true;
-      _forceLogoutCheckAtRef.current = Date.now();
-      ;(async () => {
-        try {
-          const { checkAndExecuteForceLogout } = require('./services/deviceRegistry');
-          const t0 = Date.now();
-          console.log(`[ForceLogout] stage=periodic_check_start isLoggedIn=${isLoggedInRef.current} elapsed=0ms`);
-          const forceRes = await checkAndExecuteForceLogout();
-          if (forceRes && forceRes.triggered) {
-            console.log(`[ForceLogout] stage=periodic_check result=triggered elapsed=${Date.now()-t0}ms`);
-            isLoggedInRef.current = false;
-            setIsLoggedIn(false);
-            setUserRole('');
-            setUserDisplayName('');
-            setPendingLoginInfo(null);
-            setCurrentScreen('LOGIN');
-            setForceReauthRequired(true);
-            Alert.alert(
-              'সেশন বাতিল',
-              forceRes.message || 'প্রশাসক আপনার সেশন বন্ধ করেছেন।\nঅনুগ্রহ করে আবার লগইন করুন।',
-              [{ text: 'ঠিক আছে' }]
-            );
-          }
-        } catch (e) {
-          console.warn('[ForceLogout] stage=periodic_check error:', e.message);
-        } finally {
-          _forceLogoutCheckRef.current = false;
-        }
-      })();
     }, 1000);
     return () => clearInterval(t);
   }, []);

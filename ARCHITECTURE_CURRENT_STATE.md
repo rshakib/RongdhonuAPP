@@ -414,10 +414,10 @@ if (now - lastDbPersistTime >= DB_HEARTBEAT_INTERVAL_MS) { // 120,000 ms
 ```
 `DB_HEARTBEAT_INTERVAL_MS = 120000` (2 minutes) — actual `last_seen_at` column in `public.devices` is updated only every 2 minutes to avoid write overhead.
 
-**C. Force Logout Polling (1-second interval, ALL roles)**
+**C. Force Logout (Realtime instant + 60s safety poll, ALL roles)**
 
-In [`App.js` L287–L340](App.js#L287-L340), a `setInterval(..., 1000)` timer runs while the user is logged in:
-- Calls `checkAndExecuteForceLogout()` every second.
+In [`App.js` L1102–L1143](App.js#L1102-L1143), a `setInterval(..., 60000)` timer runs while the user is logged in, plus an immediate check on every foreground resume — and Realtime delivers the command instantly:
+- `checkAndExecuteForceLogout()` does a local check and, when called without a record, **one Supabase GET** of this device's row. *(The old 1-second variant was removed: it cost ~3,600 REST GET/hr/device for no added safety.)*
 - Checks local `device_registry.force_logout` flag.
 - If triggered: clears session, navigates to LOGIN, sets `forceReauthRequired=true`.
 

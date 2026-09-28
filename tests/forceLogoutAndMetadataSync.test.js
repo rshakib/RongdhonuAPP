@@ -73,6 +73,21 @@ it('TC-08: App.js network reconnection triggers syncDeviceHardwareAndVersion and
   assert.ok(appJsCode.includes('setForceReauthRequired(true)'), 'App.js requires force reauth');
 });
 
+it('TC-09: the 1-second countdown timer is UI-only (no per-second force-logout network check)', () => {
+  // The removed block called checkAndExecuteForceLogout() every second (~3,600 Supabase
+  // GET/hr/device). The 1s timer must now contain ONLY the countdown setters.
+  assert.ok(
+    /setFullCountdown\(prev => \(prev <= 0 \? 30 : prev - 1\)\);\s*\}, 1000\);/.test(appJsCode),
+    'the 1s interval ends immediately after the countdown setters'
+  );
+  assert.strictEqual(appJsCode.includes('_forceLogoutCheckRef'), false, 'no leftover force-logout state refs');
+  assert.strictEqual(appJsCode.includes('stage=periodic_check_start'), false, 'no per-second force-logout logging left');
+  // The remaining paths must all still be wired: 60s poll + foreground resume + Realtime.
+  assert.ok(appJsCode.includes('setInterval(executeForceLogoutCheck, 60000)'), '60s safety poll still present');
+  assert.ok(appJsCode.includes("if (nextState === 'active')"), 'foreground-resume check still present');
+  assert.ok(appJsCode.includes('checkAndExecuteForceLogout('), 'force-logout check still wired (Realtime / resume / 60s)');
+});
+
 console.log('------------------------------------------------------');
 console.log(`Tests Passed: ${passedTests}`);
 console.log(`Tests Failed: ${failedTests}`);

@@ -543,7 +543,7 @@ Row id format: `{device_id}_{business_date}_{role}`.
 **Live tracking (parallel):**
 - **Presence** — `startDevicePresence()` channel `rongdhonu_device_presence`, 25 s heartbeat, 45 s stale threshold, zero DB writes.
 - **DB persist** — `last_seen_at` written to Supabase at most every 2 min.
-- **Force-logout polling** — App.js `setInterval(…,1000)` → `checkAndExecuteForceLogout()`.
+- **Force-logout polling** — Realtime `postgres_changes` on `devices` (instant, <300 ms) + App.js `setInterval(…, 60000)` + an immediate check on every foreground resume. *(The old 1-second network check was removed — it cost ~3,600 REST GET/hr/device for no added safety.)*
 - **Realtime command channel** — `postgres_changes` on `devices` filtered by `device_id` → sub-second delivery.
 
 **Force logout (two paths, whichever fires first):**
