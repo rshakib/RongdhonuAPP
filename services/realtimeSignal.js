@@ -42,12 +42,19 @@ const SIGNAL_RATE_LIMIT_MS = 1000;   // max one signal-triggered pull per group 
 const RECONNECT_BACKOFF_MS = [3000, 6000, 12000, 30000];
 
 // Only tables written to BOTH clouds may be signalled (never app_config / local-only).
-const KNOWN_TABLES = new Set([...(SIGNAL_GROUPS.tables || []), ...(SIGNAL_GROUPS.high || [])]);
+// Every table that belongs to ANY signal group (derived, so a new group is picked up
+// automatically — never hardcode the group names here).
+const KNOWN_TABLES = new Set(
+  Object.keys(SIGNAL_GROUPS).reduce((acc, g) => acc.concat(SIGNAL_GROUPS[g] || []), [])
+);
+/** Per-group mutable blanks, derived from SIGNAL_GROUPS so a new group needs no edits. */
+const blankTimers = () => Object.keys(SIGNAL_GROUPS).reduce((acc, g) => { acc[g] = null; return acc; }, {});
+const blankLastPull = () => Object.keys(SIGNAL_GROUPS).reduce((acc, g) => { acc[g] = 0; return acc; }, {});
 
-// STAGE SWITCH — Stage A shipped 'tables' only; Stage B (this revision) enables 'high'.
-// A group whose flag is false keeps today's fast poll and ignores signals entirely, so
-// setting a flag back to false is the per-group rollback (no other change needed).
-export const ENABLED_GROUPS = { tables: true, high: true };
+// STAGE SWITCH — Stage A shipped 'tables'; Stage B added 'high'; Stage C (this revision)
+// adds 'deletions'. A group whose flag is false keeps today's fast poll and ignores
+// signals entirely, so clearing a flag is the per-group rollback (no other change needed).
+export const ENABLED_GROUPS = { tables: true, high: true, deletions: true };
 
 // --- dependency seams (production defaults; overridable in unit tests) --------
 const productionDeps = {
@@ -69,8 +76,8 @@ let pendingTables = new Set();
 let coalesceTimer = null;
 let reconnectTimer = null;
 let reconnectAttempt = 0;
-let debounceTimers = { tables: null, high: null };
-let lastPullAt = { tables: 0, high: 0 };
+let debounceTimers = blankTimers();
+let lastPullAt = blankLastPull();
 
 const log = (...a) => { try { console.log(...a); } catch (_) {} };
 const warn = (...a) => { try { console.warn(...a); } catch (_) {} };
@@ -334,8 +341,8 @@ export function __resetRealtimeSignalDepsForTesting() {
   coalesceTimer = null;
   reconnectTimer = null;
   reconnectAttempt = 0;
-  debounceTimers = { tables: null, high: null };
-  lastPullAt = { tables: 0, high: 0 };
+  debounceTimers = blankTimers();
+  lastPullAt = blankLastPull();
 }
 /** Test-only: feed a payload straight into the receiver (bypasses the channel). */
 export function __handleSignalForTesting(payload) {

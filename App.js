@@ -49,6 +49,7 @@ const runAutoPull = async (name, syncFn, refreshData) => {
 // only while the Realtime broadcast channel is healthy.
 const SIGNAL_FAST_TABLES_MS = 1000;
 const SIGNAL_FAST_HIGH_MS = 5000;
+const SIGNAL_FAST_DELETIONS_MS = 15000;
 const SIGNAL_SLOW_MS = 30000;
 
 // Self-rescheduling poller that reads the current signal mode on EVERY tick, so the
@@ -819,8 +820,9 @@ export default function App() {
         onPull: (group) => {
           if (group === 'tables') runAutoPull('realtime-tables-pull', syncSupabaseTables, refreshData);
           else if (group === 'high') runAutoPull('realtime-high-frequency-pull', syncSupabaseHighFrequencyCollections, refreshData);
+          else if (group === 'deletions') runAutoPull('realtime-deletions-pull', syncSupabaseDeletions, refreshData);
         },
-        onModeChange: () => { adaptiveTables.kick(); adaptiveHigh.kick(); }
+        onModeChange: () => { adaptiveTables.kick(); adaptiveHigh.kick(); adaptiveDeletions.kick(); }
       });
     };
     const stopSignal = () => {
@@ -838,20 +840,28 @@ export default function App() {
       });
     } catch (_) {}
 
+    // deletions is signal-driven too (Stage C): a 30s safety net while the channel is
+    // SUBSCRIBED, otherwise the original 15s. registerSyncTimer keeps the fast baseline.
     registerSyncTimer('supabase-deletions-poll', 15000, 'syncSupabaseDeletions');
-    const supabaseDeletionsPoll = setInterval(async () => {
-      await runAutoPull('supabase-deletions-poll', syncSupabaseDeletions, refreshData);
-    }, 15000);
+    const adaptiveDeletions = createAdaptivePoller({
+      name: 'supabase-deletions-poll',
+      syncFn: syncSupabaseDeletions,
+      fastMs: SIGNAL_FAST_DELETIONS_MS,
+      slowMs: SIGNAL_SLOW_MS,
+      refreshData,
+      getMode: () => signalMode('deletions')
+    });
+    adaptiveDeletions.start();
 
-    registerSyncTimer('supabase-low-frequency-poll', 45000, 'syncSupabaseLowFrequencyCollections');
+    registerSyncTimer('supabase-low-frequency-poll', 60000, 'syncSupabaseLowFrequencyCollections');
     const supabaseLowPoll = setInterval(async () => {
       await runAutoPull('supabase-low-frequency-poll', syncSupabaseLowFrequencyCollections, refreshData);
-    }, 45000);
+    }, 60000);
 
-    registerSyncTimer('supabase-menu-poll', 60000, 'syncSupabaseMenu');
+    registerSyncTimer('supabase-menu-poll', 300000, 'syncSupabaseMenu');
     const supabaseMenuPoll = setInterval(async () => {
       await runAutoPull('supabase-menu-poll', syncSupabaseMenu, refreshData);
-    }, 60000);
+    }, 300000);
 
     return () => {
       adaptiveTables.stop();
@@ -860,7 +870,7 @@ export default function App() {
       markSyncTimerInactive('supabase-high-frequency-poll');
       stopSignal();
       try { if (signalAppStateSub) signalAppStateSub.remove(); } catch (_) {}
-      clearInterval(supabaseDeletionsPoll);
+      adaptiveDeletions.stop();
       markSyncTimerInactive('supabase-deletions-poll');
       clearInterval(supabaseLowPoll);
       markSyncTimerInactive('supabase-low-frequency-poll');

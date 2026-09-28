@@ -42,7 +42,8 @@ const LOW_FREQ_EXCLUDED = ['app_config'];
 // receiver's table→group mapping can never drift from what is actually pulled.
 export const SIGNAL_GROUPS = {
   tables: ['restaurant_tables'],
-  high: ['orders', 'order_items', 'payments', 'deliveries']
+  high: ['orders', 'order_items', 'payments', 'deliveries'],
+  deletions: ['deletions']
 };
 
 // --- dependency seams (production defaults; overridable in unit tests) --------
@@ -510,7 +511,7 @@ export async function syncSupabaseDeletions() {
   if (isSupabasePullingDeletions) return false;
   isSupabasePullingDeletions = true;
   try {
-    return await runSupabaseGroup(['deletions'], 'syncDeletionsOnly');
+    return await runSupabaseGroup(SIGNAL_GROUPS.deletions, 'syncDeletionsOnly');
   } catch (err) {
     console.warn('[SupabaseSync] syncSupabaseDeletions error (isolated):', err?.message || err);
     return false;
