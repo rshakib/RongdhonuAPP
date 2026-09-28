@@ -486,9 +486,11 @@ export async function checkAppVersion(role = '') {
 
 /**
  * Backward compatibility: legacy fetchMinimumVersion()
+ * Now routed through the dual reader (Supabase-first → Firebase → cache → DEFAULT)
+ * so the Admin version screen no longer performs an unconditional Firestore read.
  */
 export async function fetchMinimumVersion() {
-  const res = await fetchVersionPolicy();
+  const res = await fetchVersionPolicyDualDB();
   return res.policy?.minimum_required_version || APP_VERSION;
 }
 

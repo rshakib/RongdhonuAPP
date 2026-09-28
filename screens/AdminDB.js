@@ -409,7 +409,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     return () => backHandler.remove();
   }, [darkAlert, versionPinModalVisible, monitoringModalVisible, orderDetailVisible, calendarVisible, yearPickerVisible, monthPickerVisible, pastAccountModalVisible, cleanupModalVisible, firebaseUsageVisible, ijaraModalVisible, salesReportVisible, depositReportVisible, dayDetailModalVisible, menuModalVisible, renameModalVisible]);
 
-  // Load/Refresh Firebase minimum version
+  // Load/Refresh minimum version (Supabase-first; Firebase only if Supabase fails)
   const loadFirebaseVersion = async () => {
     setIsLoadingVersion(true);
     setVersionFetchError(false);
@@ -1877,7 +1877,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                         <Text style={styles.versionRefreshIcon}>{isLoadingVersion ? '⏳' : '🔄'}</Text>
                       </TouchableOpacity>
                     </View>
-                    <Text style={styles.versionCompareLabel}>Firebase নিউনতম</Text>
+                    <Text style={styles.versionCompareLabel}>সার্ভারে নিউনতম</Text>
                     {isLoadingVersion ? (
                       <ActivityIndicator size="small" color="#FFB703" style={{ marginTop: 2 }} />
                     ) : versionFetchError ? (
