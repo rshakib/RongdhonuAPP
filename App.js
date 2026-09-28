@@ -44,11 +44,12 @@ const runAutoPull = async (name, syncFn, refreshData) => {
 };
 
 // --- Realtime-signal adaptive polling ----------------------------------------
-// Fast cadence = the previously shipped values (byte-equivalent when the signal channel
-// is not SUBSCRIBED, or when the kill switch is off). Slow cadence is the safety net used
-// only while the Realtime broadcast channel is healthy.
-const SIGNAL_FAST_TABLES_MS = 1000;
-const SIGNAL_FAST_HIGH_MS = 5000;
+// Fallback cadence — used when the signal channel is not SUBSCRIBED (or the kill switch is
+// off). Slow cadence is the safety net used only while the Realtime channel is healthy.
+// NOTE: the fallbacks are deliberately NOT the historical 1s/5s — with a Realtime outage
+// tables poll at 5s and high at 10s, so no 1s or 5s poll remains anywhere.
+const SIGNAL_FAST_TABLES_MS = 5000;
+const SIGNAL_FAST_HIGH_MS = 10000;
 const SIGNAL_FAST_DELETIONS_MS = 15000;
 const SIGNAL_SLOW_MS = 30000;
 
@@ -774,12 +775,11 @@ export default function App() {
       syncSupabaseMenu
     } = require('./services/supabaseSync.js');
 
-    // These two groups are signal-driven now: while the Realtime channel is SUBSCRIBED they
-    // fall back to a slow safety poll (SIGNAL_SLOW_MS); otherwise they run at the original
-    // fast cadence. registerSyncTimer intentionally keeps the ORIGINAL fast values — that is
-    // the documented baseline and what the timer registry has always reported.
-    registerSyncTimer('supabase-tables-poll', 1000, 'syncSupabaseTables');
-    registerSyncTimer('supabase-high-frequency-poll', 5000, 'syncSupabaseHighFrequencyCollections');
+    // These two groups are signal-driven: while the Realtime channel is SUBSCRIBED they use
+    // the slow safety poll (SIGNAL_SLOW_MS); otherwise they fall back to the cadence below
+    // (tables 5s, high 10s). registerSyncTimer mirrors those fallback values for the registry.
+    registerSyncTimer('supabase-tables-poll', 5000, 'syncSupabaseTables');
+    registerSyncTimer('supabase-high-frequency-poll', 10000, 'syncSupabaseHighFrequencyCollections');
 
     const signalMode = (group) => {
       try { return require('./services/realtimeSignal.js').getSignalMode(group); } catch (_) { return 'fast'; }

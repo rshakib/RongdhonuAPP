@@ -479,7 +479,7 @@ let isSupabasePullingLow = false;
 let isSupabasePullingMenu = false;
 
 /** restaurant_tables — signal-driven by the caller: 30s safety poll while the Realtime
- *  channel is SUBSCRIBED, otherwise 1s (see App.js supabase-tables-poll). */
+ *  channel is SUBSCRIBED, otherwise 5s (see App.js supabase-tables-poll). */
 export async function syncSupabaseTables() {
   if (isSupabasePullingTables) return false;
   isSupabasePullingTables = true;
@@ -494,7 +494,7 @@ export async function syncSupabaseTables() {
 }
 
 /** orders / order_items / payments / deliveries — signal-driven: 30s safety poll while
- *  SUBSCRIBED, otherwise 5s (see App.js supabase-high-frequency-poll). */
+ *  SUBSCRIBED, otherwise 10s (see App.js supabase-high-frequency-poll). */
 export async function syncSupabaseHighFrequencyCollections() {
   if (isSupabasePullingHigh) return false;
   isSupabasePullingHigh = true;
