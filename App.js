@@ -2509,14 +2509,14 @@ export default function App() {
   };
 
   const handleHistoricalMonthDownload = async (monthStr, monthName) => {
-    const { getDailyDownloadCount, checkHistoryDownloadStatus, fetchHistoricalMonthData, logHistoryDownload } = require('./database');
+    const { getDailyDownloadCount, checkHistoryDownloadStatus, fetchHistoricalMonthData, logHistoryDownload, MAX_DAILY_MONTH_DOWNLOADS } = require('./database');
     
     // Check if already downloaded
     if (checkHistoryDownloadStatus('DEPOSIT_REPORT', monthStr)) return;
 
-    // Check limit
-    if (getDailyDownloadCount('DEPOSIT_REPORT') >= 2) {
-      Alert.alert("সীমা অতিক্রম হয়েছে", "আজকের ক্লাউড ডাউনলোড সীমা অতিক্রম হয়েছে। অ্যাডমিনের সাথে যোগাযোগ করুন।");
+    // Check limit — at most MAX_DAILY_MONTH_DOWNLOADS (1) month download per day
+    if (getDailyDownloadCount('DEPOSIT_REPORT') >= MAX_DAILY_MONTH_DOWNLOADS) {
+      Alert.alert("সীমা অতিক্রম হয়েছে", "আজকের মাস-ডাউনলোডের সীমা (দিনে ১ বার) শেষ। আগামীকাল আবার চেষ্টা করুন বা অ্যাডমিনের সাথে যোগাযোগ করুন।");
       return;
     }
 

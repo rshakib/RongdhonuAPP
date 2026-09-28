@@ -1965,7 +1965,7 @@ export function isDatabaseEmpty() {
   }
 }
 
-async function fetchChangedRecordsFromFirestore(collectionName, lastSyncTime) {
+async function fetchChangedRecordsFromFirestore(collectionName, lastSyncTime, endTime = null) {
   const projectId = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID);
   const apiKey = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_API_KEY);
   if (!projectId || !apiKey) return { success: false, documents: [] };
@@ -1978,16 +1978,31 @@ async function fetchChangedRecordsFromFirestore(collectionName, lastSyncTime) {
     }
 
     const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:runQuery?key=${apiKey}`;
-    const query = {
-      structuredQuery: {
-        from: [{ collectionId: collectionName }],
-        where: {
+    // Optional upper bound (`endTime`). A range on a SINGLE field is served by Firestore's
+    // single-field index, so no composite index is needed. WITHOUT it the query means
+    // "everything updated since lastSyncTime → now", which is what made the historical
+    // downloads pull months of documents and then discard them client-side.
+    const where = endTime
+      ? {
+          compositeFilter: {
+            op: 'AND',
+            filters: [
+              { fieldFilter: { field: { fieldPath: 'updated_at' }, op: 'GREATER_THAN', value: { stringValue: lastSyncTime } } },
+              { fieldFilter: { field: { fieldPath: 'updated_at' }, op: 'LESS_THAN', value: { stringValue: endTime } } }
+            ]
+          }
+        }
+      : {
           fieldFilter: {
             field: { fieldPath: "updated_at" },
             op: "GREATER_THAN",
             value: { stringValue: lastSyncTime }
           }
-        }
+        };
+    const query = {
+      structuredQuery: {
+        from: [{ collectionId: collectionName }],
+        where
       }
     };
 
@@ -3372,6 +3387,9 @@ export function checkHistoryDownloadStatus(type, period) {
   }
 }
 
+/** Daily cap for a MONTH history download (Firebase reads a whole month per download). */
+export const MAX_DAILY_MONTH_DOWNLOADS = 1;
+
 export function getDailyDownloadCount(type) {
   try {
     const today = new Date().toISOString().substring(0, 10);
@@ -3443,7 +3461,9 @@ export async function fetchHistoricalDateData(dateStr) {
   console.log(`[Historical Download] Fetching data for date: ${dateStr}`);
   for (const table of collections) {
     incrementReadCounter('historical', 1);
-    const result = await fetchChangedRecordsFromFirestore(table, dateStr + "T00:00:00Z");
+    // Upper bound = end of that day ⇒ ONE day is read, not "that day → now".
+    const dayEnd = new Date(new Date(dateStr + "T00:00:00Z").getTime() + 86400000).toISOString();
+    const result = await fetchChangedRecordsFromFirestore(table, dateStr + "T00:00:00Z", dayEnd);
     if (result.success) {
       const dayDocs = result.documents.filter(doc => {
         const row = fromFirestoreDocument(doc);
@@ -3461,12 +3481,18 @@ export async function fetchHistoricalMonthData(monthStr) {
   const collections = ['orders', 'order_items', 'payments', 'expenses', 'daily_submit', 'daily_summary'];
   console.log(`[Historical Download] Fetching data for month: ${monthStr}`);
   
-  // Use the first day of the month as the filter marker to avoid downloading entire history
+  // Use the first day of the month as the lower marker and the first day of the NEXT month
+  // as the upper marker, so exactly ONE month of documents is transferred (previously the
+  // query had no upper bound and pulled everything from that month up to today).
   const startOfMonth = monthStr + "-01T00:00:00Z";
-  
+  const [mYear, mMonth] = monthStr.split("-").map(Number);
+  const nextMonthStart = new Date(
+    Date.UTC(mMonth === 12 ? mYear + 1 : mYear, mMonth === 12 ? 0 : mMonth, 1)
+  ).toISOString();
+
   for (const table of collections) {
      incrementReadCounter('historical', 1);
-     const result = await fetchChangedRecordsFromFirestore(table, startOfMonth);
+     const result = await fetchChangedRecordsFromFirestore(table, startOfMonth, nextMonthStart);
      if (result.success) {
        const monthDocs = result.documents.filter(doc => {
          const row = fromFirestoreDocument(doc);
