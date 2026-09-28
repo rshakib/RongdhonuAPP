@@ -317,6 +317,17 @@ export async function processSupabaseSyncQueue(singleRecordId = null, singleTabl
             } catch (_) {}
             db.runSync("DELETE FROM sync_queue_supabase WHERE id = ?", [Number(queueId)]);
             successfulWrites++;
+
+            // REALTIME SIGNAL (design §4.1): broadcast a data-free "table changed" nudge ONLY
+            // after the cloud write is CONFIRMED (this branch), so a receiver can never pull
+            // stale data. Lazy require + try/catch = same isolation style as the heartbeat
+            // below: a Realtime failure can never affect the push path.
+            try {
+              const { notifyDataChanged } = require('./realtimeSignal.js');
+              notifyDataChanged(tableName);
+            } catch (sigErr) {
+              console.warn('[SupabaseSyncQueue] realtime signal skipped (isolated):', sigErr?.message || sigErr);
+            }
           } else {
             db.runSync(
               "UPDATE sync_queue_supabase SET status = 'FAILED', last_error = ? WHERE id = ?",

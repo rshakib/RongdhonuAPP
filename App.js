@@ -43,6 +43,40 @@ const runAutoPull = async (name, syncFn, refreshData) => {
   }
 };
 
+// --- Realtime-signal adaptive polling ----------------------------------------
+// Fast cadence = the previously shipped values (byte-equivalent when the signal channel
+// is not SUBSCRIBED, or when the kill switch is off). Slow cadence is the safety net used
+// only while the Realtime broadcast channel is healthy.
+const SIGNAL_FAST_TABLES_MS = 1000;
+const SIGNAL_FAST_HIGH_MS = 5000;
+const SIGNAL_SLOW_MS = 30000;
+
+// Self-rescheduling poller that reads the current signal mode on EVERY tick, so the
+// interval can change at runtime (the previous flat setInterval could not). `kick()`
+// re-arms immediately when the mode flips — e.g. slow -> fast on a channel error.
+const createAdaptivePoller = ({ name, syncFn, fastMs, slowMs, refreshData, getMode }) => {
+  let timer = null;
+  let running = false;
+  const nextDelay = () => (getMode() === 'slow' ? slowMs : fastMs);
+  const arm = () => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(fire, nextDelay());
+  };
+  const fire = () => {
+    timer = null;
+    if (!running) return;
+    // Fire-and-forget, exactly like the previous setInterval callback; the pull
+    // functions' own in-flight guards prevent overlapping work.
+    runAutoPull(name, syncFn, refreshData);
+    if (running) arm();
+  };
+  return {
+    start() { if (running) return; running = true; arm(); },
+    stop() { running = false; if (timer) { clearTimeout(timer); timer = null; } },
+    kick() { if (running) arm(); }
+  };
+};
+
 // --- pull toast plumbing ------------------------------------------------------
 // A single sink (set by the pull-listener effect in App) receives
 // (source, hasChanges) for every cloud pull and shows the pull toast.
@@ -739,15 +773,70 @@ export default function App() {
       syncSupabaseMenu
     } = require('./services/supabaseSync.js');
 
+    // These two groups are signal-driven now: while the Realtime channel is SUBSCRIBED they
+    // fall back to a slow safety poll (SIGNAL_SLOW_MS); otherwise they run at the original
+    // fast cadence. registerSyncTimer intentionally keeps the ORIGINAL fast values — that is
+    // the documented baseline and what the timer registry has always reported.
     registerSyncTimer('supabase-tables-poll', 1000, 'syncSupabaseTables');
-    const supabaseTablesPoll = setInterval(async () => {
-      await runAutoPull('supabase-tables-poll', syncSupabaseTables, refreshData);
-    }, 1000);
-
     registerSyncTimer('supabase-high-frequency-poll', 5000, 'syncSupabaseHighFrequencyCollections');
-    const supabaseHighPoll = setInterval(async () => {
-      await runAutoPull('supabase-high-frequency-poll', syncSupabaseHighFrequencyCollections, refreshData);
-    }, 5000);
+
+    const signalMode = (group) => {
+      try { return require('./services/realtimeSignal.js').getSignalMode(group); } catch (_) { return 'fast'; }
+    };
+
+    const adaptiveTables = createAdaptivePoller({
+      name: 'supabase-tables-poll',
+      syncFn: syncSupabaseTables,
+      fastMs: SIGNAL_FAST_TABLES_MS,
+      slowMs: SIGNAL_SLOW_MS,
+      refreshData,
+      getMode: () => signalMode('tables')
+    });
+    const adaptiveHigh = createAdaptivePoller({
+      name: 'supabase-high-frequency-poll',
+      syncFn: syncSupabaseHighFrequencyCollections,
+      fastMs: SIGNAL_FAST_HIGH_MS,
+      slowMs: SIGNAL_SLOW_MS,
+      refreshData,
+      getMode: () => signalMode('high')
+    });
+    adaptiveTables.start();
+    adaptiveHigh.start();
+
+    // Realtime signal channel: when another device confirms a write it nudges us with a
+    // data-free broadcast and we immediately run the EXISTING pull for that group. No merge
+    // rule, tombstone guard or Firebase-fallback path changes.
+    // Kill switch: EXPO_PUBLIC_REALTIME_SIGNAL_ENABLED (default true).
+    let realtimeSignal = null;
+    try { realtimeSignal = require('./services/realtimeSignal.js'); } catch (_) {}
+
+    const startSignal = () => {
+      if (!realtimeSignal) return;
+      let deviceId = null;
+      try { deviceId = require('./services/deviceRegistry').getCurrentDeviceRecord()?.device_id || null; } catch (_) {}
+      realtimeSignal.startRealtimeSignal({
+        deviceId,
+        onPull: (group) => {
+          if (group === 'tables') runAutoPull('realtime-tables-pull', syncSupabaseTables, refreshData);
+          else if (group === 'high') runAutoPull('realtime-high-frequency-pull', syncSupabaseHighFrequencyCollections, refreshData);
+        },
+        onModeChange: () => { adaptiveTables.kick(); adaptiveHigh.kick(); }
+      });
+    };
+    const stopSignal = () => {
+      try { if (realtimeSignal) realtimeSignal.stopRealtimeSignal(); } catch (_) {}
+    };
+    startSignal();
+
+    // Background drops the channel (⇒ fast mode; runAutoPull also no-ops while inactive).
+    // Foreground resubscribes, and every SUBSCRIBED triggers one catch-up pull.
+    let signalAppStateSub = null;
+    try {
+      signalAppStateSub = AppState.addEventListener('change', (next) => {
+        if (next === 'active') startSignal();
+        else if (next === 'background' || next === 'inactive') stopSignal();
+      });
+    } catch (_) {}
 
     registerSyncTimer('supabase-deletions-poll', 15000, 'syncSupabaseDeletions');
     const supabaseDeletionsPoll = setInterval(async () => {
@@ -765,10 +854,12 @@ export default function App() {
     }, 60000);
 
     return () => {
-      clearInterval(supabaseTablesPoll);
+      adaptiveTables.stop();
       markSyncTimerInactive('supabase-tables-poll');
-      clearInterval(supabaseHighPoll);
+      adaptiveHigh.stop();
       markSyncTimerInactive('supabase-high-frequency-poll');
+      stopSignal();
+      try { if (signalAppStateSub) signalAppStateSub.remove(); } catch (_) {}
       clearInterval(supabaseDeletionsPoll);
       markSyncTimerInactive('supabase-deletions-poll');
       clearInterval(supabaseLowPoll);

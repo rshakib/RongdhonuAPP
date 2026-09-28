@@ -36,6 +36,15 @@ const RESTAURANT_TABLE_IDS = ['table_1', 'table_2', 'table_3', 'table_4', 'table
 // daily_submit/daily_summary are permanent in Supabase, so they are pulled from it.
 const LOW_FREQ_EXCLUDED = ['app_config'];
 
+// --- signal → pull-group mapping (Realtime "change signal" design) ------------
+// SINGLE SOURCE OF TRUTH for which tables belong to the two adaptive-polled groups.
+// Consumed by this module's pull functions AND by services/realtimeSignal.js, so the
+// receiver's table→group mapping can never drift from what is actually pulled.
+export const SIGNAL_GROUPS = {
+  tables: ['restaurant_tables'],
+  high: ['orders', 'order_items', 'payments', 'deliveries']
+};
+
 // --- dependency seams (production defaults; overridable in unit tests) --------
 function defaultGetDb() {
   return require('../database.js').getDb();
@@ -473,7 +482,7 @@ export async function syncSupabaseTables() {
   if (isSupabasePullingTables) return false;
   isSupabasePullingTables = true;
   try {
-    return await runSupabaseGroup(['restaurant_tables'], 'syncTablesOnly');
+    return await runSupabaseGroup(SIGNAL_GROUPS.tables, 'syncTablesOnly');
   } catch (err) {
     console.warn('[SupabaseSync] syncSupabaseTables error (isolated):', err?.message || err);
     return false;
@@ -487,7 +496,7 @@ export async function syncSupabaseHighFrequencyCollections() {
   if (isSupabasePullingHigh) return false;
   isSupabasePullingHigh = true;
   try {
-    return await runSupabaseGroup(['orders', 'order_items', 'payments', 'deliveries'], 'syncHighFrequencyCollections');
+    return await runSupabaseGroup(SIGNAL_GROUPS.high, 'syncHighFrequencyCollections');
   } catch (err) {
     console.warn('[SupabaseSync] syncSupabaseHighFrequencyCollections error (isolated):', err?.message || err);
     return false;
