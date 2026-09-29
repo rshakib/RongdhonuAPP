@@ -234,7 +234,7 @@ Key: `last_sync_time_{tableName}` → value: ISO timestamp of the last successfu
 **`syncCollections(collectionsList)`** at [`database.js` L1957–L2226](database.js#L1957-L2226) — full delta sync loop:
 1. Read `last_sync_time_{table}` from `app_config`.
 2. **Overlap safety:** subtract **60 seconds** from marker to guard against eventual consistency gaps.
-3. If no marker → full collection fetch (`fetchCollection()` with pagination, pageSize=300).
+3. If no marker → **bounded first sync**: the last `FIREBASE_FIRST_SYNC_DAYS` (31) days, then the cursor is stored (previously the whole collection via `fetchCollection()` — that caused multi-thousand-document read bursts).
 4. For each returned doc:
    - If `table === 'restaurant_tables'`: only accept IDs `table_1`…`table_8`.
    - Compare cloud `updated_at` vs local `updated_at`. Only write if cloud is newer.

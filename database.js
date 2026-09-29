@@ -2053,6 +2053,11 @@ async function fetchChangedRecordsFromFirestore(collectionName, lastSyncTime, en
     return { success: false, documents: [] };
   }
 }
+// A table with no Firebase cursor used to be read as the ENTIRE collection, which is what
+// produced multi-thousand-document read bursts. First syncs are now bounded to this window;
+// the cursor is stored afterwards so every later pull is a small delta.
+const FIREBASE_FIRST_SYNC_DAYS = 31;
+
 async function syncCollections(collectionsList, cycleName = 'Unnamed Cycle') {
   const projectId = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID);
   const apiKey = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_API_KEY);
@@ -2106,11 +2111,14 @@ async function syncCollections(collectionsList, cycleName = 'Unnamed Cycle') {
         fetchResult = await fetchChangedRecordsFromFirestore(queryCollection, queryMarker);
         estReads = 1 + (fetchResult?.documents?.length || 0); // 1 for query run, +1 per doc returned
       } else {
-        // Fetch entire collection on first sync
-        console.log(`[Pull Sync] Fetching full collection for "${table}" (first sync)...`);
-        fetchResult = await fetchCollection(queryCollection);
-        isFullSync = true;
-        estReads = 1 + (fetchResult?.documents?.length || 0); // 1 for collection root, +1 per doc returned
+        // No cursor for this table ⇒ bounded first sync over the last FIREBASE_FIRST_SYNC_DAYS
+        // days (previously: the entire collection). The cursor is stored afterwards, so every
+        // subsequent pull is a small delta.
+        const firstSyncMarker = new Date(Date.now() - FIREBASE_FIRST_SYNC_DAYS * 86400000).toISOString();
+        console.log(`[Pull Sync] No cursor for "${table}" — bounded read since ${firstSyncMarker} (last ${FIREBASE_FIRST_SYNC_DAYS} days)`);
+        fetchResult = await fetchChangedRecordsFromFirestore(queryCollection, firstSyncMarker);
+        isFullSync = false;
+        estReads = 1 + (fetchResult?.documents?.length || 0);
       }
 
       cycleStat.collections.push({

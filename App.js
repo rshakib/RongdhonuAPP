@@ -98,6 +98,16 @@ const runFirebasePullIfSupabaseDown = async (name, syncFn, refreshData) => {
     health = getSupabaseHealth();
   } catch (_) {}
   const { recordAutoSyncEvent } = require('./database');
+  // OWNER POLICY: Firebase is read ONLY by explicit manual actions. The standalone Firebase
+  // pull timers therefore never read, whatever the Supabase health. (See
+  // services/supabaseSync.js ALLOW_AUTO_FIREBASE_READ.)
+  let allowAutoFirebaseRead = false;
+  try { allowAutoFirebaseRead = require('./services/supabaseSync.js').ALLOW_AUTO_FIREBASE_READ === true; } catch (_) {}
+  if (!allowAutoFirebaseRead) {
+    console.log(`[Firebase-Read] ${name} SKIPPED — policy: automatic Firebase reads disabled (manual pull only)`);
+    recordAutoSyncEvent(name, 'skipped', 'policy-no-auto-firebase → Firebase read skipped');
+    return false;
+  }
   if (health.healthy) {
     console.log(`[Firebase-Read] ${name} SKIPPED — Supabase primary healthy (reason=${health.reason})`);
     recordAutoSyncEvent(name, 'skipped', `supabase-healthy reason=${health.reason} → Firebase read skipped`);
@@ -126,6 +136,13 @@ const runPullPreferSupabase = async (name, supabaseFnName, fallbackFn, refreshDa
       return await runAutoPull(name, mod[supabaseFnName], refreshData);
     }
   } catch (_) {}
+  // OWNER POLICY: never fall back to Firebase automatically; a manual pull is required.
+  let allowAutoFirebaseRead = false;
+  try { allowAutoFirebaseRead = require('./services/supabaseSync.js').ALLOW_AUTO_FIREBASE_READ === true; } catch (_) {}
+  if (!allowAutoFirebaseRead) {
+    console.log(`[Firebase-Read] ${name} SKIPPED — policy: automatic Firebase reads disabled (Supabase unhealthy, reason=${health.reason}; manual pull required)`);
+    return false;
+  }
   console.log(`[Firebase-Read] ${name} RUNNING Firebase fallback pull — reason=${health.reason}`);
   const didChange = await runAutoPull(name, fallbackFn, refreshData);
   reportPull('firebase', didChange);

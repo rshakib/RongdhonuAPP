@@ -46,6 +46,17 @@ export const SIGNAL_GROUPS = {
   deletions: ['deletions']
 };
 
+// --- Firebase read policy ------------------------------------------------------
+// OWNER POLICY: Firebase must NOT be read automatically. It is read only by explicit
+// manual actions (Cloud Restore, Manual Pull, report history downloads, menu recovery,
+// same-day resync). With this `false`:
+//   • a Supabase read failure no longer triggers an automatic same-tick Firebase fallback,
+//   • the standalone Firebase pull timers never read (see App.js runFirebasePullIfSupabaseDown),
+//   • the login/foreground/startup lifecycle pulls never fall back to Firebase.
+// The device simply keeps its local data until the user triggers a manual pull.
+// Flip to `true` to restore the previous automatic-fallback behaviour.
+export const ALLOW_AUTO_FIREBASE_READ = false;
+
 // --- dependency seams (production defaults; overridable in unit tests) --------
 function defaultGetDb() {
   return require('../database.js').getDb();
@@ -460,6 +471,13 @@ async function runSupabaseGroup(tables, firebaseFnName) {
 
   if (failure) {
     supabasePrimaryHealthy = false;
+    if (!ALLOW_AUTO_FIREBASE_READ) {
+      // OWNER POLICY — no automatic Firebase reads: keep the local data as-is instead of
+      // fetching the same data from Firestore. A manual pull covers the recovery.
+      console.log(`[Firebase-Read] ${firebaseFnName} BLOCKED by policy — automatic Firebase reads disabled (Supabase read failed)`);
+      recordSyncHeartbeat({ backend: 'supabase', kind: 'read' }).catch(() => {});
+      return false;
+    }
     const r = await callFirebaseFallback(fb, firebaseFnName);
     emitPull('firebase', r);
     recordSyncHeartbeat({ backend: 'firebase', kind: 'read' }).catch(() => {});
