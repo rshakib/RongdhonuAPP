@@ -162,7 +162,7 @@ CREATE TABLE IF NOT EXISTS public.app_version_policy (
 );
 
 INSERT INTO public.app_version_policy (id, minimum_required_version, minimum_version, latest_version)
-VALUES ('global', '1.0.7', '1.0.7', '1.0.7')
+VALUES ('global', '1.0.8', '1.0.8', '1.0.8')
 ON CONFLICT (id) DO NOTHING;
 
 

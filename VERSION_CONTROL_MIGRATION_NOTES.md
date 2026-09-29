@@ -14,9 +14,9 @@ The version policy lives in the Firestore collection `app_config` under the docu
 
 | Field Name | Firestore REST Type | Example Value | Purpose | Fallback / Default |
 |---|---|---|---|---|
-| `minimum_required_version` | `stringValue` | `"1.0.7"` | Lowest client semver allowed to operate. | `APP_VERSION` (from `app.json`) |
-| `minimum_version` | `stringValue` | `"1.0.7"` | Legacy duplicate alias of `minimum_required_version`. | `minimum_required_version` |
-| `latest_version` | `stringValue` | `"1.0.7"` | The latest available release version. | `minimum_required_version` |
+| `minimum_required_version` | `stringValue` | `"1.0.8"` | Lowest client semver allowed to operate. | `APP_VERSION` (from `app.json`) |
+| `minimum_version` | `stringValue` | `"1.0.8"` | Legacy duplicate alias of `minimum_required_version`. | `minimum_required_version` |
+| `latest_version` | `stringValue` | `"1.0.8"` | The latest available release version. | `minimum_required_version` |
 | `update_url` | `stringValue` | `"https://github.com/rshakib/RongdhonuAPP/releases"` | Target download URL opened when user taps update button. | Default GitHub release URL |
 | `force_update_enabled` | `booleanValue` | `true` | Master switch. If `false`, version mismatches will not block the app. | `true` |
 | `update_message` | `stringValue` | `"একটি নতুন সংস্করণ পাওয়া গেছে। অ্যাপ্লিকেশন ব্যবহার চালিয়ে যেতে অনুগ্রহ করে আপডেট করুন।"` | Localized message shown on the blocking update screen. | Standard Bengali notice |
@@ -180,7 +180,7 @@ Admins update the version policy directly inside the app:
 * **Capabilities in UI:**
   1. Displays current minimum version from cloud (`firebaseMinVersion`).
   2. Compares live app version of every connected device in the fleet.
-  3. Input box for new version: `v [ 1.0.7 ]`.
+  3. Input box for new version: `v [ 1.0.8 ]`.
 * **Two-Factor Security on Update:**
   1. **Biometric Verification:** [`AdminDB.js` L445–L462](screens/AdminDB.js#L445-L462) calls `LocalAuthentication.authenticateAsync()`.
   2. **Admin/Owner PIN Modal:** [`AdminDB.js` L470–L481](screens/AdminDB.js#L470-L481) requires entering an Admin/Owner PIN verified against `users` table via `verifyPinCode()`.
@@ -223,7 +223,7 @@ CREATE TABLE IF NOT EXISTS public.app_version_policy (
 
 -- Seed initial row
 INSERT INTO public.app_version_policy (id, minimum_required_version, latest_version)
-VALUES ('global', '1.0.7', '1.0.7')
+VALUES ('global', '1.0.8', '1.0.8')
 ON CONFLICT (id) DO NOTHING;
 
 -- Enable RLS: allow anon read, restricted admin write
