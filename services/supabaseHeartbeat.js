@@ -132,11 +132,37 @@ export async function recordSyncHeartbeat({ backend, kind, rows = null, ok = tru
       row.last_rows = rows == null ? null : Number(rows) || 0;
     }
 
-    const { error: upErr } = await withTimeout(
+    // Attach THIS device's current realtime signal health, so the "Normal flow" card refreshes
+    // it on every heartbeat (not only on the one-time channel event).
+    if (String(backend).toLowerCase().startsWith('supabase')) {
+      try {
+        const rs = require('./realtimeSignal.js');
+        // Always attach (no kill-switch gate): subscribed → true, else false. So the card never
+        // shows "no info" once this build is running.
+        if (typeof rs.isSignalSubscribed === 'function') row.realtime_ok = !!rs.isSignalSubscribed();
+        if (typeof rs.getSignalMode === 'function') row.realtime_mode = String(rs.getSignalMode('tables') || '');
+        console.log(`[Heartbeat] realtime attach ok=${row.realtime_ok} mode=${row.realtime_mode}`);
+      } catch (e) {
+        console.log(`[Heartbeat] realtime attach failed: ${e && e.message}`);
+      }
+    }
+
+    let { error: upErr } = await withTimeout(
       client.from('sync_heartbeat').upsert(row, { onConflict: 'device_id,backend' }),
       6000,
       'sync heartbeat'
     );
+    // If the realtime_* columns are not migrated on this project yet, they would reject the
+    // WHOLE row (killing push/read heartbeats). Retry without them so the rest still lands.
+    if (upErr && row.realtime_ok !== undefined && looksLikeUnknownColumn(upErr)) {
+      delete row.realtime_ok;
+      delete row.realtime_mode;
+      ({ error: upErr } = await withTimeout(
+        client.from('sync_heartbeat').upsert(row, { onConflict: 'device_id,backend' }),
+        6000,
+        'sync heartbeat (retry)'
+      ));
+    }
     if (upErr) {
       console.warn('[Heartbeat] upsert failed (isolated):', upErr.message);
       return false;
@@ -163,5 +189,48 @@ export async function fetchSyncHeartbeats() {
     return { success: true, rows: Array.isArray(data) ? data : [] };
   } catch (err) {
     return { success: false, rows: [], error: err?.message || String(err) };
+  }
+}
+
+/** PostgREST "no such column" (the realtime_* columns not migrated yet). */
+function looksLikeUnknownColumn(err) {
+  const code = String((err && err.code) || '');
+  const msg = String((err && (err.message || err)) || '').toLowerCase();
+  if (code === 'PGRST205' || msg.includes('could not find the table')) return false;
+  if (code === 'PGRST204') return true;
+  return msg.includes('column') && (msg.includes('does not exist') || msg.includes('could not find') || msg.includes('schema cache'));
+}
+
+/**
+ * Report THIS device's Realtime signal-channel health (per device, into the `supabase1`
+ * heartbeat row). Partial upsert — it only touches realtime_ok / realtime_mode, never the
+ * push/read columns. Never throws; a missing column (old schema) is silently skipped.
+ */
+export async function recordRealtimeHealth({ ok = true, mode = '' } = {}) {
+  try {
+    if (!deps.isEnabled() || !deps.isConfigured()) return false;
+    const client = deps.getClient();
+    const deviceId = deps.getDeviceId();
+    if (!client || !deviceId) return false;
+
+    const row = {
+      device_id: String(deviceId),
+      backend: 'supabase', // SAME backend value the push/read heartbeats use (one row per device)
+      realtime_ok: ok !== false,
+      realtime_mode: String(mode || ''),
+      updated_at: new Date().toISOString()
+    };
+    const { error } = await withTimeout(
+      client.from('sync_heartbeat').upsert(row, { onConflict: 'device_id,backend' }),
+      6000,
+      'realtime heartbeat'
+    );
+    if (error) {
+      if (!looksLikeUnknownColumn(error)) console.warn('[Heartbeat] realtime report failed (isolated):', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    return false;
   }
 }

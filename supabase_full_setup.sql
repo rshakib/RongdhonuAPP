@@ -162,7 +162,7 @@ CREATE TABLE IF NOT EXISTS public.app_version_policy (
 );
 
 INSERT INTO public.app_version_policy (id, minimum_required_version, minimum_version, latest_version)
-VALUES ('global', '1.0.8', '1.0.8', '1.0.8')
+VALUES ('global', '1.0.9', '1.0.9', '1.0.9')
 ON CONFLICT (id) DO NOTHING;
 
 
@@ -185,12 +185,16 @@ CREATE TABLE IF NOT EXISTS public.sync_heartbeat (
     last_read_at  TIMESTAMPTZ,            -- last successful READ/PULL from this backend
     last_rows     INTEGER,
     pending_tables JSONB,                 -- { "orders": 3, ... } unsent rows for THIS backend
+    realtime_ok   BOOLEAN,                -- signal channel healthy? (null = never reported)
+    realtime_mode TEXT,                   -- 'slow' (SUBSCRIBED) | 'fast' (channel down)
     updated_at    TIMESTAMPTZ DEFAULT now(),
     PRIMARY KEY (device_id, backend)
 );
 
 -- Migration for an already-created table:
 ALTER TABLE public.sync_heartbeat ADD COLUMN IF NOT EXISTS pending_tables JSONB;
+ALTER TABLE public.sync_heartbeat ADD COLUMN IF NOT EXISTS realtime_ok BOOLEAN;
+ALTER TABLE public.sync_heartbeat ADD COLUMN IF NOT EXISTS realtime_mode TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_sync_heartbeat_updated ON public.sync_heartbeat(updated_at DESC);
 

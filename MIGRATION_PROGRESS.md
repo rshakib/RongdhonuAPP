@@ -23,7 +23,7 @@
 **One-screen summary. Everything below is committed on `feature/admin-dashboard-redesign` (not pushed).**
 
 **Build / release**
-- App **1.0.8**, Android **versionCode 11** (`app.json`, `app.config.js`, `package.json`+lock root, `supabase_full_setup.sql` seed, docs).
+- App **1.0.9**, Android **versionCode 12** (`app.json`, `app.config.js`, `package.json`+lock root, `supabase_full_setup.sql` seed, docs).
 - `eas.json` profiles: `admin`/`owner`/`manager` (+ `development`, `production`) — **all now set `EXPO_PUBLIC_APP_PROFILE`** (dev/production = ADMIN). The broken `build:apk`/`build:previe` scripts (referencing non-existent profiles) were **removed**.
 - ⚠️ `android/app/build.gradle` still shows `1.0.4`/`6` — prebuild artifact, intentionally not hand-edited (EAS regenerates).
 
@@ -61,8 +61,8 @@
 
 **Manual / optional remaining**
 1. Re-run `supabase_cron.sql` in the Supabase SQL Editor if the `5 21 * * *` schedule isn't applied yet.
-2. Optional: update the live `app_version_policy` row to 1.0.8 (seed uses `ON CONFLICT DO NOTHING`).
-3. Build + distribute the 1.0.8 APKs; verify the startup line `AppProfile: MANAGER|ADMIN|OWNER`.
+2. Optional: update the live `app_version_policy` row to 1.0.9 (seed uses `ON CONFLICT DO NOTHING`).
+3. Build + distribute the 1.0.9 APKs; verify the startup line `AppProfile: MANAGER|ADMIN|OWNER`.
 4. Optional: run the §4(c) RLS policy-inventory query for final confirmation.
 
 **Recent commits:** `f3f736a` ADMIN scope audit · `7cf5669` build-config + dead tests · `c06b97f` restore-scope fix (critical) · `8d63264` resync/Cloud-Restore Supabase-first · `59e8be0` phases 6–7 + read-gating + v1.0.7.

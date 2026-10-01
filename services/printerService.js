@@ -108,6 +108,13 @@ export function isPrinterConnected() {
 }
 
 // ---- Printer status (connection state + device name) with change notifications ----
+/**
+ * Raster ink threshold (0-255). Pixels darker than this become black dots on
+ * paper. A higher value keeps more of each glyph's anti-aliased edge, which is
+ * what makes the printed text look solid and bold instead of thin and grey.
+ */
+const INK_THRESHOLD = 200;
+
 const printerStatusListeners = new Set();
 
 function emitPrinterStatusChange() {
@@ -439,6 +446,18 @@ export async function renderReceiptToEscPosBytes(order) {
 
   let y = 20;
 
+  // Thermal clarity: a 1-bit raster drops anti-aliased glyph edges, so the
+  // printed text comes out thinner than on screen. Drawing a hairline outline
+  // (fill + stroke) thickens every glyph and keeps it solid after thresholding.
+  const drawText = (text, x, posY) => {
+    ctx.fillText(text, x, posY);
+    const size = Number(String(ctx.font).match(/(\d+(?:\.\d+)?)px/)?.[1]) || 16;
+    ctx.lineWidth = Math.max(0.8, size * 0.09);
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#000000';
+    ctx.strokeText(text, x, posY);
+  };
+
   const drawDashedLine = (currentY) => {
     ctx.beginPath();
     ctx.setLineDash([4, 4]);
@@ -459,17 +478,17 @@ export async function renderReceiptToEscPosBytes(order) {
   // Restaurant Title
   ctx.font = `900 24px ${BENGALI_FONT}`;
   ctx.textAlign = 'center';
-  ctx.fillText('রংধনু ক্যাফে এন্ড রেস্টুরেন্ট', canvasWidth / 2, y);
+  drawText('রংধনু ক্যাফে এন্ড রেস্টুরেন্ট', canvasWidth / 2, y);
   y += 20;
 
   // Restaurant Address
   ctx.font = `14px ${BENGALI_FONT}`;
-  ctx.fillText('পুলিশ মোড়, দুর্গাপুর, নেত্রকোনা', canvasWidth / 2, y);
+  drawText('পুলিশ মোড়, দুর্গাপুর, নেত্রকোনা', canvasWidth / 2, y);
   y += 18;
 
   // Restaurant Mobile
   ctx.font = `bold 15px ${BENGALI_FONT}`;
-  ctx.fillText('মোবাইল: 01953838244', canvasWidth / 2, y);
+  drawText('মোবাইল: 01953838244', canvasWidth / 2, y);
   y += 16;
 
   // Divider
@@ -479,14 +498,14 @@ export async function renderReceiptToEscPosBytes(order) {
   // Table
   ctx.textAlign = 'left';
   ctx.font = `bold 18px ${BENGALI_FONT}`;
-  ctx.fillText(`টেবিল: ${toBengaliNumber(norm.tableName)}`, 12, y);
+  drawText(`টেবিল: ${toBengaliNumber(norm.tableName)}`, 12, y);
   y += 22;
 
   // Date and Time
   ctx.font = `bold 15px ${BENGALI_FONT}`;
-  ctx.fillText(`তারিখ: ${toBengaliNumber(norm.date)}`, 12, y);
+  drawText(`তারিখ: ${toBengaliNumber(norm.date)}`, 12, y);
   ctx.textAlign = 'right';
-  ctx.fillText(`সময়: ${toBengaliNumber(norm.time)}`, canvasWidth - 12, y);
+  drawText(`সময়: ${toBengaliNumber(norm.time)}`, canvasWidth - 12, y);
   y += 16;
 
   // Divider
@@ -497,14 +516,14 @@ export async function renderReceiptToEscPosBytes(order) {
   norm.items.forEach(item => {
     ctx.textAlign = 'left';
     ctx.font = `900 18px ${BENGALI_FONT}`;
-    ctx.fillText(item.name, 12, y);
+    drawText(item.name, 12, y);
     y += 20;
 
     ctx.font = `bold 16px ${BENGALI_FONT}`;
-    ctx.fillText(`  ${toBengaliNumber(item.qty)} × ${toBengaliNumber(item.price)}`, 12, y);
+    drawText(`  ${toBengaliNumber(item.qty)} × ${toBengaliNumber(item.price)}`, 12, y);
     ctx.textAlign = 'right';
     ctx.font = `900 18px ${BENGALI_FONT}`;
-    ctx.fillText(`৳${toBengaliNumber(item.total)}`, canvasWidth - 12, y);
+    drawText(`৳${toBengaliNumber(item.total)}`, canvasWidth - 12, y);
     y += 22;
   });
 
@@ -515,18 +534,18 @@ export async function renderReceiptToEscPosBytes(order) {
   // Subtotal
   ctx.textAlign = 'left';
   ctx.font = `bold 18px ${BENGALI_FONT}`;
-  ctx.fillText('সর্বমোট:', 12, y);
+  drawText('সর্বমোট:', 12, y);
   ctx.textAlign = 'right';
-  ctx.fillText(`৳${toBengaliNumber(norm.subtotal)}`, canvasWidth - 12, y);
+  drawText(`৳${toBengaliNumber(norm.subtotal)}`, canvasWidth - 12, y);
   y += 22;
 
   // Discount
   if (norm.discount > 0) {
     ctx.textAlign = 'left';
     ctx.font = `bold 17px ${BENGALI_FONT}`;
-    ctx.fillText('ডিসকাউন্ট:', 12, y);
+    drawText('ডিসকাউন্ট:', 12, y);
     ctx.textAlign = 'right';
-    ctx.fillText(`৳${toBengaliNumber(norm.discount)}`, canvasWidth - 12, y);
+    drawText(`৳${toBengaliNumber(norm.discount)}`, canvasWidth - 12, y);
     y += 22;
   }
 
@@ -534,18 +553,18 @@ export async function renderReceiptToEscPosBytes(order) {
   if (norm.deliveryCharge > 0) {
     ctx.textAlign = 'left';
     ctx.font = `bold 17px ${BENGALI_FONT}`;
-    ctx.fillText('ডেলিভারি চার্জ:', 12, y);
+    drawText('ডেলিভারি চার্জ:', 12, y);
     ctx.textAlign = 'right';
-    ctx.fillText(`৳${toBengaliNumber(norm.deliveryCharge)}`, canvasWidth - 12, y);
+    drawText(`৳${toBengaliNumber(norm.deliveryCharge)}`, canvasWidth - 12, y);
     y += 22;
   }
 
   // Final Amount
   ctx.textAlign = 'left';
   ctx.font = `900 22px ${BENGALI_FONT}`;
-  ctx.fillText('পরিশোধ:', 12, y);
+  drawText('পরিশোধ:', 12, y);
   ctx.textAlign = 'right';
-  ctx.fillText(`৳${toBengaliNumber(norm.finalAmount)}`, canvasWidth - 12, y);
+  drawText(`৳${toBengaliNumber(norm.finalAmount)}`, canvasWidth - 12, y);
   y += 20;
 
   // Divider
@@ -555,9 +574,9 @@ export async function renderReceiptToEscPosBytes(order) {
   // Payment Method: label on left, value on right
   ctx.textAlign = 'left';
   ctx.font = `bold 18px ${BENGALI_FONT}`;
-  ctx.fillText('পেমেন্ট:', 12, y);
+  drawText('পেমেন্ট:', 12, y);
   ctx.textAlign = 'right';
-  ctx.fillText(translatePaymentMethod(norm.paymentMethod), canvasWidth - 12, y);
+  drawText(translatePaymentMethod(norm.paymentMethod), canvasWidth - 12, y);
   y += 20;
 
   // Split Breakdown if applicable
@@ -565,9 +584,9 @@ export async function renderReceiptToEscPosBytes(order) {
     ctx.font = `bold 16px ${BENGALI_FONT}`;
     norm.splitBreakdown.forEach(split => {
       ctx.textAlign = 'left';
-      ctx.fillText(`  ${split.label}`, 12, y);
+      drawText(`  ${split.label}`, 12, y);
       ctx.textAlign = 'right';
-      ctx.fillText(`৳${toBengaliNumber(split.amount)}`, canvasWidth - 12, y);
+      drawText(`৳${toBengaliNumber(split.amount)}`, canvasWidth - 12, y);
       y += 20;
     });
   }
@@ -579,7 +598,7 @@ export async function renderReceiptToEscPosBytes(order) {
   // Footer Greeting
   ctx.textAlign = 'center';
   ctx.font = `bold 18px ${BENGALI_FONT}`;
-  ctx.fillText('ধন্যবাদ, আবার আসবেন!', canvasWidth / 2, y);
+  drawText('ধন্যবাদ, আবার আসবেন!', canvasWidth / 2, y);
   y += 18;
 
   // Final Divider
@@ -618,8 +637,10 @@ export async function renderReceiptToEscPosBytes(order) {
         const green = pixels[pIdx + 1];
         const blue = pixels[pIdx + 2];
         const luminance = (red * 0.299) + (green * 0.587) + (blue * 0.114);
-        // If dark pixel -> set bit to 1 (print black dot)
-        if (luminance < 185) {
+        // If dark pixel -> set bit to 1 (print black dot). The threshold is
+        // deliberately permissive so anti-aliased glyph edges are PRESERVED
+        // (ink) instead of being dropped, which would print thin grey text.
+        if (luminance < INK_THRESHOLD) {
           b |= (1 << (7 - bit));
         }
       }

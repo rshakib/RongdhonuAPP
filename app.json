@@ -2,7 +2,7 @@
   "expo": {
     "name": "রংধনু",
     "slug": "temp-expo",
-    "version": "1.0.8",
+    "version": "1.0.9",
     "orientation": "portrait",
     "icon": "./image/mylogo.png",
     "userInterfaceStyle": "light",
@@ -28,7 +28,7 @@
         "foregroundImage": "./image/mylogo.png"
       },
       "package": "com.riajulshakib.rongdhonu",
-      "versionCode": 11
+      "versionCode": 12
     },
     "web": {
       "favicon": "./image/mylogo.png"

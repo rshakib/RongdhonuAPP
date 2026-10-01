@@ -8,6 +8,11 @@
  * 3. Pre-flight validation modal showing backup date, version, tables, and record count.
  * 4. Transaction-safe atomic restore with explicit user confirmation.
  * 5. Strict preservation of user credentials, device registration, and auth tokens.
+ * 6. "Firebase → Supabase (one day)": pull ONE business day out of Firebase and upsert it
+ *    into the app's (single) Supabase project.
+ *
+ * NOTE: single-Supabase build — there is no DB1/DB2 choice; everything goes to the one
+ * Supabase project this app is configured with.
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -20,8 +25,9 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  TextInput,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Database,
   Download,
@@ -46,9 +52,19 @@ import {
   getBackupStatus,
   cleanupInspectBackup,
 } from '../services/backupRestore';
+import {
+  pushFirebaseDayToSupabase,
+  previewFirebaseDay,
+  todayLocal,
+  yesterdayLocal,
+  shiftDay,
+  isValidDay,
+} from '../services/firebaseDayRestore';
+import { formatDayBn } from '../services/calendarGrid';
+import CalendarPicker from '../components/CalendarPicker';
+import { pushLocalToSupabase } from '../services/localToSupabase';
 
 export default function BackupRestoreScreen({ onBack, onRefreshAppState }) {
-  const insets = useSafeAreaInsets();
   const [status, setStatus] = useState(getBackupStatus());
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isValidating, setIsValidating] = useState(false);
@@ -57,6 +73,20 @@ export default function BackupRestoreScreen({ onBack, onRefreshAppState }) {
   // Validation modal state
   const [previewModalVisible, setPreviewModalVisible] = useState(false);
   const [validatedData, setValidatedData] = useState(null);
+
+  // ─── FIREBASE → SUPABASE (one day) state ───────────────────────────────────
+  const [fbDay, setFbDay] = useState(todayLocal());
+  const [fbBusy, setFbBusy] = useState(null);         // null | 'preview' | 'push'
+  const [fbProgress, setFbProgress] = useState(null);
+  const [fbPreview, setFbPreview] = useState(null);
+  const [fbReport, setFbReport] = useState(null);
+  const [calOpen, setCalOpen] = useState(false);
+
+  // ─── LOCAL (SQLite) → SUPABASE (last N days) state ─────────────────────────
+  const [localBusy, setLocalBusy] = useState(false);
+  const [localProgress, setLocalProgress] = useState(null);
+  const [localReport, setLocalReport] = useState(null);
+  const LOCAL_DAYS = 31;
 
   const refreshStatus = useCallback(() => {
     setStatus(getBackupStatus());
@@ -77,20 +107,20 @@ export default function BackupRestoreScreen({ onBack, onRefreshAppState }) {
       if (result.success) {
         refreshStatus();
         Alert.alert(
-          'ব্যাকআপ সম্পন্ন হয়েছে (Backup Successful)',
-          `ফাইলটি সফলভাবে এক্সপোর্ট করা হয়েছে:\n${result.fileName}\n\nমোট টেবিল: ${result.metadata.total_tables}\nমোট রেকর্ড: ${result.metadata.total_records.toLocaleString()}`,
+          'ব্যাকআপ সম্পন্ন হয়েছে (Backup Successful)',
+          `ফাইলটি সফলভাবে এক্সপোর্ট করা হয়েছে:\n${result.fileName}\n\nমোট টেবিল: ${result.metadata.total_tables}\nমোট রেকর্ড: ${result.metadata.total_records.toLocaleString()}`,
           [{ text: 'ঠিক আছে (OK)' }]
         );
       } else {
         Alert.alert(
-          'ব্যাকআপ ব্যর্থ হয়েছে (Backup Failed)',
+          'ব্যাকআপ ব্যর্থ হয়েছে (Backup Failed)',
           result.error || 'অজানা ত্রুটি ঘটেছে।'
         );
       }
     } catch (err) {
       Alert.alert(
         'ব্যাকআপ ত্রুটি (Backup Error)',
-        err.message || 'ডাটাবেজ ব্যাকআপ সম্পন্ন করা যায়নি।'
+        err.message || 'ডাটাবেজ ব্যাকআপ সম্পন্ন করা যায়নি।'
       );
     } finally {
       setIsBackingUp(false);
@@ -107,26 +137,24 @@ export default function BackupRestoreScreen({ onBack, onRefreshAppState }) {
       const validation = await pickAndValidateBackup();
 
       if (validation.canceled) {
-        // User closed the document picker without picking a file
         return;
       }
 
       if (!validation.valid) {
         Alert.alert(
           'অকার্যকর ব্যাকআপ ফাইল (Invalid Backup)',
-          validation.error || 'এই ফাইলটি রংপুরধনু ব্যাকআপ হিসেবে বৈধ নয়।',
+          validation.error || 'এই ফাইলটি রংধনু ব্যাকআপ হিসেবে বৈধ নয়।',
           [{ text: 'ঠিক আছে (OK)' }]
         );
         return;
       }
 
-      // Valid backup file selected — show pre-restore inspection modal
       setValidatedData(validation);
       setPreviewModalVisible(true);
     } catch (err) {
       Alert.alert(
         'ভ্যালিডেশন ত্রুটি (Validation Error)',
-        err.message || 'ফাইলটি যাচাই করা যায়নি।'
+        err.message || 'ফাইলটি যাচাই করা যায়নি।'
       );
     } finally {
       setIsValidating(false);
@@ -162,20 +190,20 @@ export default function BackupRestoreScreen({ onBack, onRefreshAppState }) {
         }
 
         Alert.alert(
-          'রিস্টোর সম্পন্ন হয়েছে (Restore Complete)',
-          `ডাটাবেজ সফলভাবে রিস্টোর হয়েছে।\nমোট রিস্টোরকৃত রেকর্ড: ${result.totalRestored.toLocaleString()}\n\nনিরাপত্তা সতর্কতা: ইউজার লগইন এবং ডিভাইস রেজিস্ট্রেশন নিরাপদ রাখা হয়েছে।`,
+          'রিস্টোর সম্পন্ন হয়েছে (Restore Complete)',
+          `ডাটাবেজ সফলভাবে রিস্টোর হয়েছে।\nমোট রিস্টোরকৃত রেকর্ড: ${result.totalRestored.toLocaleString()}\n\nনিরাপত্তা সতর্কতা: ইউজার লগইন এবং ডিভাইস রেজিস্ট্রেশন নিরাপদ রাখা হয়েছে।`,
           [{ text: 'ঠিক আছে (OK)' }]
         );
       } else {
         Alert.alert(
-          'রিস্টোর ব্যর্থ হয়েছে (Restore Failed)',
-          result.error || 'ডাটাবেজ রিস্টোর করা সম্ভব হয়নি। পূর্বের ডাটা অপরিবর্তিত রয়েছে।'
+          'রিস্টোর ব্যর্থ হয়েছে (Restore Failed)',
+          result.error || 'ডাটাবেজ রিস্টোর করা সম্ভব হয়নি। পূর্বের ডাটা অপরিবর্তিত রয়েছে।'
         );
       }
     } catch (err) {
       Alert.alert(
         'রিস্টোর ত্রুটি (Restore Error)',
-        err.message || 'ডাটাবেজ রিস্টোর করার সময় ত্রুটি ঘটেছে।'
+        err.message || 'ডাটাবেজ রিস্টোর করার সময় ত্রুটি ঘটেছে।'
       );
     } finally {
       setIsRestoring(false);
@@ -183,32 +211,109 @@ export default function BackupRestoreScreen({ onBack, onRefreshAppState }) {
     }
   };
 
+  // ─── 4. FIREBASE → SUPABASE: ONE DAY ───────────────────────────────────────
+
+  // READ-ONLY: how much data Firebase actually holds for that day (writes nothing).
+  const handleFbPreview = async () => {
+    if (fbBusy || isBackingUp || isRestoring || isValidating) return;
+    if (!isValidDay(fbDay)) {
+      Alert.alert('তারিখ ঠিক নয়', 'তারিখ YYYY-MM-DD ফরম্যাটে দিন। উদাহরণ: 2026-09-30');
+      return;
+    }
+    setFbBusy('preview');
+    setFbPreview(null);
+    setFbReport(null);
+    setFbProgress(null);
+    try {
+      const res = await previewFirebaseDay({
+        day: fbDay,
+        onProgress: (p) => setFbProgress(`${p.table} (${p.index}/${p.totalTables})`),
+      });
+      setFbPreview(res);
+    } catch (err) {
+      Alert.alert('যাচাই ব্যর্থ', err.message || 'Firebase থেকে পড়া যায়নি।');
+    } finally {
+      setFbBusy(null);
+      setFbProgress(null);
+    }
+  };
+
+  const runFbPush = async () => {
+    setFbBusy('push');
+    setFbReport(null);
+    setFbProgress(null);
+    try {
+      const res = await pushFirebaseDayToSupabase({
+        day: fbDay,
+        onProgress: (p) => setFbProgress(`${p.table} (${p.pushed}/${p.fetched})`),
+      });
+      setFbReport(res);
+    } catch (err) {
+      Alert.alert('পুশ ব্যর্থ', err.message || 'ডেটা পাঠানো যায়নি।');
+    } finally {
+      setFbBusy(null);
+      setFbProgress(null);
+    }
+  };
+
+  const handleFbPush = () => {
+    if (fbBusy || isBackingUp || isRestoring || isValidating) return;
+    if (!isValidDay(fbDay)) {
+      Alert.alert('তারিখ ঠিক নয়', 'তারিখ YYYY-MM-DD ফরম্যাটে দিন। উদাহরণ: 2026-09-30');
+      return;
+    }
+    Alert.alert(
+      'নিশ্চিত করুন',
+      `${fbDay} তারিখের ডেটা Firebase থেকে এনে Supabase-এ লেখা হবে।\n\nএটি upsert — একই ডেটা আবার লিখলেও কোনো ক্ষতি হবে না।`,
+      [
+        { text: 'বাতিল', style: 'cancel' },
+        { text: 'পুশ করুন', onPress: () => { runFbPush(); } },
+      ]
+    );
+  };
+
+  // ─── 5. LOCAL SQLite → SUPABASE (last 31 days) ─────────────────────────────
+
+  const runLocalPush = async () => {
+    setLocalBusy(true);
+    setLocalReport(null);
+    setLocalProgress(null);
+    try {
+      const res = await pushLocalToSupabase({
+        days: LOCAL_DAYS,
+        onProgress: (p) => setLocalProgress(`${p.table} (${p.index}/${p.totalTables})`),
+      });
+      setLocalReport(res);
+    } catch (err) {
+      Alert.alert('Push ব্যর্থ', err.message || 'ডেটা পাঠানো যায়নি।');
+    } finally {
+      setLocalBusy(false);
+      setLocalProgress(null);
+    }
+  };
+
+  const handleLocalPush = () => {
+    if (localBusy || isBackingUp || isRestoring || isValidating) return;
+    Alert.alert(
+      'নিশ্চিত করুন',
+      `তোমার লোকাল SQLite থেকে শেষ ${LOCAL_DAYS} দিনের ডেটা Supabase-এ push করা হবে।\n\nযেগুলো Supabase-এ আগেই আছে সেগুলো skip হবে (শুধু না-থাকা row যাবে)।`,
+      [
+        { text: 'বাতিল', style: 'cancel' },
+        { text: 'Push করুন', onPress: () => { runLocalPush(); } },
+      ]
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {/* ── HEADER ────────────────────────────────────────── */}
-      <View style={[styles.header, { paddingTop: Math.max(insets.top, 12) }]}>
-        <TouchableOpacity
-          onPress={onBack}
-          style={styles.backButton}
-          activeOpacity={0.7}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <ArrowLeft size={20} color="#FFB703" strokeWidth={2.5} />
-          <Text style={styles.backButtonText}>পিছনে যান</Text>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={onBack} style={styles.backBtn}>
+          <Text style={styles.backBtnText}>❮ Back</Text>
         </TouchableOpacity>
-
-        <View style={styles.headerTitleGroup}>
-          <Text style={styles.headerTitle}>ব্যাকআপ ও রিস্টোর</Text>
-          <Text style={styles.headerSubtitle}>SQLite Database Manager</Text>
-        </View>
-
-        <TouchableOpacity
-          onPress={refreshStatus}
-          style={styles.refreshButton}
-          activeOpacity={0.7}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <RefreshCw size={18} color="#A1A1AA" strokeWidth={2} />
+        <Text style={styles.headerTitle}>ব্যাকআপ ও রিস্টোর</Text>
+        <TouchableOpacity onPress={refreshStatus} style={styles.refreshBtn}>
+          <Text style={styles.refreshBtnText}>🔄</Text>
         </TouchableOpacity>
       </View>
 
@@ -300,7 +405,7 @@ export default function BackupRestoreScreen({ onBack, onRefreshAppState }) {
             ) : (
               <>
                 <View style={styles.btnIconWrapBlue}>
-                  <Upload size={20} color="#60A5FA" strokeWidth={2.5} />
+                  <Upload size={20} color="#FFB703" strokeWidth={2.5} />
                 </View>
                 <View style={styles.btnTextGroup}>
                   <Text style={styles.restoreBtnTitle}>ডাটা রিস্টোর করুন</Text>
@@ -313,6 +418,205 @@ export default function BackupRestoreScreen({ onBack, onRefreshAppState }) {
           </TouchableOpacity>
         </View>
 
+        {/* ── FIREBASE → SUPABASE (ONE DAY) ────────────────── */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={styles.iconCircleGold}>
+              <Calendar size={18} color="#FFB703" strokeWidth={2} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardTitle}>Firebase থেকে একদিনের ডেটা</Text>
+              <Text style={styles.cardSubtitle}>
+                তারিখ বেছে নিন — শুধু ওই দিনের ডেটা Firebase থেকে এনে Supabase-এ লেখা হবে
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.divider} />
+
+          <View style={styles.fbDateRow}>
+            <TouchableOpacity
+              style={styles.fbStepBtn}
+              onPress={() => setFbDay(shiftDay(fbDay, -1))}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.fbStepBtnText}>−১</Text>
+            </TouchableOpacity>
+
+            <TextInput
+              style={styles.fbInput}
+              value={fbDay}
+              onChangeText={setFbDay}
+              placeholder="2026-09-30"
+              placeholderTextColor="#666666"
+              autoCorrect={false}
+              autoCapitalize="none"
+              keyboardType="numbers-and-punctuation"
+            />
+
+            <TouchableOpacity
+              style={styles.fbStepBtn}
+              onPress={() => setFbDay(shiftDay(fbDay, 1))}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.fbStepBtnText}>+১</Text>
+            </TouchableOpacity>
+
+            {/* Calendar (dependency-free) — the easy way to pick a past date. */}
+            <TouchableOpacity
+              style={styles.fbCalBtn}
+              onPress={() => setCalOpen(true)}
+              activeOpacity={0.8}
+            >
+              <Calendar size={18} color="#000000" strokeWidth={2.5} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.fbQuickRow}>
+            <TouchableOpacity style={styles.fbQuickBtn} onPress={() => setFbDay(todayLocal())} activeOpacity={0.8}>
+              <Text style={styles.fbQuickBtnText}>আজ</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.fbQuickBtn} onPress={() => setFbDay(yesterdayLocal())} activeOpacity={0.8}>
+              <Text style={styles.fbQuickBtnText}>গতকাল</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.fbQuickBtn} onPress={() => setCalOpen(true)} activeOpacity={0.8}>
+              <Text style={styles.fbQuickBtnText}>📅 ক্যালেন্ডার</Text>
+            </TouchableOpacity>
+            <Text style={styles.fbHint}>
+              {isValidDay(fbDay) ? `✅ ${formatDayBn(fbDay)}` : 'YYYY-MM-DD দিন'}
+            </Text>
+          </View>
+
+          <View style={styles.fbBtnRow}>
+            <TouchableOpacity
+              style={[styles.fbPreviewBtn, !!fbBusy && styles.fbBtnDisabled]}
+              onPress={handleFbPreview}
+              disabled={!!fbBusy}
+              activeOpacity={0.8}
+            >
+              {fbBusy === 'preview' ? (
+                <ActivityIndicator color="#FFB703" size="small" />
+              ) : (
+                <Text style={styles.fbPreviewBtnText}>যাচাই করুন</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.fbPushBtn, !!fbBusy && styles.fbBtnDisabled]}
+              onPress={handleFbPush}
+              disabled={!!fbBusy}
+              activeOpacity={0.8}
+            >
+              {fbBusy === 'push' ? (
+                <ActivityIndicator color="#000000" size="small" />
+              ) : (
+                <Text style={styles.fbPushBtnText}>Supabase-এ পুশ করুন</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {fbProgress ? <Text style={styles.fbProgress}>⏳ {fbProgress}</Text> : null}
+
+          {fbPreview ? (
+            <View style={styles.fbResultBox}>
+              <Text style={styles.fbResultTitle}>
+                {fbPreview.ok
+                  ? `Firebase-এ পাওয়া গেছে: ${fbPreview.totalFetched} টি রেকর্ড`
+                  : (fbPreview.error || 'যাচাই করা যায়নি')}
+              </Text>
+              {(fbPreview.tables || []).filter((t) => t.fetched > 0 || t.error).map((t) => (
+                <Text key={t.table} style={styles.fbResultLine}>
+                  {t.error ? '⚠' : '•'} {t.table}: {t.fetched}{t.error ? ` — ${t.error}` : ''}
+                </Text>
+              ))}
+              {fbPreview.ok && fbPreview.totalFetched === 0 ? (
+                <Text style={styles.fbResultLine}>
+                  ওই তারিখে কিছু পাওয়া যায়নি — তারিখ ঠিক আছে কিনা দেখুন।
+                </Text>
+              ) : null}
+              <Text style={styles.fbResultLine}>এটি শুধু দেখল — কিছু লেখা হয়নি।</Text>
+            </View>
+          ) : null}
+
+          {fbReport ? (
+            <View style={styles.fbResultBox}>
+              <Text style={[styles.fbResultTitle, fbReport.ok ? styles.fbOkText : styles.fbBadText]}>
+                {fbReport.ok
+                  ? `✅ সফল — ${fbReport.pushedRows || 0} টি রেকর্ড লেখা হয়েছে`
+                  : (fbReport.error || '⏳ সম্পূর্ণ হয়নি — নিচের তথ্য দেখুন')}
+              </Text>
+              <Text style={styles.fbResultLine}>
+                • Supabase: লেখা {fbReport.pushedRows || 0}
+                {fbReport.failedRows ? ` · ব্যর্থ ${fbReport.failedRows}` : ''}
+              </Text>
+              {(fbReport.tables || []).filter((t) => t.error).map((t) => (
+                <Text key={t.table} style={styles.fbResultLine}>⚠ {t.table}: {t.error}</Text>
+              ))}
+              {(fbReport.notes || []).map((n, i) => (
+                <Text key={`note-${i}`} style={styles.fbNote}>⚠ {n}</Text>
+              ))}
+              <Text style={styles.fbResultLine}>
+                {(fbReport.pushedRows || 0) > 0
+                  ? 'এটি upsert — আবার চালালেও একই ফল আসবে।'
+                  : 'কিছু লেখা হয়নি — উপরের বার্তা দেখুন।'}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
+        {/* ── LOCAL SQLite → SUPABASE (last 31 days) ───────── */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <View style={styles.iconCircleGold}>
+              <Database size={18} color="#FFB703" strokeWidth={2} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardTitle}>লোকাল ডেটা → Supabase</Text>
+              <Text style={styles.cardSubtitle}>
+                তোমার ফোনের SQLite থেকে শেষ {LOCAL_DAYS} দিনের ডেটা Supabase-এ push (আগেই থাকলে skip)
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.divider} />
+
+          <TouchableOpacity
+            style={[styles.fbPushBtn, (!!localBusy || isBackingUp || isRestoring || isValidating) && styles.fbBtnDisabled]}
+            onPress={handleLocalPush}
+            disabled={!!localBusy || isBackingUp || isRestoring || isValidating}
+            activeOpacity={0.8}
+          >
+            {localBusy ? (
+              <ActivityIndicator color="#000000" size="small" />
+            ) : (
+              <Text style={styles.fbPushBtnText}>লোকাল → Supabase push করুন</Text>
+            )}
+          </TouchableOpacity>
+
+          {localProgress ? <Text style={styles.fbProgress}>⏳ {localProgress}</Text> : null}
+
+          {localReport ? (
+            <View style={styles.fbResultBox}>
+              <Text style={[styles.fbResultTitle, localReport.ok ? styles.fbOkText : styles.fbBadText]}>
+                {localReport.error
+                  ? localReport.error
+                  : (localReport.failedRows > 0
+                    ? `⚠️ push ${localReport.pushedRows} · fail ${localReport.failedRows}`
+                    : `✅ ${localReport.pushedRows} push · ${localReport.skippedExisting} skip (আগেই ছিল)${localReport.orphanRows ? ` · ⚠️ বাদ ${localReport.orphanRows}` : ''}`)}
+              </Text>
+              {(localReport.tables || []).filter((t) => t.local > 0).map((t) => (
+                <Text key={t.table} style={styles.fbResultLine}>
+                  • {t.table}: local {t.local} · pushed {t.pushed}{t.existing ? ` · skip ${t.existing}` : ''}{t.orphans ? ` · বাদ ${t.orphans} (মূল রেকর্ড নেই)` : ''}{t.error ? ` — ⚠ ${t.error}` : ''}{t.skippedReason ? ` — ${t.skippedReason}` : ''}
+                </Text>
+              ))}
+              {(localReport.notes || []).map((n, i) => (
+                <Text key={`ln-${i}`} style={styles.fbNote}>⚠ {n}</Text>
+              ))}
+              <Text style={styles.fbResultLine}>এটি upsert — আবার চালালেও আগেই-থাকা row skip হবে।</Text>
+            </View>
+          ) : null}
+        </View>
+
         {/* ── SECURITY & SAFETY POLICY NOTE ───────────────── */}
         <View style={styles.securityCard}>
           <View style={styles.securityHeader}>
@@ -321,12 +625,21 @@ export default function BackupRestoreScreen({ onBack, onRefreshAppState }) {
           </View>
           <Text style={styles.securityText}>
             • ব্যাকআপ ফাইলে সব ধরণের সেলস, অর্ডার, পেমেন্ট, খরচ, ডেলিভারি ও মেন্যু ডাটা অন্তর্ভুক্ত থাকবে।{'\n'}
-            • লগইন পিন (PIN), পাসওয়ার্ড ও ক্লাউড অথেনটিকেশন টোকেন ব্যাকআপে সুরক্ষিতভাবে বাদ দেওয়া হয়।{'\n'}
-            • অন্য ডিভাইসে অ্যাপ আনইনস্টল করে নতুন করে ইনস্টল করলেও ব্যাকআপ ফাইল দিয়ে সম্পূর্ণ ডাটা ফিরিয়ে আনা সম্ভব।{'\n'}
-            • রিস্টোর করার সময় ডাটাবেজ ট্রানজ্যাকশন নিরাপদে পরিচালিত হয়। কোনো ত্রুটি হলে পূর্বের ডাটা সুরক্ষিত থাকে।
+            • লগইন পিন (PIN), পাসওয়ার্ড ও ক্লাউড অথেনটিকেশন টোকেন ব্যাকআপে সুরক্ষিতভাবে বাদ দেওয়া হয়।{'\n'}
+            • অন্য ডিভাইসে অ্যাপ আনইনস্টল করে নতুন করে ইনস্টল করলেও ব্যাকআপ ফাইল দিয়ে সম্পূর্ণ ডাটা ফিরিয়ে আনা সম্ভব।{'\n'}
+            • রিস্টোর করার সময় ডাটাবেজ ট্রানজ্যাকশন নিরাপদে পরিচালিত হয়। কোনো ত্রুটি হলে পূর্বের ডাটা সুরক্ষিত থাকে।
           </Text>
         </View>
       </ScrollView>
+
+      {/* ── CALENDAR (dependency-free date picker) ────────── */}
+      <CalendarPicker
+        visible={calOpen}
+        value={fbDay}
+        onSelect={(day) => { setFbDay(day); setCalOpen(false); }}
+        onClose={() => setCalOpen(false)}
+        title="Firebase থেকে কোন দিনের ডেটা?"
+      />
 
       {/* ── PREVIEW & CONFIRMATION MODAL ────────────────── */}
       <Modal
@@ -374,7 +687,7 @@ export default function BackupRestoreScreen({ onBack, onRefreshAppState }) {
 
                   <View style={styles.infoRow}>
                     <View style={styles.infoLeft}>
-                      <Layers size={14} color="#60A5FA" strokeWidth={2} />
+                      <Layers size={14} color="#FFB703" strokeWidth={2} />
                       <Text style={styles.infoLabel}>মোট টেবিল:</Text>
                     </View>
                     <Text style={styles.infoValue}>{validatedData.totalTables}</Text>
@@ -392,7 +705,7 @@ export default function BackupRestoreScreen({ onBack, onRefreshAppState }) {
 
                   <View style={styles.infoRow}>
                     <View style={styles.infoLeft}>
-                      <FileText size={14} color="#A78BFA" strokeWidth={2} />
+                      <FileText size={14} color="#FFB703" strokeWidth={2} />
                       <Text style={styles.infoLabel}>ফাইল নাম:</Text>
                     </View>
                     <Text style={[styles.infoValue, styles.fileNameText]} numberOfLines={1}>
@@ -446,40 +759,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#1A1A1A',
+    borderColor: '#1A1A1A',
     backgroundColor: '#0D0D0D',
   },
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-  },
-  backButtonText: {
-    color: '#FFB703',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  headerTitleGroup: {
-    alignItems: 'center',
-  },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    letterSpacing: 0.3,
-  },
-  headerSubtitle: {
-    fontSize: 10,
-    color: '#A1A1AA',
-    marginTop: 1,
-  },
-  refreshButton: {
-    padding: 6,
-  },
+  backBtn: { padding: 4 },
+  backBtnText: { color: '#FFB703', fontWeight: 'bold' },
+  headerTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: 'bold' },
+  refreshBtn: { padding: 6 },
+  refreshBtnText: { fontSize: 16 },
   content: {
     flex: 1,
   },
@@ -582,17 +871,17 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   restoreBtn: {
-    backgroundColor: '#161622',
+    backgroundColor: '#1E1E1E',
     borderWidth: 1,
-    borderColor: '#2D2D44',
+    borderColor: '#333333',
   },
   btnIconWrapBlue: {
     width: 38,
     height: 38,
     borderRadius: 10,
-    backgroundColor: '#1E293B',
+    backgroundColor: '#1E1E1E',
     borderWidth: 1,
-    borderColor: '#3B82F6',
+    borderColor: '#FFB703',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -672,7 +961,7 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: '#1F2937',
+    backgroundColor: '#1E1E1E',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -732,9 +1021,9 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingVertical: 12,
     borderRadius: 10,
-    backgroundColor: '#1F2937',
+    backgroundColor: '#1E1E1E',
     borderWidth: 1,
-    borderColor: '#374151',
+    borderColor: '#333333',
     alignItems: 'center',
   },
   cancelBtnText: {
@@ -753,5 +1042,141 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: 'bold',
+  },
+
+  // ─── Firebase → Supabase (one day) ─────────────────────────────────────────
+  fbDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  fbStepBtn: {
+    width: 46,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#1E1E1E',
+    borderWidth: 1,
+    borderColor: '#333333',
+    alignItems: 'center',
+  },
+  fbStepBtnText: {
+    color: '#E5E7EB',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  fbCalBtn: {
+    width: 46,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#FFB703',
+    alignItems: 'center',
+  },
+  fbInput: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: '#0D0D0D',
+    borderWidth: 1,
+    borderColor: '#333333',
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: 1,
+    textAlign: 'center',
+  },
+  fbQuickRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 10,
+  },
+  fbQuickBtn: {
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#1E1E1E',
+    borderWidth: 1,
+    borderColor: '#333333',
+  },
+  fbQuickBtnText: {
+    color: '#FFB703',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  fbHint: {
+    flex: 1,
+    color: '#888888',
+    fontSize: 11.5,
+    textAlign: 'right',
+  },
+  fbBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+  },
+  fbPreviewBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#1E1E1E',
+    borderWidth: 1,
+    borderColor: '#333333',
+    alignItems: 'center',
+  },
+  fbPreviewBtnText: {
+    color: '#FFB703',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  fbPushBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#FFB703',
+    alignItems: 'center',
+  },
+  fbPushBtnText: {
+    color: '#000000',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  fbBtnDisabled: {
+    opacity: 0.5,
+  },
+  fbProgress: {
+    color: '#A1A1AA',
+    fontSize: 11.5,
+    marginTop: 10,
+  },
+  fbResultBox: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#0D0D0D',
+    borderWidth: 1,
+    borderColor: '#262626',
+    gap: 6,
+  },
+  fbResultTitle: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  fbOkText: {
+    color: '#34D399',
+  },
+  fbBadText: {
+    color: '#F87171',
+  },
+  fbResultLine: {
+    color: '#9CA3AF',
+    fontSize: 11.5,
+    lineHeight: 17,
+  },
+  fbNote: {
+    color: '#FBBF24',
+    fontSize: 11.5,
+    lineHeight: 17,
   },
 });

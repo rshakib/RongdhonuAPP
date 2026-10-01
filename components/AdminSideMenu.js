@@ -68,14 +68,13 @@ export default function AdminSideMenu({
   onNavigateToEditMenu,
   onNavigateToAnalytics,
   onNavigateToItemSalesReport,
-  onNavigateToSyncDiagnostics,
   onNavigateToSyncHealth,
   onNavigateToDeleteHistory,
   onNavigateToAIDatasetMonitor,
   onNavigateToAIDatasetAuditCenter,
   onNavigateToDeviceManagement,
-  onNavigateToSystemTools,
   onNavigateToActivityLog,
+  onNavigateToActivityStream,
   handleOpenPastAccount,
   onOpenSalesReport,
   onOpenDepositReport,
@@ -167,15 +166,6 @@ export default function AdminSideMenu({
             />
 
             <MenuRow
-              iconName="link"
-              iconColor="#0EA5E9"
-              iconBg="rgba(14, 165, 233, 0.15)"
-              title="Sync Diagnostics"
-              subtitle="Database health check"
-              onPress={() => handleAction(onNavigateToSyncDiagnostics)}
-            />
-
-            <MenuRow
               iconName="cloud"
               iconColor="#22C55E"
               iconBg="rgba(34, 197, 94, 0.15)"
@@ -225,15 +215,6 @@ export default function AdminSideMenu({
             />
 
             <MenuRow
-              iconName="tools"
-              iconColor="#A855F7"
-              iconBg="rgba(168, 85, 247, 0.15)"
-              title="System Tools"
-              subtitle="Reset & maintenance"
-              onPress={() => handleAction(onNavigateToSystemTools)}
-            />
-
-            <MenuRow
               iconName="card"
               iconColor="#10B981"
               iconBg="rgba(16, 185, 129, 0.15)"
@@ -250,6 +231,15 @@ export default function AdminSideMenu({
               title="Activity & Audit Logs"
               subtitle="Staff action history"
               onPress={() => handleAction(onNavigateToActivityLog)}
+            />
+
+            <MenuRow
+              iconName="analytics"
+              iconColor="#FFB703"
+              iconBg="rgba(255, 183, 3, 0.15)"
+              title="লাইভ অ্যাক্টিভিটি স্ট্রিম"
+              subtitle="সব ডিভাইস · সব অ্যাপ (live)"
+              onPress={() => handleAction(onNavigateToActivityStream)}
             />
 
             <MenuRow

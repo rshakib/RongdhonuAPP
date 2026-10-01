@@ -257,7 +257,9 @@ import EmployeeDetailScreen from './screens/EmployeeDetailScreen';
 import AddSalaryPaymentScreen from './screens/AddSalaryPaymentScreen';
 import OwnerExpenseScreen from './screens/OwnerExpenseScreen';
 import ActivityLogScreen from './screens/ActivityLogScreen';
+import ActivityStreamScreen from './screens/ActivityStreamScreen';
 import { logActivity, ACTION_TYPES } from './services/activityLogger';
+import { startAuditService, flushAuditOutbox } from './services/auditLog';
 
 
 // Default Restaurant Menu (56 items)
@@ -622,6 +624,10 @@ export default function App() {
           console.warn("[App] startSupabaseSyncService skipped (isolated):", supaQueueErr?.message || supaQueueErr);
         }
 
+        // ISOLATED AUDIT: start the audit-outbox flusher. Fully no-op when the
+        // dedicated audit project is not configured.
+        try { startAuditService(); } catch (_) {}
+
         // Check if there are any pending midnight rollovers to apply
         const didRollover = checkAndApplyIjaraRollover();
         if (didRollover) refreshData();
@@ -804,8 +810,10 @@ export default function App() {
     let signalAppStateSub = null;
     try {
       signalAppStateSub = AppState.addEventListener('change', (next) => {
-        if (next === 'active') startSignal();
-        else if (next === 'background' || next === 'inactive') stopSignal();
+        if (next === 'active') {
+          startSignal();
+          try { flushAuditOutbox(); } catch (_) {}
+        } else if (next === 'background' || next === 'inactive') stopSignal();
       });
     } catch (_) {}
 
@@ -1661,7 +1669,7 @@ export default function App() {
         'DELETE_HISTORY', 'SYSTEM_TOOLS', 'DEVICE_MANAGEMENT',
         'ADMIN_ANALYTICS', 'OWNER_FINANCE_DASHBOARD', 'EMPLOYEE_LIST',
         'OWNER_EXPENSES', 'DATABASE_STATS', 'DATABASE_EXPLORER',
-        'PRINTER_SETTINGS'
+        'PRINTER_SETTINGS', 'ACTIVITY_STREAM'
       ];
 
       if (subScreens.includes(currentScreen)) {
@@ -2711,6 +2719,7 @@ export default function App() {
                 onNavigateToAnalytics={() => setCurrentScreen('ADMIN_ANALYTICS')}
                 onNavigateToEmployees={() => setCurrentScreen('EMPLOYEE_LIST')}
                 onNavigateToActivityLog={() => setCurrentScreen('ACTIVITY_LOG')}
+                onNavigateToActivityStream={() => setCurrentScreen('ACTIVITY_STREAM')}
                 onCloudRestore={handleCloudRestore}
                 onSameDayResync={handleSameDayResync}
                 onMenuRecovery={handleMenuRecovery}
@@ -3148,6 +3157,17 @@ export default function App() {
         if (ACTIVE_APP_PROFILE === 'ADMIN' && String(userRole || '').toLowerCase().trim() === 'admin') {
           return (
             <SyncDiagnosticsScreen
+              onBack={() => setCurrentScreen('DASHBOARD')}
+            />
+          );
+        } else {
+          return null;
+        }
+
+      case 'ACTIVITY_STREAM':
+        if (ACTIVE_APP_PROFILE === 'ADMIN' && String(userRole || '').toLowerCase().trim() === 'admin') {
+          return (
+            <ActivityStreamScreen
               onBack={() => setCurrentScreen('DASHBOARD')}
             />
           );

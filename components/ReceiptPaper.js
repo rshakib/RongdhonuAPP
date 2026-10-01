@@ -20,6 +20,13 @@ import { normalizeOrderForReceipt, RECEIPT_RASTER_WIDTH, toBengaliNumber, transl
  *   - Business name: 22px bold
  *   - Items, totals, payment: sized per spec (see styles below)
  *   - Divider: borderTopWidth 2, dashed
+ *
+ * THERMAL CLARITY: the captured PNG is converted to a 1-bit raster by the
+ * printer, and anti-aliased glyph edges are the first thing that conversion
+ * drops — so the receipt comes out thinner on paper than it looks on screen.
+ * THERMAL_BOLD adds a hairline, same-colour shadow to every text style, which
+ * darkens those edge pixels and makes the printed strokes read as bold.
+ * Tune `THERMAL_BOLD.textShadowRadius` up for heavier ink, down for finer.
  */
 
 /** Default shop mobile shown on every receipt. */
@@ -34,6 +41,13 @@ export const BILL_SHOP_PHONE = '01953838244';
  * (e.g. in Expo Go without custom fonts loaded).
  */
 const BN_BOLD = 'NotoSansBengali-Bold';
+
+/** Hairline same-colour outline — see "THERMAL CLARITY" above. */
+const THERMAL_BOLD = {
+  textShadowColor: '#000000',
+  textShadowOffset: { width: 0, height: 0 },
+  textShadowRadius: 0.9
+};
 
 const ReceiptPaper = forwardRef(function ReceiptPaper({
   order,
@@ -144,6 +158,9 @@ const ReceiptPaper = forwardRef(function ReceiptPaper({
 
 export default ReceiptPaper;
 
+/** Every text style gets the thermal outline so the 1-bit raster stays bold. */
+const T = (style) => ({ ...style, ...THERMAL_BOLD });
+
 const styles = StyleSheet.create({
   paper: {
     backgroundColor: '#FFFFFF',
@@ -162,25 +179,25 @@ const styles = StyleSheet.create({
 
   // ── Shop header ──────────────────────────────────────────────
   // Restaurant name: 22 × 1.40 = 31
-  title: {
+  title: T({
     color: '#000000',
     fontSize: 31,
     fontWeight: '700',
     fontFamily: BN_BOLD,
     textAlign: 'center',
     lineHeight: 39
-  },
+  }),
   // Address: 14 × 1.30 = 18
-  center: {
+  center: T({
     color: '#000000',
     fontSize: 18,
     fontFamily: BN_BOLD,
     textAlign: 'center',
     lineHeight: 25,
     marginTop: 2
-  },
+  }),
   // Phone: 15 × 1.30 = 20 (rounded up)
-  centerBold: {
+  centerBold: T({
     color: '#000000',
     fontSize: 20,
     fontWeight: '700',
@@ -188,16 +205,16 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 25,
     marginTop: 2
-  },
+  }),
 
   // ── Table / Date / Time ──────────────────────────────────────
   // Table row: 15 × 1.30 = 20 (rounded up)
-  row: {
+  row: T({
     color: '#000000',
     fontSize: 20,
     fontFamily: BN_BOLD,
     lineHeight: 26
-  },
+  }),
   splitRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -205,116 +222,116 @@ const styles = StyleSheet.create({
     width: '100%',
     marginVertical: 1
   },
-  bold: {
+  bold: T({
     fontWeight: '700',
     fontFamily: BN_BOLD,
     color: '#000000'
-  },
+  }),
   // Date / Time: 14 × 1.30 = 18
-  metaText: {
+  metaText: T({
     color: '#000000',
     fontSize: 18,
     fontWeight: '700',
     fontFamily: BN_BOLD,
     lineHeight: 26
-  },
+  }),
 
   // ── Item lines ───────────────────────────────────────────────
   itemBlock: {
     marginVertical: 2
   },
   // Item name: 17 × 1.35 = 23
-  itemName: {
+  itemName: T({
     color: '#000000',
     fontSize: 23,
     fontWeight: '700',
     fontFamily: BN_BOLD,
     lineHeight: 30
-  },
+  }),
   // Qty × price: 15 × 1.30 = 20 (rounded up)
-  itemQtyPrice: {
+  itemQtyPrice: T({
     color: '#000000',
     fontSize: 20,
     fontWeight: '700',
     fontFamily: BN_BOLD,
     lineHeight: 26
-  },
+  }),
   // Item total: 17 × 1.30 = 22
-  itemPrice: {
+  itemPrice: T({
     color: '#000000',
     fontSize: 22,
     fontWeight: '700',
     fontFamily: BN_BOLD,
     lineHeight: 29,
     letterSpacing: 0.3
-  },
+  }),
 
   // ── Subtotal / Discount / Delivery ───────────────────────────
   // সর্বমোট label: 17 × 1.40 = 24
-  summaryLabel: {
+  summaryLabel: T({
     color: '#000000',
     fontSize: 24,
     fontWeight: '700',
     fontFamily: BN_BOLD,
     lineHeight: 31
-  },
+  }),
   // সর্বমোট value: 18 × 1.40 = 25
-  summaryPrice: {
+  summaryPrice: T({
     color: '#000000',
     fontSize: 25,
     fontWeight: '700',
     fontFamily: BN_BOLD,
     lineHeight: 31,
     letterSpacing: 0.3
-  },
+  }),
 
   // ── PAYABLE (most prominent) ──────────────────────────────────
   // পরিশোধ label: 21 × 1.40 = 29
-  totalLabel: {
+  totalLabel: T({
     color: '#000000',
     fontSize: 29,
     fontWeight: '700',
     fontFamily: BN_BOLD,
     lineHeight: 39
-  },
+  }),
   // পরিশোধ value: 23 × 1.40 = 32
-  totalPrice: {
+  totalPrice: T({
     color: '#000000',
     fontSize: 32,
     fontWeight: '700',
     fontFamily: BN_BOLD,
     lineHeight: 39,
     letterSpacing: 0.4
-  },
+  }),
 
   // ── Payment method ───────────────────────────────────────────
   // Payment label: 16 × 1.40 = 22
-  paymentLabel: {
+  paymentLabel: T({
     color: '#000000',
     fontSize: 22,
     fontWeight: '700',
     fontFamily: BN_BOLD,
     lineHeight: 31
-  },
+  }),
   // Payment value: 17 × 1.40 = 24 (rounded up)
-  paymentValue: {
+  paymentValue: T({
     color: '#000000',
     fontSize: 24,
     fontWeight: '700',
     fontFamily: BN_BOLD,
     lineHeight: 31
-  },
+  }),
 
   // ── Footer ───────────────────────────────────────────────────
   // Footer: 15 × 1.35 = 20
-  footer: {
+  footer: T({
     color: '#000000',
     fontSize: 20,
     fontWeight: '700',
     fontFamily: BN_BOLD,
     textAlign: 'center',
     lineHeight: 27
-  },
+  }),
 
   // ── Split-payment breakdown ───────────────────────────────────
   splitBreakdownContainer: {
@@ -329,22 +346,22 @@ const styles = StyleSheet.create({
     paddingVertical: 1
   },
   // Split label: 14 × 1.30 = 18
-  splitSubLabel: {
+  splitSubLabel: T({
     color: '#000000',
     fontSize: 18,
     fontWeight: '700',
     fontFamily: BN_BOLD,
     lineHeight: 25
-  },
+  }),
   // Split amount: 15 × 1.30 = 20 (rounded up)
-  splitSubAmount: {
+  splitSubAmount: T({
     color: '#000000',
     fontSize: 20,
     fontWeight: '700',
     fontFamily: BN_BOLD,
     lineHeight: 25,
     letterSpacing: 0.3
-  },
+  }),
 
   // Blank paper feed spacer (8.2 text line heights of pure white space after final receipt content)
   // Ensures the receipt feeds past the printer's physical tear cutter without cutting through text.

@@ -13,6 +13,42 @@ import { isTombstoned, clearTombstone, isResurrectBlocked, isTombstoneStale } fr
 
 let dbInstance = null;
 
+// ISOLATED AUDIT: lazily resolve the audit module so the audit feature stays
+// fully optional (if the file is missing the app still runs normally).
+let auditModuleCache;
+function getAuditModule() {
+  if (auditModuleCache === undefined) {
+    try {
+      auditModuleCache = require('./services/auditLog.js');
+    } catch (_) {
+      auditModuleCache = null;
+    }
+  }
+  return auditModuleCache;
+}
+
+// ISOLATED AUDIT: wrap the SQLite instance so the audit module can remember the
+// pre-image of UPDATE/DELETE writes (needed for before→after diffs). Strictly
+// additive — arguments and return values are untouched and every step is
+// best-effort, so a failure here can never affect a write.
+function attachAuditPreImageCapture(instance) {
+  if (!instance || instance.__auditWrapped) return instance;
+  try {
+    const originalRunSync = instance.runSync.bind(instance);
+    instance.runSync = (sql, params) => {
+      try {
+        const audit = getAuditModule();
+        if (audit && typeof audit.capturePreImage === 'function') {
+          audit.capturePreImage(instance, sql, params);
+        }
+      } catch (_) {}
+      return originalRunSync(sql, params);
+    };
+    instance.__auditWrapped = true;
+  } catch (_) {}
+  return instance;
+}
+
 // Firebase Usage Monitor internal tracking variables
 let firestoreReadsToday = 0;
 let firestoreWritesToday = 0;
@@ -24,6 +60,7 @@ export function getDb() {
     try {
       dbInstance = SQLite.openDatabaseSync('rongdhonu.db', { useNewConnection: true });
       dbInstance.execSync("PRAGMA foreign_keys = ON;");
+      attachAuditPreImageCapture(dbInstance);
       console.log("[DB] Lazily opened native SQLite Database connection successfully with Foreign Key enforcement enabled.");
     } catch (e) {
       console.error("[DB] Critical: Failed to open native SQLite Database connection:", e);
@@ -647,6 +684,30 @@ const TABLE_SCHEMAS = {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       is_synced INTEGER DEFAULT 0
+    );
+  `,
+  audit_outbox: `
+    CREATE TABLE IF NOT EXISTS audit_outbox (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL,
+      business_date TEXT,
+      app_profile TEXT,
+      app_version TEXT,
+      user_name TEXT,
+      user_role TEXT,
+      device_id TEXT,
+      device_name TEXT,
+      device_model TEXT,
+      device_platform TEXT,
+      table_name TEXT,
+      action TEXT,
+      record_id TEXT,
+      changes TEXT,
+      snapshot TEXT,
+      status TEXT DEFAULT 'PENDING',
+      retry_count INTEGER DEFAULT 0,
+      last_error TEXT,
+      sent_at TEXT
     );
   `
 };
@@ -1308,6 +1369,13 @@ export function enqueueSync(tableName, recordId, action) {
     // IGNORE local-only tables to prevent Firestore 403 errors
     const forbiddenTables = ['ai_dataset_queue', 'ai_dataset_history', 'weather_timeline_queue'];
     if (forbiddenTables.includes(tableName)) return;
+
+    // ISOLATED AUDIT STREAM: append a fire-and-forget activity event for the
+    // dedicated audit project. Strictly additive (lazy require + try/catch) and
+    // it never throws, so it cannot affect the sync path in any way.
+    try {
+      getAuditModule().recordActivity({ tableName, recordId, action });
+    } catch (_) {}
 
     // DEBUG: trace who enqueues restaurant_tables writes (table_8 loop investigation).
     if (tableName === 'restaurant_tables') {

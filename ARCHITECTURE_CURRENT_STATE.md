@@ -480,7 +480,7 @@ const appJson = require('../app.json');
 appVersion = appJson.expo?.version || '1.0.4';
 export const APP_VERSION = appVersion;
 ```
-Current version: **1.0.8** (from [`app.config.js` L78](app.config.js#L78)).
+Current version: **1.0.9** (from [`app.config.js` L78](app.config.js#L78)).
 
 ### 4.3 Login-Time Version Check — Exact Code Path
 

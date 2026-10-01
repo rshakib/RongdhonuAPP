@@ -82,6 +82,14 @@ let lastPullAt = blankLastPull();
 const log = (...a) => { try { console.log(...a); } catch (_) {} };
 const warn = (...a) => { try { console.warn(...a); } catch (_) {} };
 
+/** Report THIS device's signal-channel health to the sync heartbeat (per device). Never throws. */
+function reportRealtime(ok, mode) {
+  try {
+    const { recordRealtimeHealth } = require('./supabaseHeartbeat.js');
+    recordRealtimeHealth({ ok, mode }).catch(() => {});
+  } catch (_) {}
+}
+
 function enabledGroups() {
   return Object.keys(SIGNAL_GROUPS).filter((g) => ENABLED_GROUPS[g] === true);
 }
@@ -226,6 +234,7 @@ function handleStatus(status) {
     log(`[Realtime-Signal] channel=SUBSCRIBED groups=[${enabledGroups().join(',')}] mode=slow`);
     // Events written in the window right after SUBSCRIBED can be missed → one catch-up pull.
     for (const g of enabledGroups()) triggerPull(g, 'catchup', true);
+    reportRealtime(true, 'slow');
     emitModeChange();
     return;
   }
@@ -234,6 +243,7 @@ function handleStatus(status) {
     subscribed = false;
     const delay = scheduleReconnect();
     log(`[Realtime-Signal] channel=${status} → FAST mode retryInMs=${delay}`);
+    reportRealtime(false, 'fast');
     if (wasSubscribed || !delay) emitModeChange();
   }
 }
@@ -322,6 +332,7 @@ export function stopRealtimeSignal() {
     else if (ch && typeof ch.unsubscribe === 'function') ch.unsubscribe();
   } catch (_) {}
   log('[Realtime-Signal] stopped → FAST mode');
+  reportRealtime(false, 'fast');
   emitModeChange();
 }
 
