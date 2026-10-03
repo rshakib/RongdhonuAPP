@@ -1412,11 +1412,9 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                   key={t.id}
                   activeOpacity={isBusy ? 0.7 : 0.9}
                   onPress={() => {
+                    // Open read-only monitoring details modal per user request (cannot edit, shows all details with timestamps)
                     if (isBusy) {
-                      if (typeof onTableSelect === 'function') {
-                        onTableSelect(t.id);
-                        return;
-                      }
+                      // onTableSelect(t.id);
                     }
                     setSelectedMonitoringItem({ ...t, isDelivery: false });
                     setMonitoringModalVisible(true);
@@ -1482,10 +1480,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                   key={delivery.id}
                   style={styles.activeDeliveryCard}
                   onPress={() => {
-                    if (typeof onTableSelect === 'function') {
-                      onTableSelect(delivery.id);
-                      return;
-                    }
+                    // onTableSelect(delivery.id);
                     setSelectedMonitoringItem({ ...delivery, isDelivery: true });
                     setMonitoringModalVisible(true);
                   }}
@@ -2194,10 +2189,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                       onPress={() => {
                         setFloorModalVisible(false);
                         if (isBusy) {
-                          if (typeof onTableSelect === 'function') {
-                            onTableSelect(table.id);
-                            return;
-                          }
+                          // onTableSelect(table.id);
                         }
                         setSelectedMonitoringItem({ ...table, isDelivery: false });
                         setMonitoringModalVisible(true);
@@ -2227,10 +2219,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                       style={[styles.deliveryCard, { marginBottom: 10 }]}
                       onPress={() => {
                         setFloorModalVisible(false);
-                        if (typeof onTableSelect === 'function') {
-                          onTableSelect(delivery.id);
-                          return;
-                        }
+                        // onTableSelect(delivery.id);
                         setSelectedMonitoringItem({ ...delivery, isDelivery: true });
                         setMonitoringModalVisible(true);
                       }}
@@ -2474,31 +2463,6 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               </ScrollView>
             )}
 
-            {/* Select Table / Order Detail Action Button */}
-            {selectedMonitoringItem?.status === 'BUSY' && (
-              <TouchableOpacity
-                style={{
-                  width: '100%',
-                  backgroundColor: '#FFB703',
-                  borderRadius: 12,
-                  paddingVertical: 12,
-                  alignItems: 'center',
-                  marginTop: 8,
-                  marginBottom: 6
-                }}
-                onPress={() => {
-                  setMonitoringModalVisible(false);
-                  if (typeof onTableSelect === 'function') {
-                    onTableSelect(selectedMonitoringItem.id);
-                  }
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={{ color: '#000000', fontSize: 14, fontWeight: '800' }}>
-                  📋 টেবিল সিলেক্ট করুন (অর্ডার ও বিল দেখুন)
-                </Text>
-              </TouchableOpacity>
-            )}
 
             {/* Bottom Close Button */}
             <TouchableOpacity
