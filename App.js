@@ -32,6 +32,8 @@ const runAutoPull = async (name, syncFn, refreshData) => {
     recordAutoSyncEvent(name, 'success', `durationMs=${durationMs} didChange=${didChange}`);
     console.log(`[Auto Pull Tick] timestamp=${new Date().toISOString()} timer=${name} result=success durationMs=${durationMs} didChange=${didChange}`);
     if (didChange) refreshData();
+    const pullSource = String(name || '').startsWith('auto-') ? 'firebase' : 'supabase';
+    reportPullCheck(name, pullSource, didChange);
     return didChange;
   } catch (err) {
     const durationMs = Date.now() - startedAtMs;
@@ -85,6 +87,22 @@ const createAdaptivePoller = ({ name, syncFn, fastMs, slowMs, refreshData, getMo
 let pullReportSink = null;
 const reportPull = (source, hasChanges) => {
   try { if (pullReportSink) pullReportSink(source, hasChanges); } catch (_) {}
+};
+
+let pullNotificationSink = null;
+const reportPullCheck = (name, source, didChange) => {
+  try { if (pullNotificationSink) pullNotificationSink(name, source, didChange); } catch (_) {}
+};
+
+const getPullGroupName = (name) => {
+  const n = String(name || '').toLowerCase();
+  if (n.includes('daily')) return 'দৈনিক হিসাব';
+  if (n.includes('high') || n.includes('order')) return 'অর্ডার/পেমেন্ট';
+  if (n.includes('table')) return 'টেবিল';
+  if (n.includes('menu')) return 'মেনু';
+  if (n.includes('deletion')) return 'ডিলিট ডাটা';
+  if (n.includes('low')) return 'সেটিংস ও স্টাফ ডাটা';
+  return 'ক্লাউড ডাটা';
 };
 
 // Supabase is the primary read path: while it is healthy the standalone Firebase
@@ -333,6 +351,7 @@ export default function App() {
   // Ref kept in sync so the setInterval closure always reads the CURRENT login state.
   // React state captured in a setInterval(..., []) closure is permanently stale (always false).
   const isLoggedInRef = useRef(false);
+  const userRoleRef = useRef('');
   const [isRestoring, setIsRestoring] = useState(false);
   const [pendingDeviceId, setPendingDeviceId] = useState('');
   const [pendingLoginInfo, setPendingLoginInfo] = useState(null);
@@ -342,12 +361,42 @@ export default function App() {
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [toastType, setToastType] = useState('online'); // 'online', 'offline', 'sync'
+  const toastTimerRef = useRef(null);
+  const toastQueueRef = useRef([]);
+
+  const processToastQueue = () => {
+    if (toastQueueRef.current.length === 0) {
+      setToastVisible(false);
+      toastTimerRef.current = null;
+      return;
+    }
+    const next = toastQueueRef.current.shift();
+    setToastMessage(next.msg);
+    setToastType(next.type);
+    setToastVisible(true);
+    toastTimerRef.current = setTimeout(() => {
+      processToastQueue();
+    }, 1500);
+  };
 
   const showToast = (msg, type = 'online') => {
-    setToastMessage(msg);
-    setToastType(type);
-    setToastVisible(true);
-    setTimeout(() => setToastVisible(false), 1500);
+    if (toastTimerRef.current) {
+      if (toastQueueRef.current.length < 4) {
+        toastQueueRef.current.push({ msg, type });
+      }
+    } else {
+      setToastMessage(msg);
+      setToastType(type);
+      setToastVisible(true);
+      toastTimerRef.current = setTimeout(() => {
+        processToastQueue();
+      }, 1500);
+    }
+  };
+
+  const isTargetAdmin = () => {
+    return String(ACTIVE_APP_PROFILE).toUpperCase() === 'ADMIN' || 
+           String(userRoleRef.current || userRole).toLowerCase() === 'admin';
   };
 
   // Pull toast (ALL apps) — identical style/size to the sync toast. Fires only
@@ -355,6 +404,7 @@ export default function App() {
   const pullToastAtRef = useRef(0);
   const notifyPull = (source, hasChanges) => {
     if (!hasChanges) return;
+    if (isTargetAdmin()) return;
     const now = Date.now();
     if (now - pullToastAtRef.current < 3000) return;
     pullToastAtRef.current = now;
@@ -386,6 +436,9 @@ export default function App() {
     firestoreSyncStatus: 'Block Write'
   });
   const [userRole, setUserRole] = useState(''); // 'owner', 'manager' or 'admin'
+  useEffect(() => {
+    userRoleRef.current = userRole;
+  }, [userRole]);
   const [userDisplayName, setUserDisplayName] = useState('');
   const [isOnline, setIsOnline] = useState(true);
   const [isOnlineOnlyMode, setIsOnlineOnlyMode] = useState(true);
@@ -1303,6 +1356,24 @@ export default function App() {
     setPullListener((e) => reportPull(e && e.source, e && e.hasChanges));
     return () => { clearPullListener(); pullReportSink = null; };
   }, [isLoggedIn]);
+
+  // Handle detailed pull toast notifications (Admin app only — fires on every pull check)
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    pullNotificationSink = (timerName, source, hasChanges) => {
+      if (!isTargetAdmin()) return;
+      const groupLabel = getPullGroupName(timerName);
+      const msg = hasChanges 
+        ? `⬇️ ${groupLabel} pull হয়েছে (আপডেট সহ)`
+        : `⬇️ ${groupLabel} pull হয়েছে`;
+      showToast(msg, 'sync');
+    };
+
+    return () => {
+      pullNotificationSink = null;
+    };
+  }, [isLoggedIn, userRole]);
 
   const loadQueueData = () => {
     try {
@@ -3815,7 +3886,7 @@ const styles = StyleSheet.create({
   // TOAST STYLES
   toastContainer: {
     position: 'absolute',
-    bottom: 85,
+    bottom: 105,
     left: 40,
     right: 40,
     alignItems: 'center',
