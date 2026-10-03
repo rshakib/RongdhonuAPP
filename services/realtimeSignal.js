@@ -54,7 +54,7 @@ const blankLastPull = () => Object.keys(SIGNAL_GROUPS).reduce((acc, g) => { acc[
 // STAGE SWITCH — Stage A shipped 'tables'; Stage B added 'high'; Stage C (this revision)
 // adds 'deletions'. A group whose flag is false keeps today's fast poll and ignores
 // signals entirely, so clearing a flag is the per-group rollback (no other change needed).
-export const ENABLED_GROUPS = { tables: true, high: true, deletions: true };
+export const ENABLED_GROUPS = { tables: true, high: true, deletions: true, daily: true };
 
 // --- dependency seams (production defaults; overridable in unit tests) --------
 const productionDeps = {

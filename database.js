@@ -2709,7 +2709,7 @@ async function fetchCollection(collectionName, isMasterTable = false) {
   return { success: true, documents: allDocuments };
 }
 
-function fromFirestoreDocument(doc) {
+export function fromFirestoreDocument(doc) {
   const obj = {};
   const fields = doc.fields || {};
   for (const [k, v] of Object.entries(fields)) {
@@ -3088,7 +3088,7 @@ export function resetSameDayResyncLimit(targetDateStr = null) {
   }
 }
 
-async function fetchSingleDocFromFirestore(collectionName, docId) {
+export async function fetchSingleDocFromFirestore(collectionName, docId) {
   const projectId = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID);
   const apiKey = cleanEnvVar(process.env.EXPO_PUBLIC_FIREBASE_API_KEY);
   if (!projectId || !apiKey || !docId) return null;
@@ -5448,6 +5448,9 @@ export function savePastAccount(record) {
       record.breakdown?.ijara || 0, record.net_cash || 0, record.deposit, now, now
     ]);
     enqueueSync("daily_summary", dateStr, "INSERT");
+    syncRecordImmediately("daily_submit", dateStr);
+    syncRecordImmediately("daily_submit_priority", dateStr);
+    syncRecordImmediately("daily_summary", dateStr);
 
     return true;
   } catch (err) {
@@ -5872,6 +5875,11 @@ export function submitDailySheet(summary, submittedBy, submissionType = 'MANUAL'
     db.runSync("UPDATE orders SET locked_at = ? WHERE date(created_at, 'localtime') = ?", [now, todayStr]);
 
     calculateAndSaveDailySummary(todayStr);
+
+    // Immediate push to cloud so Supabase and Firebase are updated instantly and Realtime signals fire
+    syncRecordImmediately("daily_submit", todayStr);
+    syncRecordImmediately("daily_submit_priority", todayStr);
+    syncRecordImmediately("daily_summary", todayStr);
 
     // --- AUTO IJARA: Calculate and store next day's opening ijara ---
     const ijaraResult = calculateAndStoreNextDayIjara(summary, todayStr);

@@ -43,7 +43,8 @@ const LOW_FREQ_EXCLUDED = ['app_config'];
 export const SIGNAL_GROUPS = {
   tables: ['restaurant_tables'],
   high: ['orders', 'order_items', 'payments', 'deliveries'],
-  deletions: ['deletions']
+  deletions: ['deletions'],
+  daily: ['daily_submit', 'daily_summary', 'daily_submit_priority', 'eja_history', 'expenses']
 };
 
 // --- Firebase read policy ------------------------------------------------------
@@ -408,7 +409,61 @@ export async function pullSupabaseTable(db, table) {
     }
   }
 
+  // Daily tables cursor lookback protection:
+  // Capping queryMarker to today's midnight ensures no clock drift or delay can skip today's submission.
+  if (table === 'daily_submit' || table === 'daily_summary' || table === 'daily_submit_priority') {
+    try {
+      let todayStr = null;
+      try {
+        const { getBusinessDate } = require('../database.js');
+        todayStr = getBusinessDate();
+      } catch (_) {
+        todayStr = new Date().toISOString().slice(0, 10);
+      }
+      if (todayStr) {
+        const todayMidnight = new Date(new Date(`${todayStr}T00:00:00.000Z`).getTime() - OVERLAP_MS).toISOString();
+        if (!queryMarker || queryMarker > todayMidnight) {
+          queryMarker = todayMidnight;
+        }
+      }
+    } catch (_) {}
+  }
+
   const rows = await fetchSupabaseRows(db, table, cursorCol, queryMarker);
+
+  // Fallback for daily_submit: if Supabase has no submission for today, and local DB has none,
+  // check if an older app version submitted only to Firestore.
+  if (table === 'daily_submit' && (!rows || rows.length === 0)) {
+    try {
+      let todayStr = null;
+      try {
+        const { getBusinessDate } = require('../database.js');
+        todayStr = getBusinessDate();
+      } catch (_) {
+        todayStr = new Date().toISOString().slice(0, 10);
+      }
+      const localSubmit = db.getFirstSync("SELECT date FROM daily_submit WHERE date = ?", [todayStr]);
+      if (!localSubmit) {
+        const { fetchSingleDocFromFirestore, fromFirestoreDocument } = require('../database.js');
+        if (typeof fetchSingleDocFromFirestore === 'function' && typeof fromFirestoreDocument === 'function') {
+          const doc = await fetchSingleDocFromFirestore('daily_submit', todayStr);
+          if (doc && doc.fields) {
+            console.log(`[SupabaseSync] Found today's daily_submit in Firestore (old app submission). Merging...`);
+            const parsed = fromFirestoreDocument(doc);
+            if (parsed && (parsed.date || parsed.id)) {
+              if (!parsed.date && parsed.id) parsed.date = parsed.id;
+              rows.push(parsed);
+              try {
+                const { enqueueSupabaseSync } = require('./supabaseSyncQueue.js');
+                enqueueSupabaseSync('daily_submit', todayStr, 'INSERT');
+              } catch (_) {}
+            }
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
   const merged = mergeSupabaseRows(db, table, rows);
   advanceMarker(db, table, cursorCol, previousMarker, rows, queryStartTime);
   return { failed: false, hasChanges: merged.hasChanges, rowCount: rows.length };
@@ -505,6 +560,7 @@ let isSupabasePullingHigh = false;
 let isSupabasePullingDeletions = false;
 let isSupabasePullingLow = false;
 let isSupabasePullingMenu = false;
+let isSupabasePullingDaily = false;
 
 /** restaurant_tables — signal-driven by the caller: 30s safety poll while the Realtime
  *  channel is SUBSCRIBED, otherwise 5s (see App.js supabase-tables-poll). */
@@ -547,6 +603,20 @@ export async function syncSupabaseDeletions() {
     return false;
   } finally {
     isSupabasePullingDeletions = false;
+  }
+}
+
+/** daily_submit / daily_summary / priority / eja / expenses — signal-driven + low-freq safety net */
+export async function syncSupabaseDaily() {
+  if (isSupabasePullingDaily) return false;
+  isSupabasePullingDaily = true;
+  try {
+    return await runSupabaseGroup(SIGNAL_GROUPS.daily, 'syncLowFrequencyCollections');
+  } catch (err) {
+    console.warn('[SupabaseSync] syncSupabaseDaily error (isolated):', err?.message || err);
+    return false;
+  } finally {
+    isSupabasePullingDaily = false;
   }
 }
 

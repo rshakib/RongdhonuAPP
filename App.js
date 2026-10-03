@@ -749,7 +749,8 @@ export default function App() {
       syncSupabaseHighFrequencyCollections,
       syncSupabaseDeletions,
       syncSupabaseLowFrequencyCollections,
-      syncSupabaseMenu
+      syncSupabaseMenu,
+      syncSupabaseDaily
     } = require('./services/supabaseSync.js');
 
     // These two groups are signal-driven: while the Realtime channel is SUBSCRIBED they use
@@ -798,6 +799,7 @@ export default function App() {
           if (group === 'tables') runAutoPull('realtime-tables-pull', syncSupabaseTables, refreshData);
           else if (group === 'high') runAutoPull('realtime-high-frequency-pull', syncSupabaseHighFrequencyCollections, refreshData);
           else if (group === 'deletions') runAutoPull('realtime-deletions-pull', syncSupabaseDeletions, refreshData);
+          else if (group === 'daily') runAutoPull('realtime-daily-pull', syncSupabaseDaily, refreshData);
         },
         onModeChange: () => { adaptiveTables.kick(); adaptiveHigh.kick(); adaptiveDeletions.kick(); }
       });
