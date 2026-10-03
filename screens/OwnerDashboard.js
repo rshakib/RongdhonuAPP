@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { exportSalesReportPDF, exportDepositReportPDF } from '../pdfHelper';
-import { formatDisplayDate, getBusinessDate, getDb, getItemSalesReport } from '../database';
+import { formatDisplayDate, getBusinessDate, getDb, getItemSalesReport, getTodaySubmissionDetails } from '../database';
 import PrintReceiptModal from '../components/PrintReceiptModal';
 import { TodaySalesCard, TotalCashCard, MonthlyTotalCard } from '../components/StatCard';
 import OwnerSideMenu from '../components/OwnerSideMenu';
@@ -126,7 +126,24 @@ const formatStartTime = (timeStr) => {
   return timeStr;
 };
 
-export default function OwnerDashboard({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onUpdateTableName, onNavigateToExpenses, onNavigateToSubmit, onNavigateToEditMenu, onNavigateToSupplierDue, onNavigateToItemSalesReport, onNavigateToAnalytics, onCloudRestore, onSameDayResync, onMenuRecovery, onHistoricalMonthDownload, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, delCountdown, tabCountdown, fullCountdown, onNavigateToOwnerFinance, onNavigateToActivityLog, onNavigateToPrinterSettings, onNavigateToBackupRestore }) {
+export default function OwnerDashboard({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onUpdateTableName, onNavigateToExpenses, onNavigateToSubmit, onNavigateToEditMenu, onNavigateToSupplierDue, onNavigateToItemSalesReport, onNavigateToAnalytics, onCloudRestore, onSameDayResync, onMenuRecovery, onHistoricalMonthDownload, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, todaySubmissionDetails = null, onDeleteActiveOrder, onDeleteDoneOrder, delCountdown, tabCountdown, fullCountdown, onNavigateToOwnerFinance, onNavigateToActivityLog, onNavigateToPrinterSettings, onNavigateToBackupRestore }) {
+  const submitInfo = todaySubmissionDetails || (isDailySubmitted ? getTodaySubmissionDetails() : null);
+
+  const formatSubmitTime = (timeStr) => {
+    if (!timeStr) return '';
+    try {
+      const d = new Date(timeStr);
+      if (!isNaN(d.getTime())) {
+        let hours = d.getHours();
+        const minutes = d.getMinutes().toString().padStart(2, '0');
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12 || 12;
+        return `${hours}:${minutes} ${ampm}`;
+      }
+    } catch (e) {}
+    return String(timeStr);
+  };
+
   const [renameModalVisible, setRenameModalVisible] = useState(false);
   const [selectedTableForRename, setSelectedTableForRename] = useState(null);
   const [newTableName, setNewTableName] = useState('');
@@ -623,6 +640,69 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollBody} contentContainerStyle={{ paddingBottom: 110 }}>
+        {/* Daily Submit Status Card */}
+        {isDailySubmitted && submitInfo ? (
+          <View style={[styles.submitStatusCardSuccess, { marginHorizontal: 16 }]}>
+            <View style={styles.submitStatusHeader}>
+              <View style={styles.submitBadgeSuccess}>
+                <Text style={styles.submitBadgeSuccessText}>✓ আজকের দৈনিক হিসাব সাবমিট সম্পন্ন</Text>
+              </View>
+              {submitInfo.submitted_at ? (
+                <Text style={styles.submitTimeText}>
+                  সময়: {formatSubmitTime(submitInfo.submitted_at)}
+                </Text>
+              ) : null}
+            </View>
+
+            <View style={styles.submitDetailsGrid}>
+              <View style={styles.submitDetailCol}>
+                <Text style={styles.submitDetailLabel}>সাবমিট করেছেন</Text>
+                <Text style={styles.submitDetailValue} numberOfLines={1}>
+                  {submitInfo.submitted_by || 'ম্যানেজার'}
+                </Text>
+              </View>
+              <View style={styles.submitDetailCol}>
+                <Text style={styles.submitDetailLabel}>মোট বিক্রয়</Text>
+                <Text style={[styles.submitDetailValue, { color: '#10B981' }]}>
+                  ৳ {(submitInfo.total_sell || 0).toLocaleString()}
+                </Text>
+              </View>
+              <View style={styles.submitDetailCol}>
+                <Text style={styles.submitDetailLabel}>মোট খরচ</Text>
+                <Text style={[styles.submitDetailValue, { color: '#EF4444' }]}>
+                  ৳ {(submitInfo.total_expense || 0).toLocaleString()}
+                </Text>
+              </View>
+              <View style={styles.submitDetailCol}>
+                <Text style={styles.submitDetailLabel}>মালিকের জমা</Text>
+                <Text style={[styles.submitDetailValue, { color: '#38BDF8' }]}>
+                  ৳ {(submitInfo.net_deposit || 0).toLocaleString()}
+                </Text>
+              </View>
+            </View>
+
+            {/* Next Day Opening Ijara Callout */}
+            <View style={styles.nextDayIjaraBanner}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={{ fontSize: 16, marginRight: 6 }}>💰</Text>
+                <Text style={styles.nextDayIjaraTitle}>আগামীকালের প্রারম্ভিক ইজা (Opening Cash):</Text>
+              </View>
+              <Text style={styles.nextDayIjaraValue}>
+                ৳ {(submitInfo.nextDayIjara || 0).toLocaleString()}
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <View style={[styles.submitStatusCardPending, { marginHorizontal: 16 }]}>
+            <View style={styles.submitBadgePending}>
+              <Text style={styles.submitBadgePendingText}>⏳ আজকের হিসাব এখনও সাবমিট করা হয়নি</Text>
+            </View>
+            <Text style={styles.submitPendingSubtext}>
+              চলতি দিনের অর্ডার ও হিসাব চলমান রয়েছে
+            </Text>
+          </View>
+        )}
+
         {/* ── 1. TOP SUMMARY CARDS (Active Tables Card removed) ── */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsContainer}>
           <TodaySalesCard
@@ -1726,4 +1806,109 @@ const styles = StyleSheet.create({
   emptyStateEmoji: { fontSize: 28, marginBottom: 8 },
   emptyStateText: { color: '#8E8E93', fontSize: 12, fontWeight: '600', marginBottom: 3 },
   emptyStateSub: { color: '#666666', fontSize: 10, textAlign: 'center', paddingHorizontal: 20 },
+
+  // ── DAILY SUBMIT STATUS BANNER ──
+  submitStatusCardSuccess: {
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#059669',
+    elevation: 2
+  },
+  submitStatusHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10
+  },
+  submitBadgeSuccess: {
+    backgroundColor: '#065F46',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6
+  },
+  submitBadgeSuccessText: {
+    color: '#34D399',
+    fontSize: 12,
+    fontWeight: 'bold'
+  },
+  submitTimeText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontWeight: '500'
+  },
+  submitDetailsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    backgroundColor: '#0F172A',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
+    marginBottom: 8
+  },
+  submitDetailCol: {
+    alignItems: 'center',
+    flex: 1
+  },
+  submitDetailLabel: {
+    color: '#94A3B8',
+    fontSize: 10,
+    marginBottom: 3
+  },
+  submitDetailValue: {
+    color: '#F8FAFC',
+    fontSize: 12,
+    fontWeight: 'bold'
+  },
+  nextDayIjaraBanner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#064E3B',
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: '#10B981'
+  },
+  nextDayIjaraTitle: {
+    color: '#A7F3D0',
+    fontSize: 12,
+    fontWeight: '600'
+  },
+  nextDayIjaraValue: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: 'bold'
+  },
+  submitStatusCardPending: {
+    backgroundColor: '#1E293B',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#D97706',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between'
+  },
+  submitBadgePending: {
+    backgroundColor: '#78350F',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6
+  },
+  submitBadgePendingText: {
+    color: '#FBBF24',
+    fontSize: 11,
+    fontWeight: 'bold'
+  },
+  submitPendingSubtext: {
+    color: '#94A3B8',
+    fontSize: 11,
+    fontStyle: 'italic'
+  },
 });

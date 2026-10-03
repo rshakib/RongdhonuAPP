@@ -5483,6 +5483,42 @@ export function isTodaySubmitted() {
 }
 
 /**
+ * Returns submission details and next day's opening ijara for today or specified date
+ * @param {string|null} dateStr - Optional date (YYYY-MM-DD), defaults to current business date
+ * @returns {object|null}
+ */
+export function getTodaySubmissionDetails(dateStr = null) {
+  try {
+    const todayStr = dateStr || getBusinessDate();
+    const row = db.getFirstSync("SELECT * FROM daily_submit WHERE date = ?", [todayStr]);
+    if (!row) return null;
+
+    const nextDate = getBusinessDateOffset(todayStr, 1);
+    const nextIjaraExp = db.getFirstSync(
+      "SELECT amount FROM expenses WHERE category = 'ijara' AND (id = ? OR date(created_at, 'localtime') = ?)",
+      [`exp_${nextDate}_ijara`, nextDate]
+    );
+    const nextEjaHist = db.getFirstSync(
+      "SELECT eja_amount FROM eja_history WHERE date = ? OR id = ?",
+      [nextDate, `eja_${nextDate}`]
+    );
+
+    const nextDayIjara = nextIjaraExp
+      ? Number(nextIjaraExp.amount) || 0
+      : (nextEjaHist ? Number(nextEjaHist.eja_amount) || 0 : 0);
+
+    return {
+      ...row,
+      nextDayIjara,
+      nextDate
+    };
+  } catch (err) {
+    console.error("getTodaySubmissionDetails error:", err);
+    return null;
+  }
+}
+
+/**
  * Get a business date offset by N days from a given date string (YYYY-MM-DD)
  * @param {string} dateStr - Starting date in YYYY-MM-DD format
  * @param {number} days - Number of days to add (can be negative)

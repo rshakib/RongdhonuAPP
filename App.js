@@ -190,6 +190,7 @@ import {
   deleteSubmission,
   getBusinessDate,
   isTodaySubmitted,
+  getTodaySubmissionDetails,
   submitDailySheet,
   checkAndApplyIjaraRollover,
   processSyncQueue,
@@ -445,6 +446,7 @@ export default function App() {
 
   // Track if daily sheet is submitted
   const [isDailySubmitted, setIsDailySubmitted] = useState(false);
+  const [todaySubmissionDetails, setTodaySubmissionDetails] = useState(null);
   const [isMandatorySubmit, setIsMandatorySubmit] = useState(false);
 
 
@@ -1380,9 +1382,11 @@ export default function App() {
       const history = getSubmissionHistory();
       setSubmissionHistory(history);
 
-      // 7. Today Submission Lock
+      // 7. Today Submission Lock & Details
       const submitted = isTodaySubmitted();
       setIsDailySubmitted(submitted);
+      const subDetails = getTodaySubmissionDetails();
+      setTodaySubmissionDetails(subDetails);
 
       // 8. Manual Push/Pull remaining counts
       const { getRemainingPushes, getRemainingPulls } = require('./database');
@@ -1703,6 +1707,10 @@ export default function App() {
   // Navigates to a table detail billing screen
   const handleTableSelect = (tableId) => {
     const roleNormalized = String(userRole || '').toLowerCase().trim();
+    if (roleNormalized !== 'admin' && isDailySubmitted) {
+      Alert.alert("হিসাব সাবমিট সম্পন্ন", "আজকের দৈনিক হিসাব ইতিমধ্যে সাবমিট করা হয়েছে। রেস্টুরেন্ট টেবিল ও নতুন অর্ডার বন্ধ রয়েছে।");
+      return;
+    }
     if (roleNormalized === 'admin') {
       const isDelivery = String(tableId || '').startsWith('D-');
       if (isDelivery) {
@@ -1778,6 +1786,10 @@ export default function App() {
   // Creates a new delivery order with a unique ID in SQLite
   const handleCreateDelivery = async () => {
     const roleNormalized = String(userRole || '').toLowerCase().trim();
+    if (roleNormalized !== 'admin' && isDailySubmitted) {
+      Alert.alert("হিসাব সাবমিট সম্পন্ন", "আজকের দৈনিক হিসাব ইতিমধ্যে সাবমিট করা হয়েছে। নতুন ডেলিভারি তৈরি করা যাবে না।");
+      return;
+    }
     if (roleNormalized === 'admin') {
       Alert.alert("অ্যাডমিন এক্সেস", "অ্যাডমিন নতুন ডেলিভারি তৈরি করতে পারবেন না।");
       return;
@@ -2735,6 +2747,7 @@ export default function App() {
                 dailyExpenses={dailyExpenses}
                 onUpdateExpenses={handleUpdateExpenses}
                 isDailySubmitted={isDailySubmitted}
+                todaySubmissionDetails={todaySubmissionDetails}
                 onDeleteActiveOrder={handleDeleteActiveOrder}
                 onDeleteDoneOrder={handleDeleteDoneOrder}
                 onResetDailySubmit={handleResetDailySubmit}
@@ -2777,6 +2790,7 @@ export default function App() {
                 dailyExpenses={dailyExpenses}
                 onUpdateExpenses={handleUpdateExpenses}
                 isDailySubmitted={isDailySubmitted}
+                todaySubmissionDetails={todaySubmissionDetails}
                 onDeleteActiveOrder={handleDeleteActiveOrder}
                 onDeleteDoneOrder={handleDeleteDoneOrder}
                 onNavigateToOwnerFinance={() => setCurrentScreen('OWNER_FINANCE_DASHBOARD')}
@@ -2811,6 +2825,7 @@ export default function App() {
                 dailyExpenses={dailyExpenses}
                 onUpdateExpenses={handleUpdateExpenses}
                 isDailySubmitted={isDailySubmitted}
+                todaySubmissionDetails={todaySubmissionDetails}
                 onDeleteActiveOrder={handleDeleteActiveOrder}
                 onDeleteDoneOrder={handleDeleteDoneOrder}
                 userRole={userRole}
@@ -2852,6 +2867,7 @@ export default function App() {
               dailyExpenses={dailyExpenses}
               onUpdateExpenses={handleUpdateExpenses}
               isDailySubmitted={isDailySubmitted}
+              todaySubmissionDetails={todaySubmissionDetails}
               onDeleteActiveOrder={handleDeleteActiveOrder}
               onDeleteDoneOrder={handleDeleteDoneOrder}
               onNavigateToOwnerFinance={() => setCurrentScreen('OWNER_FINANCE_DASHBOARD')}
@@ -2886,6 +2902,7 @@ export default function App() {
               dailyExpenses={dailyExpenses}
               onUpdateExpenses={handleUpdateExpenses}
               isDailySubmitted={isDailySubmitted}
+              todaySubmissionDetails={todaySubmissionDetails}
               onDeleteActiveOrder={handleDeleteActiveOrder}
               onDeleteDoneOrder={handleDeleteDoneOrder}
               onResetIjara={handleResetIjara}

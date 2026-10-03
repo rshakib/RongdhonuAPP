@@ -16,7 +16,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { 
   formatDisplayDate, 
-  getBusinessDate
+  getBusinessDate,
+  getTodaySubmissionDetails
 } from '../database';
 import PrintReceiptModal from '../components/PrintReceiptModal';
 import { TodaySalesCard, TotalCashCard } from '../components/StatCard';
@@ -120,7 +121,19 @@ const formatStartTime = (timeStr) => {
   return timeStr;
 };
 
-export default function ManagerDashboard({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onNavigateToSubmit, onUpdateTableName, onNavigateToExpenses, onNavigateToSupplierDue, onNavigateToItemSalesReport, onCloudRestore, onSameDayResync, onMenuRecovery, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, onDeleteActiveOrder, onDeleteDoneOrder, onResetIjara, onRollbackAutoIjara, onNavigateToPrinterSettings, onNavigateToBackupRestore, delCountdown, tabCountdown, fullCountdown, userRole = 'manager' }) {
+export default function ManagerDashboard({ onLogout, tables, deliveries = [], completedOrders = [], submissionHistory = [], onTableSelect, onCreateDelivery, onNavigateToSubmit, onUpdateTableName, onNavigateToExpenses, onNavigateToSupplierDue, onNavigateToItemSalesReport, onCloudRestore, onSameDayResync, onMenuRecovery, onSavePastAccount, onDeletePastAccount, dailyExpenses, onUpdateExpenses, isDailySubmitted, todaySubmissionDetails, onDeleteActiveOrder, onDeleteDoneOrder, onResetIjara, onRollbackAutoIjara, onNavigateToPrinterSettings, onNavigateToBackupRestore, delCountdown, tabCountdown, fullCountdown, userRole = 'manager' }) {
+  const submitInfo = todaySubmissionDetails || (isDailySubmitted ? getTodaySubmissionDetails() : null);
+
+  const formatSubmitTime = (isoStr) => {
+    if (!isoStr) return '';
+    try {
+      const d = new Date(isoStr);
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch (_) {
+      return '';
+    }
+  };
+
   const [renameModalVisible, setRenameModalVisible] = useState(false);
   const [selectedTableForRename, setSelectedTableForRename] = useState(null);
   const [newTableName, setNewTableName] = useState('');
@@ -410,186 +423,285 @@ export default function ManagerDashboard({ onLogout, tables, deliveries = [], co
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} style={styles.scrollBody} contentContainerStyle={{ paddingBottom: 110 }}>
-        {/* Horizontal Stats Row */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.statsContainer}
-        >
-          {/* Card 1: Today's Sale */}
-          <TodaySalesCard
-            todaySale={todaySale}
-            bkashSale={bkashSale}
-            nagadSale={nagadSale}
-            rocketSale={rocketSale}
-            totalDoneCount={totalDoneCount}
-            title="আজকের মোট বিক্রয়"
-          />
+        {/* IF SUBMITTED: Post-Submit Locked Screen (Tables & Orders Locked, Only Sidebar works) */}
+        {isDailySubmitted && submitInfo ? (
+          <View style={styles.postSubmitContainer}>
+            {/* Header Lock Status Card */}
+            <View style={styles.lockHeaderCard}>
+              <View style={styles.lockIconCircle}>
+                <Text style={styles.lockIconEmoji}>🔒</Text>
+              </View>
+              <Text style={styles.lockTitle}>আজকের দৈনিক হিসাব ক্লোজ ও সাবমিট সম্পন্ন</Text>
+              <Text style={styles.lockSubtitle}>
+                আজকের জন্য রেস্টুরেন্ট টেবিল ও নতুন অর্ডার গ্রহণ বন্ধ রয়েছে।
+              </Text>
+              {submitInfo.submitted_at ? (
+                <View style={styles.submittedByPill}>
+                  <Text style={styles.submittedByPillText}>
+                    সাবমিট করেছেন: {submitInfo.submitted_by || 'ম্যানেজার'} ({formatSubmitTime(submitInfo.submitted_at)})
+                  </Text>
+                </View>
+              ) : null}
+            </View>
 
-          {/* Card 2: Total Cash */}
-          <TotalCashCard
-            totalCash={totalCash}
-            bkashSale={bkashSale}
-            nagadSale={nagadSale}
-            rocketSale={rocketSale}
-          />
-        </ScrollView>
+            {/* Card 1: Next Day Opening Ijara (Highlighted) */}
+            <View style={styles.nextDayIjaraCard}>
+              <View style={styles.nextDayIjaraHeader}>
+                <Text style={styles.nextDayIjaraEmoji}>💰</Text>
+                <View style={{ flex: 1, marginLeft: 8 }}>
+                  <Text style={styles.nextDayIjaraCardTitle}>আগামীকালের প্রারম্ভিক ক্যাশ (ইজা)</Text>
+                  <Text style={styles.nextDayIjaraCardSubtitle}>Next Day Opening Cash</Text>
+                </View>
+              </View>
+              <Text style={styles.nextDayIjaraCardAmount}>
+                ৳ {(submitInfo.nextDayIjara || 0).toLocaleString()}
+              </Text>
+              <Text style={styles.nextDayIjaraCardNote}>
+                ✓ এই টাকা আগামীকালের ড্রয়ার ক্যাশ হিসেবে স্বয়ংক্রিয়ভাবে যোগ করা হয়েছে।
+              </Text>
+            </View>
 
-        {/* Table Status Section */}
-        <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>
-              টেবিল স্ট্যাটাস <Text style={styles.sectionSubtitle}>(নাম পরিবর্তন করতে দীর্ঘ চাপ দিন)</Text>
-            </Text>
-            <TouchableOpacity onPress={() => Alert.alert("সাহায্য", "সবুজ = খালি, কমলা = ব্যস্ত। টেবিল সিলেক্ট করে অর্ডার দিন।")}>
-              <Text style={styles.infoIcon}>ℹ️</Text>
-            </TouchableOpacity>
-          </View>
+            {/* Card 2: Submitted Day Details */}
+            <View style={styles.summaryBreakdownCard}>
+              <Text style={styles.summaryBreakdownTitle}>📊 আজকের সাবমিটকৃত হিসাবের বিবরণ</Text>
+              
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryRowLabel}>তারিখ</Text>
+                <Text style={styles.summaryRowValue}>{formatDisplayDate(submitInfo.date)}</Text>
+              </View>
+              <View style={styles.summaryDivider} />
 
-          <View style={styles.tableGrid}>
-             {tables.map((table) => {
-               const isBusy = table.status === 'BUSY';
-               const tableAmount = table.items ? table.items.reduce((sum, item) => sum + (item.price * item.qty), 0) : 0;
-               return (
-                 <TouchableOpacity
-                   key={table.id}
-                   onPress={() => onTableSelect(table.id)}
-                   onLongPress={() => handleTableLongPress(table)}
-                   activeOpacity={0.8}
-                   style={[
-                     styles.tableCard,
-                     isBusy ? styles.tableBusyBorder : styles.tableFreeBorder,
-                   ]}
-                 >
-                   <Text style={styles.tableId}>{table.name || table.id}</Text>
-                   <View style={styles.tableStatusRow}>
-                     <View style={[styles.statusDot, isBusy ? styles.dotOrange : styles.dotGreen]} />
-                     <Text style={[styles.tableStatusText, isBusy ? styles.textOrange : styles.textGreen]}>
-                       {table.status}
-                     </Text>
-                   </View>
-                   {isBusy ? (
-                     <Text style={styles.tableAmount}>৳ {tableAmount}</Text>
-                   ) : (
-                     <View style={{ height: 12 }} />
-                   )}
-                   <Text style={styles.chairIcon}>🪑</Text>
-                 </TouchableOpacity>
-               );
-             })}
-          </View>
-        </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryRowLabel}>মোট বিক্রয়</Text>
+                <Text style={[styles.summaryRowValue, { color: '#10B981', fontWeight: 'bold' }]}>
+                  ৳ {(submitInfo.total_sell || 0).toLocaleString()}
+                </Text>
+              </View>
+              <View style={styles.summarySubrow}>
+                <Text style={styles.summarySubrowText}>
+                  ক্যাশ: ৳{(submitInfo.cash_payment || 0).toLocaleString()} | বিকাশ: ৳{(submitInfo.bkash_payment || 0).toLocaleString()} | নগদ: ৳{(submitInfo.nagad_payment || 0).toLocaleString()}
+                </Text>
+              </View>
+              <View style={styles.summaryDivider} />
 
-        {/* Active Delivery Section */}
-        <View style={styles.sectionContainer}>
-          <Text style={styles.sectionTitle}>সক্রিয় ডেলিভারি ({deliveries.filter(d => d.status === 'BUSY').length})</Text>
-          <View style={{ marginTop: 10 }}>
-             {deliveries.filter(d => d.status === 'BUSY').length > 0 ? (
-               deliveries.filter(d => d.status === 'BUSY').map((delivery) => (
-                   <TouchableOpacity key={delivery.id} style={[styles.deliveryCard, { marginBottom: 10 }]} onPress={() => onTableSelect(delivery.id)}>
-                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                       <View>
-                         <Text style={styles.deliveryTitle}>{delivery.name}</Text>
-                         <Text style={styles.deliveryTime}>শুরু: {formatStartTime(delivery.startTime)}</Text>
-                       </View>
-                       <Text style={styles.deliveryAmount}>৳ {(delivery.amount !== undefined && delivery.amount !== null && Number(delivery.amount) > 0) ? parseFloat(delivery.amount) : ((delivery.items ? delivery.items.reduce((sum, i) => sum + ((parseFloat(i.price) || 0) * (parseInt(i.qty, 10) || 1)), 0) : 0) + (parseFloat(delivery.deliveryCharge || delivery.delivery_charge) || 0))}</Text>
-                     </View>
-                   </TouchableOpacity>
-               ))
-             ) : null}
-             <TouchableOpacity style={styles.emptyDeliveryPlaceholder} onPress={onCreateDelivery}>
-               <Text style={styles.emptyDeliveryText}>➕ নতুন ডেলিভারি শুরু করুন</Text>
-             </TouchableOpacity>
-          </View>
-        </View>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryRowLabel}>মোট খরচ</Text>
+                <Text style={[styles.summaryRowValue, { color: '#EF4444', fontWeight: 'bold' }]}>
+                  ৳ {(submitInfo.total_expense || 0).toLocaleString()}
+                </Text>
+              </View>
+              <View style={styles.summaryDivider} />
 
-        {/* Order Log Section */}
-        <View style={styles.sectionContainer}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>আজকের অর্ডার লগ</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <TouchableOpacity>
-                <Text style={styles.seeAllText}>সব দেখুন</Text>
-              </TouchableOpacity>
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryRowLabel}>মালিকের কাছে নিট জমা</Text>
+                <Text style={[styles.summaryRowValue, { color: '#38BDF8', fontWeight: 'bold' }]}>
+                  ৳ {(submitInfo.net_deposit || 0).toLocaleString()}
+                </Text>
+              </View>
+              <View style={styles.summaryDivider} />
+
+              <View style={styles.summaryRow}>
+                <Text style={styles.summaryRowLabel}>নিট ক্লোজিং ক্যাশ</Text>
+                <Text style={[styles.summaryRowValue, { color: '#F59E0B', fontWeight: 'bold' }]}>
+                  ৳ {(submitInfo.net_cash || 0).toLocaleString()}
+                </Text>
+              </View>
+            </View>
+
+            {/* Sidebar Helper Banner */}
+            <View style={styles.sidebarNoticeBox}>
+              <Text style={styles.sidebarNoticeIcon}>ℹ️</Text>
+              <Text style={styles.sidebarNoticeText}>
+                পূর্বের দিনের হিসাব, খরচের তালিকা বা অন্যান্য রিপোর্ট দেখতে উপরে বাম পাশের মেনু (☰) ব্যবহার করুন।
+              </Text>
             </View>
           </View>
-          <View style={styles.orderList}>
-            {filteredOrders.length === 0 ? (
-              <Text style={{ color: '#888888', textAlign: 'center', padding: 20 }}>কোনো অর্ডার পাওয়া যায়নি</Text>
-            ) : (
-              filteredOrders.map((order) => (
-                <TouchableOpacity 
-                  key={order.id} 
-                  style={styles.orderItem}
-                  onPress={() => {
-                    setSelectedOrder(order);
-                    setOrderDetailVisible(true);
-                  }}
-                >
-                  <View style={styles.orderItemLeft}>
-                    <View style={[styles.tableIconCircle, styles.circleGreen]}>
-                      <Text style={styles.tableCircleText}>{order.table}</Text>
-                    </View>
-                    <View style={styles.orderMeta}>
-                      <View style={styles.tableTimeRow}>
-                        <Text style={styles.orderTableText}>{order.table}</Text>
-                        <Text style={styles.orderTimeText}>{order.time}</Text>
-                      </View>
-                      <Text style={styles.orderItemsText} numberOfLines={1}>{order.items}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.orderItemRight}>
-                    <View style={styles.amountCol}>
-                      <Text style={styles.orderItemAmount}>৳ {order.amount}</Text>
-                      <Text style={[styles.orderItemStatus, styles.textGreen]}>পেমেন্ট শেষ</Text>
-                    </View>
-                    <View style={styles.actionRow}>
-                      <TouchableOpacity 
-                        style={styles.printBtn} 
-                        onPress={(e) => { 
-                          e.stopPropagation(); 
-                          setPrintOrder(order); 
-                        }}
-                      >
-                        <Text style={styles.btnIcon}>🖨️</Text>
-                      </TouchableOpacity>
-                      {(userRole === 'owner' || userRole === 'admin') && (
-                        <TouchableOpacity style={styles.deleteBtn} onPress={(e) => { e.stopPropagation(); onDeleteDoneOrder(order.id); }}>
-                          <Text style={styles.btnIcon}>🗑️</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  </View>
+        ) : (
+          <>
+            {/* Horizontal Stats Row */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.statsContainer}
+            >
+              {/* Card 1: Today's Sale */}
+              <TodaySalesCard
+                todaySale={todaySale}
+                bkashSale={bkashSale}
+                nagadSale={nagadSale}
+                rocketSale={rocketSale}
+                totalDoneCount={totalDoneCount}
+                title="আজকের মোট বিক্রয়"
+              />
+
+              {/* Card 2: Total Cash */}
+              <TotalCashCard
+                totalCash={totalCash}
+                bkashSale={bkashSale}
+                nagadSale={nagadSale}
+                rocketSale={rocketSale}
+              />
+            </ScrollView>
+
+            {/* Table Status Section */}
+            <View style={styles.sectionContainer}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitle}>
+                  টেবিল স্ট্যাটাস <Text style={styles.sectionSubtitle}>(নাম পরিবর্তন করতে দীর্ঘ চাপ দিন)</Text>
+                </Text>
+                <TouchableOpacity onPress={() => Alert.alert("সাহায্য", "সবুজ = খালি, কমলা = ব্যস্ত। টেবিল সিলেক্ট করে অর্ডার দিন।")}>
+                  <Text style={styles.infoIcon}>ℹ️</Text>
                 </TouchableOpacity>
-              ))
-            )}
-          </View>
-        </View>
+              </View>
+
+              <View style={styles.tableGrid}>
+                 {tables.map((table) => {
+                   const isBusy = table.status === 'BUSY';
+                   const tableAmount = table.items ? table.items.reduce((sum, item) => sum + (item.price * item.qty), 0) : 0;
+                   return (
+                     <TouchableOpacity
+                       key={table.id}
+                       onPress={() => onTableSelect(table.id)}
+                       onLongPress={() => handleTableLongPress(table)}
+                       activeOpacity={0.8}
+                       style={[
+                         styles.tableCard,
+                         isBusy ? styles.tableBusyBorder : styles.tableFreeBorder,
+                       ]}
+                     >
+                       <Text style={styles.tableId}>{table.name || table.id}</Text>
+                       <View style={styles.tableStatusRow}>
+                         <View style={[styles.statusDot, isBusy ? styles.dotOrange : styles.dotGreen]} />
+                         <Text style={[styles.tableStatusText, isBusy ? styles.textOrange : styles.textGreen]}>
+                           {table.status}
+                         </Text>
+                       </View>
+                       {isBusy ? (
+                         <Text style={styles.tableAmount}>৳ {tableAmount}</Text>
+                       ) : (
+                         <View style={{ height: 12 }} />
+                       )}
+                       <Text style={styles.chairIcon}>🪑</Text>
+                     </TouchableOpacity>
+                   );
+                 })}
+              </View>
+            </View>
+
+            {/* Active Delivery Section */}
+            <View style={styles.sectionContainer}>
+              <Text style={styles.sectionTitle}>সক্রিয় ডেলিভারি ({deliveries.filter(d => d.status === 'BUSY').length})</Text>
+              <View style={{ marginTop: 10 }}>
+                 {deliveries.filter(d => d.status === 'BUSY').length > 0 ? (
+                   deliveries.filter(d => d.status === 'BUSY').map((delivery) => (
+                       <TouchableOpacity key={delivery.id} style={[styles.deliveryCard, { marginBottom: 10 }]} onPress={() => onTableSelect(delivery.id)}>
+                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                           <View>
+                             <Text style={styles.deliveryTitle}>{delivery.name}</Text>
+                             <Text style={styles.deliveryTime}>শুরু: {formatStartTime(delivery.startTime)}</Text>
+                           </View>
+                           <Text style={styles.deliveryAmount}>৳ {(delivery.amount !== undefined && delivery.amount !== null && Number(delivery.amount) > 0) ? parseFloat(delivery.amount) : ((delivery.items ? delivery.items.reduce((sum, i) => sum + ((parseFloat(i.price) || 0) * (parseInt(i.qty, 10) || 1)), 0) : 0) + (parseFloat(delivery.deliveryCharge || delivery.delivery_charge) || 0))}</Text>
+                         </View>
+                       </TouchableOpacity>
+                   ))
+                 ) : null}
+                 <TouchableOpacity style={styles.emptyDeliveryPlaceholder} onPress={onCreateDelivery}>
+                   <Text style={styles.emptyDeliveryText}>➕ নতুন ডেলিভারি শুরু করুন</Text>
+                 </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Order Log Section */}
+            <View style={styles.sectionContainer}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitle}>আজকের অর্ডার লগ</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <TouchableOpacity>
+                    <Text style={styles.seeAllText}>সব দেখুন</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <View style={styles.orderList}>
+                {filteredOrders.length === 0 ? (
+                  <Text style={{ color: '#888888', textAlign: 'center', padding: 20 }}>কোনো অর্ডার পাওয়া যায়নি</Text>
+                ) : (
+                  filteredOrders.map((order) => (
+                    <TouchableOpacity 
+                      key={order.id} 
+                      style={styles.orderItem}
+                      onPress={() => {
+                        setSelectedOrder(order);
+                        setOrderDetailVisible(true);
+                      }}
+                    >
+                      <View style={styles.orderItemLeft}>
+                        <View style={[styles.tableIconCircle, styles.circleGreen]}>
+                          <Text style={styles.tableCircleText}>{order.table}</Text>
+                        </View>
+                        <View style={styles.orderMeta}>
+                          <View style={styles.tableTimeRow}>
+                            <Text style={styles.orderTableText}>{order.table}</Text>
+                            <Text style={styles.orderTimeText}>{order.time}</Text>
+                          </View>
+                          <Text style={styles.orderItemsText} numberOfLines={1}>{order.items}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.orderItemRight}>
+                        <View style={styles.amountCol}>
+                          <Text style={styles.orderItemAmount}>৳ {order.amount}</Text>
+                          <Text style={[styles.orderItemStatus, styles.textGreen]}>পেমেন্ট শেষ</Text>
+                        </View>
+                        <View style={styles.actionRow}>
+                          <TouchableOpacity 
+                            style={styles.printBtn} 
+                            onPress={(e) => { 
+                              e.stopPropagation(); 
+                              setPrintOrder(order); 
+                            }}
+                          >
+                            <Text style={styles.btnIcon}>🖨️</Text>
+                          </TouchableOpacity>
+                          {(userRole === 'owner' || userRole === 'admin') && (
+                            <TouchableOpacity style={styles.deleteBtn} onPress={(e) => { e.stopPropagation(); onDeleteDoneOrder(order.id); }}>
+                              <Text style={styles.btnIcon}>🗑️</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  ))
+                )}
+              </View>
+            </View>
+          </>
+        )}
       </ScrollView>
 
-      {/* Floating Action Buttons */}
-      <View style={styles.fabContainer}>
-        <TouchableOpacity style={styles.fabItemUnified} onPress={onCreateDelivery}>
-          <Text style={styles.fabIconSmall}>🛵</Text>
-          <Text style={styles.fabLabelSmall}>ডেলিভারি</Text>
-        </TouchableOpacity>
+      {/* Floating Action Buttons - Hidden when daily submit is completed */}
+      {!isDailySubmitted && (
+        <View style={styles.fabContainer}>
+          <TouchableOpacity style={styles.fabItemUnified} onPress={onCreateDelivery}>
+            <Text style={styles.fabIconSmall}>🛵</Text>
+            <Text style={styles.fabLabelSmall}>ডেলিভারি</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={styles.fabItemUnified}
-          onPress={onNavigateToExpenses}
-        >
-          <Text style={styles.fabIconSmall}>📉</Text>
-          <Text style={styles.fabLabelSmall}>খরচ</Text>
-        </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.fabItemUnified}
+            onPress={onNavigateToExpenses}
+          >
+            <Text style={styles.fabIconSmall}>📉</Text>
+            <Text style={styles.fabLabelSmall}>খরচ</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={[styles.fabItemUnified, styles.fabHighlight]}
-          onPress={onNavigateToSubmit}
-        >
-          <Text style={[styles.fabIconSmall, { color: '#000000' }]}>📝</Text>
-          <Text style={[styles.fabLabelSmall, { color: '#000000' }]}>সাবমিট</Text>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity 
+            style={[styles.fabItemUnified, styles.fabHighlight]}
+            onPress={onNavigateToSubmit}
+          >
+            <Text style={[styles.fabIconSmall, { color: '#000000' }]}>📝</Text>
+            <Text style={[styles.fabLabelSmall, { color: '#000000' }]}>সাবমিট</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
 {/* ORDER DETAIL MODAL (REDESIGNED) */}
       <OrderDetailModal
@@ -721,6 +833,159 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000000',
+  },
+
+  // ── POST-SUBMIT LOCKED SCREEN STYLES ──
+  postSubmitContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 15
+  },
+  lockHeaderCard: {
+    backgroundColor: '#111827',
+    borderRadius: 14,
+    padding: 16,
+    alignItems: 'center',
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#374151'
+  },
+  lockIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10
+  },
+  lockIconEmoji: {
+    fontSize: 24
+  },
+  lockTitle: {
+    color: '#F9FAFB',
+    fontSize: 16,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 6
+  },
+  lockSubtitle: {
+    color: '#9CA3AF',
+    fontSize: 12,
+    textAlign: 'center',
+    marginBottom: 10,
+    lineHeight: 18
+  },
+  submittedByPill: {
+    backgroundColor: '#1F2937',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#4B5563'
+  },
+  submittedByPillText: {
+    color: '#D1D5DB',
+    fontSize: 11,
+    fontWeight: '600'
+  },
+  nextDayIjaraCard: {
+    backgroundColor: '#064E3B',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 14,
+    borderWidth: 1.5,
+    borderColor: '#10B981'
+  },
+  nextDayIjaraHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8
+  },
+  nextDayIjaraEmoji: {
+    fontSize: 22
+  },
+  nextDayIjaraCardTitle: {
+    color: '#A7F3D0',
+    fontSize: 14,
+    fontWeight: 'bold'
+  },
+  nextDayIjaraCardSubtitle: {
+    color: '#6EE7B7',
+    fontSize: 10
+  },
+  nextDayIjaraCardAmount: {
+    color: '#FFFFFF',
+    fontSize: 28,
+    fontWeight: 'bold',
+    marginVertical: 4
+  },
+  nextDayIjaraCardNote: {
+    color: '#D1FAE5',
+    fontSize: 11,
+    marginTop: 4,
+    lineHeight: 16
+  },
+  summaryBreakdownCard: {
+    backgroundColor: '#1E293B',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#334155'
+  },
+  summaryBreakdownTitle: {
+    color: '#F8FAFC',
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: 12
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4
+  },
+  summaryRowLabel: {
+    color: '#94A3B8',
+    fontSize: 13
+  },
+  summaryRowValue: {
+    color: '#F8FAFC',
+    fontSize: 14,
+    fontWeight: '600'
+  },
+  summarySubrow: {
+    paddingVertical: 2,
+    paddingLeft: 4
+  },
+  summarySubrowText: {
+    color: '#64748B',
+    fontSize: 11
+  },
+  summaryDivider: {
+    height: 1,
+    backgroundColor: '#334155',
+    marginVertical: 6
+  },
+  sidebarNoticeBox: {
+    backgroundColor: '#1E293B',
+    borderRadius: 10,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#475569'
+  },
+  sidebarNoticeIcon: {
+    fontSize: 18,
+    marginRight: 8
+  },
+  sidebarNoticeText: {
+    color: '#94A3B8',
+    fontSize: 11,
+    flex: 1,
+    lineHeight: 16
   },
   header: {
     flexDirection: 'row',
