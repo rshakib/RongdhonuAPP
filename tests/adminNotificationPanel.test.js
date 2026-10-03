@@ -109,7 +109,15 @@ it('AdminDB.js renders Pull Notification History modal with filter tabs and clea
   assert.ok(adminSrc.includes('notifRefreshBtn'), 'renders refresh button');
 });
 
-// 5. Functional logic test with simulated in-memory store
+// 5. Table selection in AdminDB.js
+it('AdminDB.js enables table and delivery selection for active items', () => {
+  assert.ok(adminSrc.includes('onTableSelect(t.id)'), 'calls onTableSelect(t.id) when busy table is tapped');
+  assert.ok(adminSrc.includes('onTableSelect(delivery.id)'), 'calls onTableSelect(delivery.id) when active delivery is tapped');
+  assert.ok(adminSrc.includes('onTableSelect(table.id)'), 'calls onTableSelect(table.id) in floor modal');
+  assert.ok(adminSrc.includes('onTableSelect(selectedMonitoringItem.id)'), 'provides select table action button inside monitoring modal');
+});
+
+// 6. Functional logic test with simulated in-memory store
 it('Functional test: insert, query by filter, count, and session clear', () => {
   const memoryRows = [];
   let nextId = 1;
