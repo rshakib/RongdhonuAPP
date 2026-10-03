@@ -1381,6 +1381,28 @@ export default function App() {
         msg = `⬇️ ${groupLabel}: নতুন ডাটা নেই (০ টি রিড)`;
       }
 
+      // Record in session SQLite history for the notification panel (100% SQLite-only):
+      try {
+        const { insertSessionPullNotification } = require('./database');
+        const getPullSourceLabel = (name, rawSrc) => {
+          const t = String(name || '').toLowerCase();
+          if (t.startsWith('login-')) return 'PIN Login Sync';
+          if (t.startsWith('realtime-')) return 'Realtime Signal';
+          if (t.startsWith('recovery-')) return 'Network Recovery';
+          return rawSrc === 'firebase' ? 'Routine Soft Poll (Firebase)' : 'Routine Soft Poll';
+        };
+        insertSessionPullNotification({
+          timer_name: timerName,
+          group_label: groupLabel,
+          message: msg,
+          has_changes: hasChanges ? 1 : 0,
+          row_count: Number(rowCount) || 0,
+          source: getPullSourceLabel(timerName, source)
+        });
+      } catch (e) {
+        console.error('[SessionPullNotif] Insert failed:', e);
+      }
+
       showToast(msg, hasChanges ? 'online' : 'sync');
     };
 
@@ -1606,6 +1628,14 @@ export default function App() {
       const { setAppConfig } = require('./database');
       setAppConfig('force_reauth_required', '0');
     } catch (e) {}
+
+    // Reset session pull notifications on every PIN login (fresh session history)
+    try {
+      const { clearSessionPullNotifications } = require('./database');
+      clearSessionPullNotifications();
+    } catch (e) {
+      console.error("[App] Failed to clear session pull notifications on PIN login:", e);
+    }
 
     // --- MANDATORY VERSION CHECK ON LOGIN ---
     try {

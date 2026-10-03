@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { exportSalesReportPDF, exportDepositReportPDF } from '../pdfHelper';
-import { formatDisplayDate, getBusinessDate, inspectDatabaseStats, executeInspectorQuery, getFirebaseUsageStats, verifyPinCode, deleteDataByDate, getItemSalesReport, getDb, getTodaySubmissionDetails } from '../database';
+import { formatDisplayDate, getBusinessDate, inspectDatabaseStats, executeInspectorQuery, getFirebaseUsageStats, verifyPinCode, deleteDataByDate, getItemSalesReport, getDb, getTodaySubmissionDetails, getSessionPullNotifications, clearSessionPullNotifications, getSessionPullNotificationCount } from '../database';
 import { getAllRegisteredDevices, getCurrentDeviceRecord } from '../services/deviceRegistry';
 import { fetchMinimumVersion, setMinimumVersionDualDB, APP_VERSION, compareSemver } from '../services/firebaseAppConfig';
 import * as Application from 'expo-application';
@@ -374,6 +374,45 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
   const [selectedMonitoringItem, setSelectedMonitoringItem] = useState(null);
   const [monitoringModalVisible, setMonitoringModalVisible] = useState(false);
 
+  // Pull Notification History Modal State (100% SQLite-only, reset on PIN login)
+  const [notifModalVisible, setNotifModalVisible] = useState(false);
+  const [notifList, setNotifList] = useState([]);
+  const [notifFilter, setNotifFilter] = useState('all'); // 'all', 'changes_only', 'no_changes'
+  const [notifCounts, setNotifCounts] = useState({ total: 0, newItems: 0 });
+
+  const loadNotifData = () => {
+    try {
+      const counts = getSessionPullNotificationCount();
+      setNotifCounts(counts);
+      const items = getSessionPullNotifications(notifFilter, 150);
+      setNotifList(items);
+    } catch (e) {
+      console.error('[AdminDB] Error loading pull notifications:', e);
+    }
+  };
+
+  useEffect(() => {
+    loadNotifData();
+    const interval = setInterval(() => {
+      loadNotifData();
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [notifFilter]);
+
+  const openNotifModal = () => {
+    loadNotifData();
+    setNotifModalVisible(true);
+  };
+
+  const handleClearNotifHistory = () => {
+    try {
+      clearSessionPullNotifications();
+      loadNotifData();
+    } catch (e) {
+      console.error('[AdminDB] Error clearing pull notifications:', e);
+    }
+  };
+
   // Custom Dark Theme Alert State (Replaces native white Alert.alert to match Admin UI)
   const [darkAlert, setDarkAlert] = useState(null);
 
@@ -394,6 +433,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     const backAction = () => {
       // Priority: Close modals from top to bottom
       if (darkAlert) { setDarkAlert(null); return true; }
+      if (notifModalVisible) { setNotifModalVisible(false); return true; }
       if (versionPinModalVisible) { setVersionPinModalVisible(false); return true; }
       if (monitoringModalVisible) { setMonitoringModalVisible(false); return true; }
       if (orderDetailVisible) { setOrderDetailVisible(false); return true; }
@@ -419,7 +459,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     );
 
     return () => backHandler.remove();
-  }, [darkAlert, versionPinModalVisible, monitoringModalVisible, orderDetailVisible, calendarVisible, yearPickerVisible, monthPickerVisible, pastAccountModalVisible, cleanupModalVisible, firebaseUsageVisible, ijaraModalVisible, salesReportVisible, depositReportVisible, dayDetailModalVisible, menuModalVisible, renameModalVisible]);
+  }, [darkAlert, notifModalVisible, versionPinModalVisible, monitoringModalVisible, orderDetailVisible, calendarVisible, yearPickerVisible, monthPickerVisible, pastAccountModalVisible, cleanupModalVisible, firebaseUsageVisible, ijaraModalVisible, salesReportVisible, depositReportVisible, dayDetailModalVisible, menuModalVisible, renameModalVisible]);
 
   // Load/Refresh minimum version (Supabase-first; Firebase only if Supabase fails)
   const loadFirebaseVersion = async () => {
@@ -1147,7 +1187,27 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
           <View style={styles.titleBadgeRow}><Text style={styles.headerTitle}>Admin Dashboard</Text><View style={styles.adminBadge}><Text style={styles.adminBadgeText}>Admin</Text></View></View>
           <Text style={styles.headerDate}>{getBengaliDate()}</Text>
         </View>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity 
+          style={styles.notifBellButton} 
+          onPress={openNotifModal}
+          activeOpacity={0.7}
+          accessibilityLabel="Pull Notifications History"
+        >
+          <Text style={styles.notifBellIcon}>🔔</Text>
+          {notifCounts.newItems > 0 ? (
+            <View style={styles.notifBadge}>
+              <Text style={styles.notifBadgeText}>
+                {notifCounts.newItems > 99 ? '99+' : notifCounts.newItems}
+              </Text>
+            </View>
+          ) : notifCounts.total > 0 ? (
+            <View style={styles.notifBadgeGray}>
+              <Text style={styles.notifBadgeTextGray}>
+                {notifCounts.total > 99 ? '99+' : notifCounts.total}
+              </Text>
+            </View>
+          ) : null}
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -3051,6 +3111,190 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     </View>
   </Modal>
 
+      {/* PULL NOTIFICATION HISTORY MODAL (100% SQLite-only, reset on PIN login) */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={notifModalVisible}
+        onRequestClose={() => setNotifModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, styles.notifModalContainer]}>
+            {/* Modal Header */}
+            <View style={styles.notifModalHeaderRow}>
+              <View style={styles.notifModalHeaderLeft}>
+                <View style={styles.notifModalIconBox}>
+                  <Text style={styles.notifModalIconText}>🔔</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.notifModalTitle}>Pull নোটিফিকেশন হিস্ট্রি</Text>
+                  <Text style={styles.notifModalSubtitle}>বর্তমান সেশন (PIN Login এর পর থেকে) • SQLite Only</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={styles.closeCircle}
+                onPress={() => setNotifModalVisible(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.closeCircleText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Filter Tabs & Header Actions */}
+            <View style={styles.notifFilterBar}>
+              <View style={styles.notifFilterTabs}>
+                <TouchableOpacity
+                  style={[styles.notifFilterTab, notifFilter === 'all' && styles.notifFilterTabActive]}
+                  onPress={() => setNotifFilter('all')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.notifFilterTabText, notifFilter === 'all' && styles.notifFilterTabTextActive]}>
+                    সব ({notifCounts.total})
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.notifFilterTab, notifFilter === 'changes_only' && styles.notifFilterTabActive]}
+                  onPress={() => setNotifFilter('changes_only')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.notifFilterTabText, notifFilter === 'changes_only' && styles.notifFilterTabTextActive]}>
+                    নতুন ডাটা ({notifCounts.newItems})
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.notifFilterTab, notifFilter === 'no_changes' && styles.notifFilterTabActive]}
+                  onPress={() => setNotifFilter('no_changes')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.notifFilterTabText, notifFilter === 'no_changes' && styles.notifFilterTabTextActive]}>
+                    রুটিন চেক ({Math.max(0, notifCounts.total - notifCounts.newItems)})
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity
+                style={styles.notifClearBtn}
+                onPress={handleClearNotifHistory}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.notifClearBtnText}>🗑️ ক্লিয়ার</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* List of Pull Notifications */}
+            {notifList.length === 0 ? (
+              <View style={styles.notifEmptyWrap}>
+                <Text style={styles.notifEmptyEmoji}>📭</Text>
+                <Text style={styles.notifEmptyTitle}>কোনো নোটিফিকেশন নেই</Text>
+                <Text style={styles.notifEmptySub}>
+                  {notifFilter === 'changes_only'
+                    ? 'বর্তমান সেশনে কোনো নতুন ডাটা পুলে রেকর্ড পাওয়া যায়নি।'
+                    : 'PIN লগইনের পর ক্লাউড থেকে ডাটা পুল হলে এখানে সাথে সাথে যুক্ত হবে।'}
+                </Text>
+              </View>
+            ) : (
+              <ScrollView
+                style={styles.notifListScroll}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingVertical: 6 }}
+              >
+                {notifList.map((item) => {
+                  const hasData = Number(item.has_changes) === 1 || item.has_changes === true;
+                  const rowCount = Number(item.row_count) || 0;
+                  const groupIcon = (() => {
+                    const l = String(item.group_label || '').toLowerCase();
+                    if (l.includes('টেবিল')) return '🪑';
+                    if (l.includes('অর্ডার') || l.includes('পেমেন্ট')) return '📦';
+                    if (l.includes('দৈনিক')) return '📊';
+                    if (l.includes('মেনু')) return '🍔';
+                    if (l.includes('ডিলিট')) return '🗑️';
+                    if (l.includes('স্টাফ') || l.includes('সেটিংস')) return '⚙️';
+                    return '☁️';
+                  })();
+
+                  const sourceStyle = (() => {
+                    const s = String(item.source || '').toLowerCase();
+                    if (s.includes('realtime')) {
+                      return { bg: 'rgba(168, 85, 247, 0.12)', border: 'rgba(168, 85, 247, 0.3)', text: '#C084FC', label: '⚡ Realtime Signal' };
+                    }
+                    if (s.includes('login')) {
+                      return { bg: 'rgba(16, 185, 129, 0.12)', border: 'rgba(16, 185, 129, 0.3)', text: '#34D399', label: '🔑 PIN Login Sync' };
+                    }
+                    if (s.includes('recovery')) {
+                      return { bg: 'rgba(245, 158, 11, 0.12)', border: 'rgba(245, 158, 11, 0.3)', text: '#FBBF24', label: '🌐 Network Recovery' };
+                    }
+                    if (s.includes('firebase')) {
+                      return { bg: 'rgba(249, 115, 22, 0.12)', border: 'rgba(249, 115, 22, 0.3)', text: '#FB923C', label: '🔄 Soft Poll (Firebase)' };
+                    }
+                    return { bg: 'rgba(56, 189, 248, 0.12)', border: 'rgba(56, 189, 248, 0.3)', text: '#38BDF8', label: '🔄 Routine Soft Poll' };
+                  })();
+
+                  const formattedTime = (() => {
+                    if (!item.created_at) return '';
+                    try {
+                      const d = new Date(item.created_at);
+                      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                    } catch (_) {
+                      return item.created_at;
+                    }
+                  })();
+
+                  return (
+                    <View key={item.id} style={[styles.notifCard, hasData && styles.notifCardHighlight]}>
+                      <View style={styles.notifCardTopRow}>
+                        <View style={styles.notifCardGroupWrap}>
+                          <Text style={styles.notifGroupIcon}>{groupIcon}</Text>
+                          <Text style={styles.notifGroupLabel}>{item.group_label || item.timer_name}</Text>
+                        </View>
+
+                        <View style={[styles.notifReadBadge, hasData ? styles.notifReadBadgeSuccess : styles.notifReadBadgeMuted]}>
+                          <Text style={[styles.notifReadBadgeText, hasData ? styles.notifReadBadgeTextSuccess : styles.notifReadBadgeTextMuted]}>
+                            {hasData ? `✓ ${rowCount} টি রিড` : '০ টি রিড (আপ টু ডেট)'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <Text style={styles.notifCardMessage}>{item.message}</Text>
+
+                      <View style={styles.notifCardBottomRow}>
+                        <View style={[styles.notifSourceBadge, { backgroundColor: sourceStyle.bg, borderColor: sourceStyle.border }]}>
+                          <Text style={[styles.notifSourceBadgeText, { color: sourceStyle.text }]}>
+                            {sourceStyle.label}
+                          </Text>
+                        </View>
+
+                        <Text style={styles.notifTimeText}>🕒 {formattedTime}</Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            )}
+
+            {/* Modal Bottom Buttons */}
+            <View style={styles.notifModalFooter}>
+              <TouchableOpacity
+                style={styles.notifRefreshBtn}
+                onPress={loadNotifData}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.notifRefreshBtnText}>🔄 রিফ্রেশ</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.notifCloseBtn}
+                onPress={() => setNotifModalVisible(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.notifCloseBtnText}>বন্ধ করুন</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     <PrintReceiptModal
       visible={!!printOrder}
       order={printOrder}
@@ -3182,6 +3426,56 @@ const styles = StyleSheet.create({
   headerDate: { fontSize: 11, color: '#8E8E93', marginTop: 2 },
   menuDotsButton: { padding: 6 },
   menuDotsIcon: { fontSize: 24, color: '#FFB703', fontWeight: 'bold' },
+  notifBellButton: { padding: 6, position: 'relative', width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
+  notifBellIcon: { fontSize: 20 },
+  notifBadge: { position: 'absolute', top: 2, right: 2, backgroundColor: '#10B981', borderRadius: 9, minWidth: 18, height: 18, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4, borderWidth: 1.5, borderColor: '#0E131A' },
+  notifBadgeText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900' },
+  notifBadgeGray: { position: 'absolute', top: 2, right: 2, backgroundColor: '#334155', borderRadius: 9, minWidth: 18, height: 18, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4, borderWidth: 1.5, borderColor: '#0E131A' },
+  notifBadgeTextGray: { color: '#94A3B8', fontSize: 10, fontWeight: '700' },
+
+  // ── PULL NOTIFICATION MODAL ──
+  notifModalContainer: { width: '95%', maxHeight: '88%', backgroundColor: '#10151D', borderRadius: 18, borderWidth: 1, borderColor: '#242C37', padding: 14 },
+  notifModalHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 12, borderBottomWidth: 1, borderColor: '#1F2937' },
+  notifModalHeaderLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 },
+  notifModalIconBox: { width: 38, height: 38, borderRadius: 10, backgroundColor: 'rgba(255, 183, 3, 0.12)', justifyContent: 'center', alignItems: 'center', marginRight: 10, borderWidth: 1, borderColor: 'rgba(255, 183, 3, 0.25)' },
+  notifModalIconText: { fontSize: 18 },
+  notifModalTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
+  notifModalSubtitle: { color: '#94A3B8', fontSize: 10.5, marginTop: 2 },
+  notifFilterBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, marginBottom: 8 },
+  notifFilterTabs: { flexDirection: 'row', gap: 6, flex: 1, marginRight: 8 },
+  notifFilterTab: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: '#18212D', borderWidth: 1, borderColor: '#242C37' },
+  notifFilterTabActive: { backgroundColor: 'rgba(255, 183, 3, 0.15)', borderColor: '#FFB703' },
+  notifFilterTabText: { color: '#94A3B8', fontSize: 11, fontWeight: '600' },
+  notifFilterTabTextActive: { color: '#FFB703', fontWeight: '800' },
+  notifClearBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: 'rgba(239, 68, 68, 0.12)', borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.3)' },
+  notifClearBtnText: { color: '#EF4444', fontSize: 11, fontWeight: '700' },
+  notifEmptyWrap: { alignItems: 'center', justifyContent: 'center', paddingVertical: 50, paddingHorizontal: 20 },
+  notifEmptyEmoji: { fontSize: 44, marginBottom: 12 },
+  notifEmptyTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', marginBottom: 6 },
+  notifEmptySub: { color: '#64748B', fontSize: 12, textAlign: 'center', lineHeight: 18 },
+  notifListScroll: { maxHeight: 420, width: '100%' },
+  notifCard: { backgroundColor: '#141A23', borderRadius: 12, padding: 12, marginBottom: 8, borderWidth: 1, borderColor: '#222B38' },
+  notifCardHighlight: { borderColor: 'rgba(16, 185, 129, 0.4)', backgroundColor: 'rgba(16, 185, 129, 0.04)' },
+  notifCardTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  notifCardGroupWrap: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 8 },
+  notifGroupIcon: { fontSize: 14, marginRight: 6 },
+  notifGroupLabel: { color: '#F8FAFC', fontSize: 13, fontWeight: '700' },
+  notifReadBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, borderWidth: 1 },
+  notifReadBadgeSuccess: { backgroundColor: 'rgba(16, 185, 129, 0.12)', borderColor: 'rgba(16, 185, 129, 0.3)' },
+  notifReadBadgeMuted: { backgroundColor: 'rgba(148, 163, 184, 0.08)', borderColor: 'rgba(148, 163, 184, 0.2)' },
+  notifReadBadgeText: { fontSize: 10, fontWeight: '700' },
+  notifReadBadgeTextSuccess: { color: '#34D399' },
+  notifReadBadgeTextMuted: { color: '#94A3B8' },
+  notifCardMessage: { color: '#E2E8F0', fontSize: 12, lineHeight: 17, marginBottom: 8 },
+  notifCardBottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTopWidth: 1, borderColor: 'rgba(255, 255, 255, 0.05)', paddingTop: 6 },
+  notifSourceBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, borderWidth: 1 },
+  notifSourceBadgeText: { fontSize: 9.5, fontWeight: '700' },
+  notifTimeText: { color: '#64748B', fontSize: 10, fontWeight: '500' },
+  notifModalFooter: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 12, borderTopWidth: 1, borderColor: '#1F2937', paddingTop: 10 },
+  notifRefreshBtn: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, backgroundColor: 'rgba(56, 189, 248, 0.12)', borderWidth: 1, borderColor: 'rgba(56, 189, 248, 0.3)' },
+  notifRefreshBtnText: { color: '#38BDF8', fontSize: 12, fontWeight: '700' },
+  notifCloseBtn: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 8, backgroundColor: '#202630', borderWidth: 1, borderColor: '#2D3748' },
+  notifCloseBtnText: { color: '#E2E8F0', fontSize: 12, fontWeight: '700' },
 
   // ── STATS CARDS (Restored from Backup) ──
   statsScroll: { marginHorizontal: -12, marginBottom: 10 },

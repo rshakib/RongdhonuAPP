@@ -709,6 +709,18 @@ const TABLE_SCHEMAS = {
       last_error TEXT,
       sent_at TEXT
     );
+  `,
+  session_pull_notifications: `
+    CREATE TABLE IF NOT EXISTS session_pull_notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timer_name TEXT,
+      group_label TEXT,
+      message TEXT,
+      has_changes INTEGER DEFAULT 0,
+      row_count INTEGER DEFAULT 0,
+      source TEXT,
+      created_at TEXT
+    );
   `
 };
 
@@ -1057,6 +1069,25 @@ export function migrateAIDatasetTables() {
   }
 }
 
+export function migrateSessionPullNotifications() {
+  try {
+    db.execSync(`
+      CREATE TABLE IF NOT EXISTS session_pull_notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timer_name TEXT,
+        group_label TEXT,
+        message TEXT,
+        has_changes INTEGER DEFAULT 0,
+        row_count INTEGER DEFAULT 0,
+        source TEXT,
+        created_at TEXT
+      );
+    `);
+  } catch (err) {
+    console.error("[DB Migration] session_pull_notifications migration failed:", err);
+  }
+}
+
 // ==========================================
 // 1. AUTO INITIALIZATION ENGINE
 // ==========================================
@@ -1072,6 +1103,7 @@ export function initDatabase(skipSeeding = false) {
     migrateSupplierDue();
     migrateDeleteHistory();
     migrateAIDatasetTables();
+    migrateSessionPullNotifications();
 
     // 1. Create tables
     for (const [tableName, sql] of Object.entries(TABLE_SCHEMAS)) {
@@ -7704,6 +7736,83 @@ export function getDistinctActivityDevices(businessDate = null) {
     return [];
   }
 }
+
+// ==========================================
+// SESSION PULL NOTIFICATIONS (100% SQLite-only)
+// Reset automatically on every PIN login session.
+// ==========================================
+
+export function insertSessionPullNotification({ timer_name = '', group_label = '', message = '', has_changes = 0, row_count = 0, source = '' } = {}) {
+  try {
+    const now = new Date().toISOString();
+    return db.runSync(
+      `INSERT INTO session_pull_notifications (timer_name, group_label, message, has_changes, row_count, source, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        timer_name || '',
+        group_label || '',
+        message || '',
+        has_changes ? 1 : 0,
+        Number(row_count) || 0,
+        source || '',
+        now
+      ]
+    );
+  } catch (err) {
+    console.error('[DB] Failed to insert session pull notification:', err);
+    return null;
+  }
+}
+
+export function getSessionPullNotifications(filter = 'all', limit = 150) {
+  try {
+    const lim = Math.max(1, Math.min(Number(limit) || 150, 500));
+    if (filter === 'changes_only') {
+      return db.getAllSync(
+        `SELECT * FROM session_pull_notifications WHERE CAST(has_changes AS INTEGER) = 1 ORDER BY id DESC LIMIT ?`,
+        [String(lim)]
+      );
+    } else if (filter === 'no_changes') {
+      return db.getAllSync(
+        `SELECT * FROM session_pull_notifications WHERE CAST(has_changes AS INTEGER) = 0 ORDER BY id DESC LIMIT ?`,
+        [String(lim)]
+      );
+    }
+    return db.getAllSync(
+      `SELECT * FROM session_pull_notifications ORDER BY id DESC LIMIT ?`,
+      [String(lim)]
+    );
+  } catch (err) {
+    console.error('[DB] Failed to fetch session pull notifications:', err);
+    return [];
+  }
+}
+
+export function clearSessionPullNotifications() {
+  try {
+    db.execSync('DELETE FROM session_pull_notifications');
+    console.log('[DB] Cleared session_pull_notifications for new PIN login session.');
+    return true;
+  } catch (err) {
+    console.error('[DB] Failed to clear session pull notifications:', err);
+    return false;
+  }
+}
+
+export function getSessionPullNotificationCount() {
+  try {
+    const row = db.getFirstSync(
+      'SELECT COUNT(*) as count, SUM(CASE WHEN CAST(has_changes AS INTEGER) = 1 THEN 1 ELSE 0 END) as changes_count FROM session_pull_notifications'
+    );
+    return {
+      total: row?.count ? Number(row.count) : 0,
+      newItems: row?.changes_count ? Number(row.changes_count) : 0
+    };
+  } catch (err) {
+    return { total: 0, newItems: 0 };
+  }
+}
+
 
 
 
