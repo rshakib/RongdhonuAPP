@@ -49,21 +49,29 @@ export function formatUserRoleTag(userRole, userDisplayName) {
  */
 export function getCurrentDeviceTelemetryName() {
   try {
-    const { getCurrentDeviceRecord } = require('./deviceRegistry');
-    const rec = getCurrentDeviceRecord();
-    if (rec) {
-      const name = (rec.device_name || '').trim();
-      const model = (rec.model || '').trim();
-      const brand = (rec.brand || rec.manufacturer || '').trim();
+    const devReg = require('./deviceRegistry');
+    const getRec = devReg.getCurrentDeviceRecord || devReg.default?.getCurrentDeviceRecord;
+    if (typeof getRec === 'function') {
+      const rec = getRec();
+      if (rec) {
+        const name = (rec.device_name || '').trim();
+        const model = (rec.model || '').trim();
+        const brand = (rec.brand || rec.manufacturer || '').trim();
 
-      if (name && model && !name.toLowerCase().includes(model.toLowerCase())) {
-        return `${name} (${model})`;
+        const isGenericName = !name ||
+          name.toLowerCase() === 'android device' ||
+          name.toLowerCase() === 'pos terminal' ||
+          name.toLowerCase() === 'device';
+
+        if (!isGenericName && model && !name.toLowerCase().includes(model.toLowerCase())) {
+          return `${name} (${model})`;
+        }
+        if (!isGenericName) return name;
+        if (brand && model && !model.toLowerCase().includes(brand.toLowerCase())) {
+          return `${brand} ${model}`;
+        }
+        if (model && model.toLowerCase() !== 'android') return model;
       }
-      if (name) return name;
-      if (brand && model && !model.toLowerCase().includes(brand.toLowerCase())) {
-        return `${brand} ${model}`;
-      }
-      if (model) return model;
     }
   } catch (_) {}
 
@@ -71,11 +79,21 @@ export function getCurrentDeviceTelemetryName() {
     const Device = require('expo-device');
     const dName = (Device.deviceName || '').trim();
     const dModel = (Device.modelName || '').trim();
-    if (dName && dModel && !dName.toLowerCase().includes(dModel.toLowerCase())) {
+    const dBrand = (Device.brand || Device.manufacturer || '').trim();
+
+    const isGenericName = !dName ||
+      dName.toLowerCase() === 'android device' ||
+      dName.toLowerCase() === 'pos terminal';
+
+    if (!isGenericName && dModel && !dName.toLowerCase().includes(dModel.toLowerCase())) {
       return `${dName} (${dModel})`;
     }
-    if (dName) return dName;
-    if (dModel) return dModel;
+    if (!isGenericName) return dName;
+    if (dBrand && dModel && !dModel.toLowerCase().includes(dBrand.toLowerCase())) {
+      return `${dBrand} ${dModel}`;
+    }
+    if (dModel && dModel.toLowerCase() !== 'android') return dModel;
+    if (dBrand && dBrand.toLowerCase() !== 'android') return `${dBrand} Device`;
   } catch (_) {}
 
   return 'কাউন্টার ডিভাইস';
