@@ -10,7 +10,7 @@
  * 5. App.js calls clearSessionPullNotifications on PIN login
  * 6. App.js inserts pull notifications in pullNotificationSink
  * 7. AdminDB.js renders notification bell button with badge
- * 8. AdminDB.js renders Notification History Modal with filters (all, changes_only, no_changes) and Clear button
+ * 8. AdminDB.js renders Notification History Modal with filters, type filter button, and no manual clear
  * 9. Functional testing of insert, filter, count, and reset operations with mock SQLite
  */
 
@@ -47,6 +47,7 @@ it('database.js exports all required session pull notification helpers', () => {
   assert.ok(dbSrc.includes('export function clearSessionPullNotifications'), 'clearSessionPullNotifications is exported');
   assert.ok(dbSrc.includes('export function getSessionPullNotificationCount'), 'getSessionPullNotificationCount is exported');
   assert.ok(dbSrc.includes('export function migrateSessionPullNotifications'), 'migrateSessionPullNotifications is exported');
+  assert.ok(dbSrc.includes('export function getSessionPullTypeCounts'), 'getSessionPullTypeCounts is exported');
 });
 
 it('database.js calls migrateSessionPullNotifications inside initDatabase', () => {
@@ -87,6 +88,7 @@ it('App.js inserts pull notification into SQLite session history in pullNotifica
 it('AdminDB.js imports session pull notification helpers from database', () => {
   assert.ok(adminSrc.includes('getSessionPullNotifications'), 'AdminDB imports getSessionPullNotifications');
   assert.ok(adminSrc.includes('getSessionPullNotificationCount'), 'AdminDB imports getSessionPullNotificationCount');
+  assert.ok(adminSrc.includes('getSessionPullTypeCounts'), 'AdminDB imports getSessionPullTypeCounts');
 });
 
 it('AdminDB.js renders notification bell button with badge in the top-right header', () => {
@@ -96,7 +98,7 @@ it('AdminDB.js renders notification bell button with badge in the top-right head
   assert.ok(adminSrc.includes('openNotifModal'), 'AdminDB opens notification modal on bell press');
 });
 
-it('AdminDB.js renders Pull Notification History modal with filter tabs (manual clear button removed)', () => {
+it('AdminDB.js renders Pull Notification History modal with filter tabs, type filter button, and no manual clear', () => {
   assert.ok(adminSrc.includes('notifModalVisible'), 'AdminDB has notifModalVisible state');
   assert.ok(adminSrc.includes('Pull নোটিফিকেশন হিস্ট্রি'), 'modal title in Bengali');
   assert.ok(adminSrc.includes('notifFilterTabs'), 'has filter tabs container');
@@ -105,6 +107,13 @@ it('AdminDB.js renders Pull Notification History modal with filter tabs (manual 
   assert.ok(adminSrc.includes("setNotifFilter('no_changes')"), 'has Routine check filter');
   assert.ok(!adminSrc.includes('notifClearBtn'), 'manual clear button is removed per user request');
   assert.ok(adminSrc.includes('notifRefreshBtn'), 'renders refresh button');
+  // Type filter button assertions
+  assert.ok(adminSrc.includes('notifTypeFilterBtn'), 'has type filter button style');
+  assert.ok(adminSrc.includes('notifTypeModalVisible'), 'has notifTypeModalVisible state');
+  assert.ok(adminSrc.includes('PULL_TYPE_CONFIG'), 'has PULL_TYPE_CONFIG constant');
+  assert.ok(adminSrc.includes('notifTypeModalBox'), 'renders type filter popup box');
+  assert.ok(adminSrc.includes('notifTypeCounts'), 'reads notifTypeCounts for display');
+  assert.ok(adminSrc.includes('🎯 টাইপ'), 'shows default type filter label');
 });
 
 // 5. Read-only table and delivery monitoring in AdminDB.js

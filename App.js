@@ -1389,6 +1389,8 @@ export default function App() {
           if (t.startsWith('login-')) return 'PIN Login Sync';
           if (t.startsWith('realtime-')) return 'Realtime Signal';
           if (t.startsWith('recovery-')) return 'Network Recovery';
+          if (t.includes('tables-poll') || t.includes('high-frequency-poll')) return '30s Soft Poll';
+          if (t.includes('daily-poll') || t.includes('menu-poll') || t.includes('low-frequency-poll') || t.includes('deletions-poll')) return '60s Auto Check';
           return rawSrc === 'firebase' ? 'Routine Soft Poll (Firebase)' : 'Routine Soft Poll';
         };
         insertSessionPullNotification({

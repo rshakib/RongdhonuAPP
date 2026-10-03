@@ -7764,22 +7764,37 @@ export function insertSessionPullNotification({ timer_name = '', group_label = '
   }
 }
 
-export function getSessionPullNotifications(filter = 'all', limit = 150) {
+function buildPullTypeClause(typeFilter) {
+  if (typeFilter === '30s') {
+    return "(source LIKE '%30s%' OR timer_name LIKE '%tables-poll%' OR timer_name LIKE '%high-frequency-poll%')";
+  } else if (typeFilter === '60s') {
+    return "(source LIKE '%60s%' OR timer_name LIKE '%daily-poll%' OR timer_name LIKE '%menu-poll%' OR timer_name LIKE '%low-frequency-poll%' OR timer_name LIKE '%deletions-poll%')";
+  } else if (typeFilter === 'realtime') {
+    return "(source LIKE '%Realtime%' OR timer_name LIKE 'realtime%')";
+  } else if (typeFilter === 'login') {
+    return "(source LIKE '%Login%' OR timer_name LIKE 'login%')";
+  } else if (typeFilter === 'recovery' || typeFilter === 'other') {
+    return "(source NOT LIKE '%30s%' AND source NOT LIKE '%60s%' AND source NOT LIKE '%Realtime%' AND source NOT LIKE '%Login%')";
+  }
+  return null;
+}
+
+export function getSessionPullNotifications(filter = 'all', limit = 150, typeFilter = 'all') {
   try {
     const lim = Math.max(1, Math.min(Number(limit) || 150, 500));
+    const whereClauses = [];
     if (filter === 'changes_only') {
-      return db.getAllSync(
-        `SELECT * FROM session_pull_notifications WHERE CAST(has_changes AS INTEGER) = 1 ORDER BY id DESC LIMIT ?`,
-        [String(lim)]
-      );
+      whereClauses.push('CAST(has_changes AS INTEGER) = 1');
     } else if (filter === 'no_changes') {
-      return db.getAllSync(
-        `SELECT * FROM session_pull_notifications WHERE CAST(has_changes AS INTEGER) = 0 ORDER BY id DESC LIMIT ?`,
-        [String(lim)]
-      );
+      whereClauses.push('CAST(has_changes AS INTEGER) = 0');
     }
+    const typeClause = buildPullTypeClause(typeFilter);
+    if (typeClause) {
+      whereClauses.push(typeClause);
+    }
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
     return db.getAllSync(
-      `SELECT * FROM session_pull_notifications ORDER BY id DESC LIMIT ?`,
+      `SELECT * FROM session_pull_notifications ${whereSql} ORDER BY id DESC LIMIT ?`,
       [String(lim)]
     );
   } catch (err) {
@@ -7799,10 +7814,12 @@ export function clearSessionPullNotifications() {
   }
 }
 
-export function getSessionPullNotificationCount() {
+export function getSessionPullNotificationCount(typeFilter = 'all') {
   try {
+    const typeClause = buildPullTypeClause(typeFilter);
+    const whereSql = typeClause ? `WHERE ${typeClause}` : '';
     const row = db.getFirstSync(
-      'SELECT COUNT(*) as count, SUM(CASE WHEN CAST(has_changes AS INTEGER) = 1 THEN 1 ELSE 0 END) as changes_count FROM session_pull_notifications'
+      `SELECT COUNT(*) as count, SUM(CASE WHEN CAST(has_changes AS INTEGER) = 1 THEN 1 ELSE 0 END) as changes_count FROM session_pull_notifications ${whereSql}`
     );
     return {
       total: row?.count ? Number(row.count) : 0,
@@ -7810,6 +7827,27 @@ export function getSessionPullNotificationCount() {
     };
   } catch (err) {
     return { total: 0, newItems: 0 };
+  }
+}
+
+export function getSessionPullTypeCounts() {
+  try {
+    const allRow = db.getFirstSync('SELECT COUNT(*) as c FROM session_pull_notifications');
+    const s30Row = db.getFirstSync("SELECT COUNT(*) as c FROM session_pull_notifications WHERE source LIKE '%30s%' OR timer_name LIKE '%tables-poll%' OR timer_name LIKE '%high-frequency-poll%'");
+    const s60Row = db.getFirstSync("SELECT COUNT(*) as c FROM session_pull_notifications WHERE source LIKE '%60s%' OR timer_name LIKE '%daily-poll%' OR timer_name LIKE '%menu-poll%' OR timer_name LIKE '%low-frequency-poll%' OR timer_name LIKE '%deletions-poll%'");
+    const rtRow = db.getFirstSync("SELECT COUNT(*) as c FROM session_pull_notifications WHERE source LIKE '%Realtime%' OR timer_name LIKE 'realtime%'");
+    const logRow = db.getFirstSync("SELECT COUNT(*) as c FROM session_pull_notifications WHERE source LIKE '%Login%' OR timer_name LIKE 'login%'");
+    const otherRow = db.getFirstSync("SELECT COUNT(*) as c FROM session_pull_notifications WHERE source NOT LIKE '%30s%' AND source NOT LIKE '%60s%' AND source NOT LIKE '%Realtime%' AND source NOT LIKE '%Login%'");
+    return {
+      all: allRow?.c ? Number(allRow.c) : 0,
+      '30s': s30Row?.c ? Number(s30Row.c) : 0,
+      '60s': s60Row?.c ? Number(s60Row.c) : 0,
+      realtime: rtRow?.c ? Number(rtRow.c) : 0,
+      login: logRow?.c ? Number(logRow.c) : 0,
+      other: otherRow?.c ? Number(otherRow.c) : 0
+    };
+  } catch (e) {
+    return { all: 0, '30s': 0, '60s': 0, realtime: 0, login: 0, other: 0 };
   }
 }
 

@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { exportSalesReportPDF, exportDepositReportPDF } from '../pdfHelper';
-import { formatDisplayDate, getBusinessDate, inspectDatabaseStats, executeInspectorQuery, getFirebaseUsageStats, verifyPinCode, deleteDataByDate, getItemSalesReport, getDb, getTodaySubmissionDetails, getSessionPullNotifications, getSessionPullNotificationCount } from '../database';
+import { formatDisplayDate, getBusinessDate, inspectDatabaseStats, executeInspectorQuery, getFirebaseUsageStats, verifyPinCode, deleteDataByDate, getItemSalesReport, getDb, getTodaySubmissionDetails, getSessionPullNotifications, getSessionPullNotificationCount, getSessionPullTypeCounts } from '../database';
 import { getAllRegisteredDevices, getCurrentDeviceRecord } from '../services/deviceRegistry';
 import { fetchMinimumVersion, setMinimumVersionDualDB, APP_VERSION, compareSemver } from '../services/firebaseAppConfig';
 import * as Application from 'expo-application';
@@ -378,13 +378,27 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
   const [notifModalVisible, setNotifModalVisible] = useState(false);
   const [notifList, setNotifList] = useState([]);
   const [notifFilter, setNotifFilter] = useState('all'); // 'all', 'changes_only', 'no_changes'
+  const [notifTypeFilter, setNotifTypeFilter] = useState('all'); // 'all', '30s', '60s', 'realtime', 'login', 'other'
+  const [notifTypeModalVisible, setNotifTypeModalVisible] = useState(false);
   const [notifCounts, setNotifCounts] = useState({ total: 0, newItems: 0 });
+  const [notifTypeCounts, setNotifTypeCounts] = useState({ all: 0, '30s': 0, '60s': 0, realtime: 0, login: 0, other: 0 });
+
+  const PULL_TYPE_CONFIG = {
+    all: { label: 'সব টাইপ', shortLabel: 'টাইপ নির্বাচন', icon: '🎯' },
+    '30s': { label: '30s Soft Poll', shortLabel: '30s Soft', icon: '⚡' },
+    '60s': { label: '60s Auto Check', shortLabel: '60s Auto', icon: '⏱️' },
+    realtime: { label: 'Realtime Signal', shortLabel: 'Realtime', icon: '📡' },
+    login: { label: 'PIN Login Sync', shortLabel: 'PIN Login', icon: '🔑' },
+    other: { label: 'Network Recovery / Other', shortLabel: 'Other', icon: '🌐' },
+  };
 
   const loadNotifData = () => {
     try {
-      const counts = getSessionPullNotificationCount();
+      const counts = getSessionPullNotificationCount(notifTypeFilter);
       setNotifCounts(counts);
-      const items = getSessionPullNotifications(notifFilter, 150);
+      const typeCounts = getSessionPullTypeCounts();
+      setNotifTypeCounts(typeCounts);
+      const items = getSessionPullNotifications(notifFilter, 150, notifTypeFilter);
       setNotifList(items);
     } catch (e) {
       console.error('[AdminDB] Error loading pull notifications:', e);
@@ -397,7 +411,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
       loadNotifData();
     }, 2500);
     return () => clearInterval(interval);
-  }, [notifFilter]);
+  }, [notifFilter, notifTypeFilter]);
 
   const openNotifModal = () => {
     loadNotifData();
@@ -3166,7 +3180,68 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                   </Text>
                 </TouchableOpacity>
               </View>
+
+              {/* Type Filter Button */}
+              <TouchableOpacity
+                style={[
+                  styles.notifTypeFilterBtn,
+                  notifTypeFilter !== 'all' && styles.notifTypeFilterBtnActive,
+                ]}
+                onPress={() => setNotifTypeModalVisible(true)}
+                activeOpacity={0.7}
+              >
+                <Text style={[
+                  styles.notifTypeFilterBtnText,
+                  notifTypeFilter !== 'all' && styles.notifTypeFilterBtnTextActive,
+                ]}>
+                  {notifTypeFilter === 'all'
+                    ? `🎯 টাইপ`
+                    : `${PULL_TYPE_CONFIG[notifTypeFilter]?.icon || '🎯'} ${PULL_TYPE_CONFIG[notifTypeFilter]?.shortLabel || notifTypeFilter} (${notifTypeCounts[notifTypeFilter] || 0})`}
+                </Text>
+              </TouchableOpacity>
             </View>
+
+            {/* Pull Type Filter Popup Modal */}
+            <Modal
+              transparent
+              visible={notifTypeModalVisible}
+              animationType="fade"
+              onRequestClose={() => setNotifTypeModalVisible(false)}
+            >
+              <TouchableOpacity
+                style={styles.notifTypeModalOverlay}
+                activeOpacity={1}
+                onPress={() => setNotifTypeModalVisible(false)}
+              >
+                <View style={styles.notifTypeModalBox}>
+                  <Text style={styles.notifTypeModalTitle}>📊 পুল টাইপ ফিল্টার</Text>
+                  {Object.entries(PULL_TYPE_CONFIG).map(([key, cfg]) => {
+                    const count = notifTypeCounts[key] || 0;
+                    const isActive = notifTypeFilter === key;
+                    return (
+                      <TouchableOpacity
+                        key={key}
+                        style={[styles.notifTypeOption, isActive && styles.notifTypeOptionActive]}
+                        onPress={() => { setNotifTypeFilter(key); setNotifTypeModalVisible(false); }}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.notifTypeOptionLeft}>
+                          <Text style={styles.notifTypeOptionIcon}>{cfg.icon}</Text>
+                          <Text style={[styles.notifTypeOptionLabel, isActive && styles.notifTypeOptionLabelActive]}>
+                            {cfg.label}
+                          </Text>
+                        </View>
+                        <View style={[styles.notifTypeCountBadge, isActive && styles.notifTypeCountBadgeActive]}>
+                          <Text style={[styles.notifTypeCountText, isActive && styles.notifTypeCountTextActive]}>
+                            {count}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </TouchableOpacity>
+            </Modal>
 
             {/* List of Pull Notifications */}
             {notifList.length === 0 ? (
@@ -3432,6 +3507,23 @@ const styles = StyleSheet.create({
   notifFilterTabActive: { backgroundColor: 'rgba(255, 183, 3, 0.15)', borderColor: '#FFB703' },
   notifFilterTabText: { color: '#94A3B8', fontSize: 11, fontWeight: '600' },
   notifFilterTabTextActive: { color: '#FFB703', fontWeight: '800' },
+  notifTypeFilterBtn: { paddingHorizontal: 9, paddingVertical: 6, borderRadius: 8, backgroundColor: '#18212D', borderWidth: 1, borderColor: '#242C37', marginLeft: 6, flexShrink: 0 },
+  notifTypeFilterBtnActive: { backgroundColor: 'rgba(255, 183, 3, 0.15)', borderColor: '#FFB703' },
+  notifTypeFilterBtnText: { color: '#94A3B8', fontSize: 10.5, fontWeight: '700' },
+  notifTypeFilterBtnTextActive: { color: '#FFB703' },
+  notifTypeModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'center', alignItems: 'center' },
+  notifTypeModalBox: { backgroundColor: '#141A23', borderRadius: 16, borderWidth: 1, borderColor: '#242C37', width: 280, paddingVertical: 6, paddingHorizontal: 0, overflow: 'hidden' },
+  notifTypeModalTitle: { color: '#94A3B8', fontSize: 11, fontWeight: '700', letterSpacing: 0.5, paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderColor: '#1F2937', marginBottom: 4 },
+  notifTypeOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 11 },
+  notifTypeOptionActive: { backgroundColor: 'rgba(255, 183, 3, 0.08)' },
+  notifTypeOptionLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  notifTypeOptionIcon: { fontSize: 15, marginRight: 10, width: 22, textAlign: 'center' },
+  notifTypeOptionLabel: { color: '#E2E8F0', fontSize: 13, fontWeight: '600' },
+  notifTypeOptionLabelActive: { color: '#FFB703', fontWeight: '800' },
+  notifTypeCountBadge: { backgroundColor: '#1E2632', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, borderWidth: 1, borderColor: '#2D3748' },
+  notifTypeCountBadgeActive: { backgroundColor: 'rgba(255, 183, 3, 0.15)', borderColor: 'rgba(255, 183, 3, 0.4)' },
+  notifTypeCountText: { color: '#64748B', fontSize: 11, fontWeight: '700' },
+  notifTypeCountTextActive: { color: '#FFB703' },
   notifEmptyWrap: { alignItems: 'center', justifyContent: 'center', paddingVertical: 50, paddingHorizontal: 20 },
   notifEmptyEmoji: { fontSize: 44, marginBottom: 12 },
   notifEmptyTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', marginBottom: 6 },
