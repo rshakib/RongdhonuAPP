@@ -354,15 +354,25 @@ async function fetchSupabaseRows(db, table, cursorCol, marker) {
   const client = deps.getClient();
   if (!client) throw new Error('Supabase client unavailable');
 
+  let activeCursorCol = cursorCol;
   const rows = [];
   let offset = 0;
   // Bounded pagination (PostgREST caps a single response at ~1000 rows).
   for (let page = 0; page < 50; page++) {
     let q = client.from(table).select('*');
-    if (marker) q = q.gt(cursorCol, marker);
-    q = q.order(cursorCol, { ascending: true }).range(offset, offset + PAGE_SIZE - 1);
+    if (marker) q = q.gt(activeCursorCol, marker);
+    q = q.order(activeCursorCol, { ascending: true }).range(offset, offset + PAGE_SIZE - 1);
     const { data, error } = await withTimeout(q, PULL_TIMEOUT_MS, `pull ${table}`);
     if (error) {
+      // If ordering or filtering on updated_at failed because it does not exist on the remote Supabase table, retry with created_at
+      if (activeCursorCol === 'updated_at' && page === 0 && (error.code === '42703' || String(error.message || '').includes('does not exist'))) {
+        console.warn(`[SupabaseSync] table ${table} lacks updated_at in Supabase; retrying with created_at`);
+        activeCursorCol = 'created_at';
+        page = -1;
+        offset = 0;
+        rows.length = 0;
+        continue;
+      }
       // Preserve PostgREST code/status so callers can classify RLS/permission
       // denials (isRlsDenialError) while still failing the same way.
       const e = new Error(error.message || 'supabase pull error');
@@ -459,13 +469,13 @@ async function runSupabaseGroup(tables, firebaseFnName) {
   for (const table of tables) {
     try {
       const res = await pullSupabaseTable(db, table);
-      if (res.failed) { failure = true; break; }
+      if (res.failed) { failure = true; continue; }
       hasChanges = hasChanges || res.hasChanges;
     } catch (err) {
       const why = isRlsDenialError(err) ? 'RLS/permission denial' : (err?.message || err);
       console.warn(`[SupabaseSync] table ${table} failed (${why}) → Firebase fallback`);
       failure = true;
-      break;
+      continue;
     }
   }
 
@@ -476,7 +486,7 @@ async function runSupabaseGroup(tables, firebaseFnName) {
       // fetching the same data from Firestore. A manual pull covers the recovery.
       console.log(`[Firebase-Read] ${firebaseFnName} BLOCKED by policy — automatic Firebase reads disabled (Supabase read failed)`);
       recordSyncHeartbeat({ backend: 'supabase', kind: 'read' }).catch(() => {});
-      return false;
+      return hasChanges;
     }
     const r = await callFirebaseFallback(fb, firebaseFnName);
     emitPull('firebase', r);

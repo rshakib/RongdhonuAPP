@@ -150,16 +150,16 @@ export default function ExpensesScreen({ dailyExpenses, onUpdateExpenses, isDail
               <View style={styles.expenseHeaderRow}>
                 <Text style={styles.expenseName}>{item.name}</Text>
                 
-                <View style={[styles.amountInputRow, (isDailySubmitted && userRole !== 'admin') && styles.disabledInputRow]}>
-                  <Text style={[styles.currencySymbolInput, (isDailySubmitted && userRole !== 'admin') && styles.disabledInputText]}>৳</Text>
+                <View style={[styles.amountInputRow, (!isDailySubmitted || userRole === 'admin' || userRole === 'owner') ? null : styles.disabledInputRow]}>
+                  <Text style={[styles.currencySymbolInput, (!isDailySubmitted || userRole === 'admin' || userRole === 'owner') ? null : styles.disabledInputText]}>৳</Text>
                   <TextInput
-                    style={[styles.expenseInput, (isDailySubmitted && userRole !== 'admin') && styles.disabledInputText]}
+                    style={[styles.expenseInput, (!isDailySubmitted || userRole === 'admin' || userRole === 'owner') ? null : styles.disabledInputText]}
                     keyboardType="numeric"
                     value={item.rawValue}
                     onChangeText={item.setter}
                     placeholder="0"
                     placeholderTextColor="#888888"
-                    editable={!isDailySubmitted || userRole === 'admin'}
+                    editable={!isDailySubmitted || userRole === 'admin' || userRole === 'owner'}
                   />
                 </View>
               </View>
@@ -172,30 +172,30 @@ export default function ExpensesScreen({ dailyExpenses, onUpdateExpenses, isDail
 
               {/* Sleek inline note field for grocery Bazar list */}
               {item.name === '🛒 বাজার খরচ' && (
-                <View style={[styles.noteContainer, (isDailySubmitted && userRole !== 'admin') && styles.disabledInputRow]}>
+                <View style={[styles.noteContainer, (!isDailySubmitted || userRole === 'admin' || userRole === 'owner') ? null : styles.disabledInputRow]}>
                   <Text style={styles.noteLabel}>📝 নোট:</Text>
                   <TextInput
-                    style={[styles.noteInput, (isDailySubmitted && userRole !== 'admin') && styles.disabledInputText]}
+                    style={[styles.noteInput, (!isDailySubmitted || userRole === 'admin' || userRole === 'owner') ? null : styles.disabledInputText]}
                     value={bazarNote}
                     onChangeText={setBazarNote}
                     placeholder="বাজারের তালিকা লিখুন... (যেমন: আলু, পেঁয়াজ)"
                     placeholderTextColor="#555555"
-                    editable={!isDailySubmitted || userRole === 'admin'}
+                    editable={!isDailySubmitted || userRole === 'admin' || userRole === 'owner'}
                   />
                 </View>
               )}
 
               {/* Sleek inline note field for other expenses */}
               {item.name === '📦 অন্যান্য খরচ' && (
-                <View style={[styles.noteContainer, (isDailySubmitted && userRole !== 'admin') && styles.disabledInputRow]}>
+                <View style={[styles.noteContainer, (!isDailySubmitted || userRole === 'admin' || userRole === 'owner') ? null : styles.disabledInputRow]}>
                   <Text style={styles.noteLabel}>📝 নোট:</Text>
                   <TextInput
-                    style={[styles.noteInput, (isDailySubmitted && userRole !== 'admin') && styles.disabledInputText]}
+                    style={[styles.noteInput, (!isDailySubmitted || userRole === 'admin' || userRole === 'owner') ? null : styles.disabledInputText]}
                     value={othersNote}
                     onChangeText={setOthersNote}
                     placeholder="খরচের বিবরণ লিখুন... (যেমন: যাতায়াত ভাড়া)"
                     placeholderTextColor="#555555"
-                    editable={!isDailySubmitted || userRole === 'admin'}
+                    editable={!isDailySubmitted || userRole === 'admin' || userRole === 'owner'}
                   />
                 </View>
               )}
@@ -213,23 +213,23 @@ export default function ExpensesScreen({ dailyExpenses, onUpdateExpenses, isDail
             </View>
           </View>
           
-          <View style={[styles.amountInputRow, (isDailySubmitted && userRole !== 'admin') && styles.disabledInputRow]}>
-            <Text style={[styles.currencySymbolInput, (isDailySubmitted && userRole !== 'admin') && styles.disabledInputText]}>৳</Text>
+          <View style={[styles.amountInputRow, (!isDailySubmitted || userRole === 'admin' || userRole === 'owner') ? null : styles.disabledInputRow]}>
+            <Text style={[styles.currencySymbolInput, (!isDailySubmitted || userRole === 'admin' || userRole === 'owner') ? null : styles.disabledInputText]}>৳</Text>
             <TextInput
-              style={[styles.expenseInput, (isDailySubmitted && userRole !== 'admin') && styles.disabledInputText]}
+              style={[styles.expenseInput, (!isDailySubmitted || userRole === 'admin' || userRole === 'owner') ? null : styles.disabledInputText]}
               keyboardType="numeric"
               value={ijara}
               onChangeText={setIjara}
               placeholder="0"
               placeholderTextColor="#888888"
-              editable={!isDailySubmitted || userRole === 'admin'}
+              editable={!isDailySubmitted || userRole === 'admin' || userRole === 'owner'}
             />
           </View>
         </View>
 
         {/* Buttons Row */}
         <View style={styles.btnRow}>
-          {(!isDailySubmitted || userRole === 'admin') ? (
+          {(!isDailySubmitted || userRole === 'admin' || userRole === 'owner') ? (
             <TouchableOpacity style={styles.saveBtn} onPress={handleSaveExpenses} activeOpacity={0.85}>
               <Text style={styles.saveBtnText}>✓ খরচ সংরক্ষণ করুন</Text>
             </TouchableOpacity>

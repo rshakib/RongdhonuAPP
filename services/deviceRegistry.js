@@ -1171,7 +1171,7 @@ export async function verifyDeviceAccessOnStartupOrResume(userRole = '') {
       }
 
       // Check Pending approval
-      if (remote.status === 'PENDING' && roleUpper !== 'ADMIN') {
+      if (remote.status === 'PENDING' && roleUpper !== 'ADMIN' && roleUpper !== 'OWNER') {
         return {
           allowed: false,
           status: 'PENDING',
@@ -1191,7 +1191,7 @@ export async function verifyDeviceAccessOnStartupOrResume(userRole = '') {
         upsertDeviceToSupabase(localRecord);
       }
       return {
-        allowed: roleUpper === 'ADMIN',
+        allowed: roleUpper === 'ADMIN' || roleUpper === 'OWNER',
         status: 'PENDING',
         deviceId,
         message: 'ডিভাইসটি নিবন্ধিত হয়েছে এবং অনুমোদনের অপেক্ষায় রয়েছে।'

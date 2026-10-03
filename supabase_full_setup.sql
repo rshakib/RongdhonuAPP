@@ -527,7 +527,8 @@ CREATE TABLE IF NOT EXISTS public.owner_salary_ledger (
     payment_type TEXT NOT NULL,
     payment_date TEXT NOT NULL,
     notes TEXT,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT NOW()::text
 );
 
 CREATE TABLE IF NOT EXISTS public.owner_expenses (
@@ -544,7 +545,8 @@ CREATE TABLE IF NOT EXISTS public.owner_deposits (
     id TEXT PRIMARY KEY,
     month TEXT NOT NULL,
     amount REAL NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT NOW()::text
 );
 
 CREATE TABLE IF NOT EXISTS public.owner_home_deposits (

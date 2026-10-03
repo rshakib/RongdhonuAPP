@@ -130,7 +130,7 @@ const runPullPreferSupabase = async (name, supabaseFnName, fallbackFn, refreshDa
   try {
     const mod = require('./services/supabaseSync.js');
     health = mod.getSupabaseHealth();
-    if (health.healthy && typeof mod[supabaseFnName] === 'function') {
+    if (health.reason !== 'killswitch' && health.reason !== 'unconfigured' && typeof mod[supabaseFnName] === 'function') {
       // Supabase route → Firebase is NOT read. Tagged so every pull shows its source.
       console.log(`[Firebase-Read] ${name} SKIPPED — Supabase route (reason=${health.reason})`);
       return await runAutoPull(name, mod[supabaseFnName], refreshData);
@@ -1114,6 +1114,8 @@ export default function App() {
         await runPullPreferSupabase('foreground-high-frequency-pull', 'syncSupabaseHighFrequencyCollections', syncHighFrequencyCollections, refreshData);
         await runPullPreferSupabase('foreground-low-frequency-pull', 'syncSupabaseLowFrequencyCollections', syncLowFrequencyCollections, refreshData);
         checkAndFlushLastSeen();
+        const didRollover = checkAndApplyIjaraRollover();
+        if (didRollover) refreshData();
       }
       previousState = nextState;
     });
@@ -1566,7 +1568,7 @@ export default function App() {
         setCurrentScreen('OFFLINE_VERIFICATION');
         return;
       }
-      if (devAccess && devAccess.status === 'PENDING' && ACTIVE_APP_PROFILE !== 'ADMIN') {
+      if (devAccess && devAccess.status === 'PENDING' && ACTIVE_APP_PROFILE !== 'ADMIN' && ACTIVE_APP_PROFILE !== 'OWNER') {
         setPendingDeviceId(devAccess.deviceId || '');
         setPendingLoginInfo({ role, displayName, mode, isAdminLock: false });
         setIsLoggedIn(false);
@@ -2665,8 +2667,9 @@ export default function App() {
                 if (initStatus === 'running') {
                   return;
                 }
-                setIsLoggedIn(true);
-                setCurrentScreen('DASHBOARD');
+                setIsLoggedIn(false);
+                setCurrentScreen('LOGIN');
+                Alert.alert('✅ অনুমোদিত', 'ডিভাইসটি সফলভাবে অনুমোদিত হয়েছে। আপনার পিন দিয়ে লগইন করুন।');
               }
             }}
             onExit={() => {
@@ -2713,7 +2716,6 @@ export default function App() {
                 onNavigateToBackupRestore={() => setCurrentScreen('BACKUP_RESTORE')}
                 onNavigateToDeviceManagement={() => setCurrentScreen('DEVICE_MANAGEMENT')}
                 onNavigateToPrinterSettings={() => setCurrentScreen('PRINTER_SETTINGS')}
-                onNavigateToBackupRestore={() => setCurrentScreen('BACKUP_RESTORE')}
                 onNavigateToAIDatasetMonitor={() => setCurrentScreen('AI_DATASET_MONITOR')}
                 onNavigateToAIDatasetAuditCenter={() => setCurrentScreen('AI_DATASET_AUDIT_CENTER')}
                 onNavigateToAnalytics={() => setCurrentScreen('ADMIN_ANALYTICS')}

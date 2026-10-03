@@ -28,11 +28,16 @@ import {
  * The Bengali receipt is captured from the on-screen ReceiptPaper at 384 dots
  * and sent to the thermal printer as an image (the printer has no Bengali font).
  * Never opens a browser print dialog.
+ *
+ * Reprinting: a manual press ALWAYS prints (force) and the modal stays open, so
+ * the same receipt can be printed as many times as needed. The duplicate guard
+ * still protects the silent AUTO print, which must never fire twice for one order.
  */
 export default function PrintReceiptModal({ visible, order, onClose, showPayment = true, phone }) {
   const [status, setStatus] = useState(() => getStatus());
   const [busy, setBusy] = useState(false);
   const [printed, setPrinted] = useState(false);
+  const [copies, setCopies] = useState(0);
   const [error, setError] = useState(null);
   const [needsSettings, setNeedsSettings] = useState(false);
 
@@ -42,6 +47,7 @@ export default function PrintReceiptModal({ visible, order, onClose, showPayment
     if (!visible) return;
 
     setPrinted(false);
+    setCopies(0);
     setBusy(false);
     setError(null);
     setStatus(getStatus());
@@ -75,10 +81,10 @@ export default function PrintReceiptModal({ visible, order, onClose, showPayment
             fullDate: new Date().toISOString().substring(0, 10)
           }
         : order;
-      const result = await printReceipt(orderToPrint, { getBase64 });
+      const result = await printReceipt(orderToPrint, { getBase64, force: true });
       if (result.success) {
         setPrinted(true);
-        setTimeout(() => { if (onClose) onClose(); }, 1400);
+        setCopies((c) => c + 1);
       } else {
         setError(result.message || 'প্রিন্ট করা যায়নি');
       }
@@ -86,7 +92,7 @@ export default function PrintReceiptModal({ visible, order, onClose, showPayment
       setBusy(false);
       setStatus(getStatus());
     }
-  }, [order, getBase64, onClose]);
+  }, [order, getBase64]);
 
   const handleConnect = useCallback(async () => {
     setBusy(true);
@@ -163,7 +169,11 @@ export default function PrintReceiptModal({ visible, order, onClose, showPayment
             </TouchableOpacity>
           )}
 
-          {printed && <Text style={styles.printedNote}>✅ প্রিন্ট সম্পন্ন হয়েছে</Text>}
+          {printed && (
+            <Text style={styles.printedNote}>
+              ✅ প্রিন্ট সম্পন্ন হয়েছে{copies > 1 ? ` (${copies} কপি)` : ''} — চাইলে আবার প্রিন্ট করুন
+            </Text>
+          )}
 
           <TouchableOpacity
             style={[styles.printBtn, busy && styles.btnDisabled]}
@@ -171,7 +181,9 @@ export default function PrintReceiptModal({ visible, order, onClose, showPayment
             disabled={busy}
             activeOpacity={0.85}
           >
-            {busy ? <ActivityIndicator color="#60A5FA" /> : <Text style={styles.printBtnText}>🖨️ প্রিন্ট করুন</Text>}
+            {busy
+              ? <ActivityIndicator color="#60A5FA" />
+              : <Text style={styles.printBtnText}>{printed ? '🖨️ আরেক কপি প্রিন্ট করুন' : '🖨️ প্রিন্ট করুন'}</Text>}
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.cancelBtn} onPress={onClose} disabled={busy}>

@@ -2521,8 +2521,8 @@ export const APP_PROFILES = {
     tablesOnly: ['restaurant_tables'],
     highFreq: ['orders', 'order_items', 'payments', 'deliveries'],
     lowFreq: [
-      'users', 'daily_summary', 'due_payments', 'weather_data', 'off_days', 
-      'app_config', 'expenses', 'eja_history', 'daily_submit', 'supplier_due', 
+      'users', 'daily_summary', 'expenses', 'eja_history', 'daily_submit',
+      'due_payments', 'weather_data', 'off_days', 'app_config', 'supplier_due', 
       'supplier_due_history', 'supplier_payment_ledger', 
       'owner_employees', 'owner_salary_ledger', 'owner_expenses', 'owner_deposits', 'owner_home_deposits'
     ],
@@ -5092,6 +5092,16 @@ export function getDailyExpenses() {
       else if (cat === 'ijara') expenses.ijara = amt;
     });
 
+    // Fallback: If expenses table row has ijara = 0, check eja_history for today's business date
+    if (!expenses.ijara || expenses.ijara === 0) {
+      try {
+        const todayEja = db.getFirstSync("SELECT eja_amount FROM eja_history WHERE date = ? OR id = ?", [todayStr, `eja_${todayStr}`]);
+        if (todayEja && Number(todayEja.eja_amount) > 0) {
+          expenses.ijara = Number(todayEja.eja_amount);
+        }
+      } catch (_) {}
+    }
+
     return expenses;
   } catch (err) {
     console.error(err);
@@ -5503,6 +5513,92 @@ export function getBusinessDateOffset(dateStr, days) {
  * @param {string} submittedDateStr - The business date that was submitted (YYYY-MM-DD)
  * @returns {object} { success, nextDayIjara, targetDate } for logging/rollback
  */
+/**
+ * Immediately applies auto ijara for a given date by creating or updating:
+ * 1. An expenses record with category = 'ijara'
+ * 2. An eja_history record
+ * Both are queued and pushed immediately to Supabase and Firebase.
+ *
+ * @param {string} targetDate - Date in YYYY-MM-DD format
+ * @param {number} amount - Opening ijara cash amount
+ * @returns {boolean} True if successfully applied
+ */
+export function applyAutoIjaraImmediately(targetDate, amount) {
+  try {
+    const numAmount = Math.max(0, Number(amount) || 0);
+    const targetIso = `${targetDate}T00:00:00.000Z`;
+    const stableExpId = `exp_${targetDate}_ijara`;
+
+    console.log(`[Auto Ijara] Applying immediate opening ijara ৳${numAmount} for ${targetDate}`);
+
+    // 1. Process expenses table (idempotent: INSERT or UPDATE)
+    const existingExp = db.getFirstSync(
+      "SELECT * FROM expenses WHERE id = ? OR (category = 'ijara' AND date(created_at, 'localtime') = ?)",
+      [stableExpId, targetDate]
+    );
+
+    if (!existingExp) {
+      if (numAmount > 0) {
+        console.log(`[Auto Ijara] Inserting expense ৳${numAmount} for ${targetDate}`);
+        db.runSync(
+          "INSERT OR REPLACE INTO expenses (id, category, amount, note, is_due, given_amount, used_amount, returned_amount, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, ?, 0)",
+          [stableExpId, 'ijara', numAmount, 'Auto Carry Forward', targetIso, targetIso]
+        );
+        enqueueSync("expenses", stableExpId, "INSERT");
+        syncRecordImmediately("expenses", stableExpId);
+      }
+    } else if (Number(existingExp.amount) !== numAmount) {
+      console.log(`[Auto Ijara] Updating expense ৳${numAmount} for ${targetDate}`);
+      db.runSync(
+        "UPDATE expenses SET amount = ?, updated_at = ?, is_synced = 0 WHERE id = ?",
+        [numAmount, targetIso, existingExp.id]
+      );
+      enqueueSync("expenses", existingExp.id, "UPDATE");
+      syncRecordImmediately("expenses", existingExp.id);
+    } else {
+      console.log(`[Auto Ijara] Expense already matches ৳${numAmount} for ${targetDate}`);
+    }
+
+    // 2. Process eja_history table (idempotent: INSERT or UPDATE)
+    const ejaId = `eja_${targetDate}`;
+    const existingEja = db.getFirstSync(
+      "SELECT * FROM eja_history WHERE id = ? OR date = ?",
+      [ejaId, targetDate]
+    );
+
+    if (!existingEja) {
+      if (numAmount > 0) {
+        console.log(`[Auto Ijara] Inserting eja_history ৳${numAmount} for ${targetDate}`);
+        db.runSync(
+          "INSERT OR REPLACE INTO eja_history (id, date, eja_amount, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, 0)",
+          [ejaId, targetDate, numAmount, targetIso, targetIso]
+        );
+        enqueueSync("eja_history", ejaId, "INSERT");
+        syncRecordImmediately("eja_history", ejaId);
+      }
+    } else if (Number(existingEja.eja_amount) !== numAmount) {
+      console.log(`[Auto Ijara] Updating eja_history ৳${numAmount} for ${targetDate}`);
+      db.runSync(
+        "UPDATE eja_history SET eja_amount = ?, updated_at = ?, is_synced = 0 WHERE id = ?",
+        [numAmount, targetIso, existingEja.id]
+      );
+      enqueueSync("eja_history", existingEja.id, "UPDATE");
+      syncRecordImmediately("eja_history", existingEja.id);
+    } else {
+      console.log(`[Auto Ijara] Eja_history already matches ৳${numAmount} for ${targetDate}`);
+    }
+
+    // 3. Clear any pending config to prevent stale rollover
+    db.runSync("DELETE FROM app_config WHERE key = 'pending_ijara_amount'");
+    db.runSync("DELETE FROM app_config WHERE key = 'pending_ijara_date'");
+
+    return true;
+  } catch (err) {
+    console.error("[Auto Ijara] Error applying immediate ijara:", err.stack || err);
+    return false;
+  }
+}
+
 export function calculateAndStoreNextDayIjara(summary, submittedDateStr) {
   try {
     const totalSales = summary.sell || 0;
@@ -5515,7 +5611,6 @@ export function calculateAndStoreNextDayIjara(summary, submittedDateStr) {
 
     // Calculate next business date (submitted date + 1 day)
     const targetDate = getBusinessDateOffset(submittedDateStr, 1);
-    const now = new Date().toISOString();
 
     console.log(`[Auto Ijara] Calculated next day ijara:`);
     console.log(`  - Submitted Date: ${submittedDateStr}`);
@@ -5526,21 +5621,10 @@ export function calculateAndStoreNextDayIjara(summary, submittedDateStr) {
     console.log(`  - Owner Deposit: ৳${ownerDeposit}`);
     console.log(`  - Next Day Ijara: ৳${nextDayIjara}`);
 
-    // Store the pending ijara values in app_config
-    db.runSync(
-      "INSERT OR REPLACE INTO app_config (id, key, value, created_at, updated_at, is_synced) VALUES (?, 'pending_ijara_amount', ?, ?, ?, 0)",
-      [`config_pending_ijara_amount`, String(nextDayIjara), now, now]
-    );
-    db.runSync(
-      "INSERT OR REPLACE INTO app_config (id, key, value, created_at, updated_at, is_synced) VALUES (?, 'pending_ijara_date', ?, ?, ?, 0)",
-      [`config_pending_ijara_date`, targetDate, now, now]
-    );
+    // Option A: Immediately create and sync expenses and eja_history records for tomorrow
+    applyAutoIjaraImmediately(targetDate, nextDayIjara);
 
-    // Enqueue sync for both config values
-    enqueueSync("app_config", "config_pending_ijara_amount", "INSERT");
-    enqueueSync("app_config", "config_pending_ijara_date", "INSERT");
-
-    console.log(`[Auto Ijara] Stored pending ijara: ৳${nextDayIjara} for date ${targetDate}`);
+    console.log(`[Auto Ijara] Stored & synced immediate ijara: ৳${nextDayIjara} for date ${targetDate}`);
 
     return { success: true, nextDayIjara, targetDate };
   } catch (err) {
@@ -5778,80 +5862,50 @@ export function submitDailySheet(summary, submittedBy, submissionType = 'MANUAL'
 
 export function checkAndApplyIjaraRollover() {
   try {
+    let applied = false;
+
+    // 1. Process pending values in app_config if any exist (legacy or queued)
     const amountRow = db.getFirstSync("SELECT value FROM app_config WHERE key = 'pending_ijara_amount'");
     const dateRow = db.getFirstSync("SELECT value FROM app_config WHERE key = 'pending_ijara_date'");
 
     if (amountRow && dateRow) {
       const pendingAmount = parseFloat(amountRow.value);
       const pendingDateStr = dateRow.value;
-      const todayStr = getBusinessDate();
+      console.log(`[Auto Ijara] Applying pending ijara from app_config: ৳${pendingAmount} for ${pendingDateStr}`);
+      applyAutoIjaraImmediately(pendingDateStr, pendingAmount);
+      applied = true;
+    }
 
-      if (todayStr >= pendingDateStr) {
-        const targetDate = pendingDateStr;
-        console.log(`[Auto Ijara] Checking fallback Opening Ijara ৳${pendingAmount} for target date ${targetDate}`);
-        const targetIso = `${targetDate}T00:00:00.000Z`;
+    // 2. Self-healing fallback: If today has no opening ijara expense or eja_history, check yesterday's daily_submit
+    const todayStr = getBusinessDate();
+    const stableExpId = `exp_${todayStr}_ijara`;
+    const existingExp = db.getFirstSync(
+      "SELECT id FROM expenses WHERE id = ? OR (category = 'ijara' AND date(created_at, 'localtime') = ?)",
+      [stableExpId, todayStr]
+    );
+    const existingEja = db.getFirstSync(
+      "SELECT id FROM eja_history WHERE id = ? OR date = ?",
+      [`eja_${todayStr}`, todayStr]
+    );
 
-        // 1. Process expenses table (idempotent fallback: INSERT, UPDATE, or SKIP)
-        const stableExpId = `exp_${targetDate}_ijara`;
-        const existingExp = db.getFirstSync(
-          "SELECT * FROM expenses WHERE id = ? OR (category = 'ijara' AND date(created_at, 'localtime') = ?)",
-          [stableExpId, targetDate]
-        );
-
-        if (!existingExp) {
-          console.log(`[Auto Ijara] Expense record missing. Inserting new expense ৳${pendingAmount} for ${targetDate}`);
-          db.runSync(
-            "INSERT OR REPLACE INTO expenses (id, category, amount, note, is_due, given_amount, used_amount, returned_amount, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, ?, 0)",
-            [stableExpId, 'ijara', pendingAmount, 'Auto Carry Forward', targetIso, targetIso]
-          );
-          enqueueSync("expenses", stableExpId, "INSERT");
-        } else if (Number(existingExp.amount) !== pendingAmount) {
-          console.log(`[Auto Ijara] Expense amount mismatch (existing: ৳${existingExp.amount}, pending: ৳${pendingAmount}). Updating expense ID ${existingExp.id}`);
-          db.runSync(
-            "UPDATE expenses SET amount = ?, updated_at = ?, is_synced = 0 WHERE id = ?",
-            [pendingAmount, targetIso, existingExp.id]
-          );
-          enqueueSync("expenses", existingExp.id, "UPDATE");
-        } else {
-          console.log(`[Auto Ijara] Expense record already matches pending amount ৳${pendingAmount}. Skipping expense write.`);
+    if (!existingExp && !existingEja) {
+      const yesterdayStr = getBusinessDateOffset(todayStr, -1);
+      const yesterdaySubmit = db.getFirstSync("SELECT * FROM daily_submit WHERE date = ?", [yesterdayStr]);
+      if (yesterdaySubmit) {
+        const totalSales = Number(yesterdaySubmit.total_sell) || 0;
+        const currentIjara = Number(yesterdaySubmit.eja) || 0;
+        const totalExpense = Number(yesterdaySubmit.total_expense) || 0;
+        const ownerDeposit = Number(yesterdaySubmit.net_deposit) || 0;
+        const autoIjara = Math.max(0, (totalSales + currentIjara - totalExpense) - ownerDeposit);
+        if (autoIjara > 0) {
+          console.log(`[Auto Ijara Self-Healing] Found yesterday daily_submit (${yesterdayStr}), applying ৳${autoIjara} for today (${todayStr})`);
+          applyAutoIjaraImmediately(todayStr, autoIjara);
+          applied = true;
         }
-
-        // 2. Process eja_history table (idempotent fallback: INSERT, UPDATE, or SKIP)
-        const ejaId = `eja_${targetDate}`;
-        const existingEja = db.getFirstSync(
-          "SELECT * FROM eja_history WHERE id = ? OR date = ?",
-          [ejaId, targetDate]
-        );
-
-        if (!existingEja) {
-          console.log(`[Auto Ijara] EJA record missing. Inserting new eja_history ৳${pendingAmount} for ${targetDate}`);
-          db.runSync(
-            "INSERT OR REPLACE INTO eja_history (id, date, eja_amount, created_at, updated_at, is_synced) VALUES (?, ?, ?, ?, ?, 0)",
-            [ejaId, targetDate, pendingAmount, targetIso, targetIso]
-          );
-          enqueueSync("eja_history", ejaId, "INSERT");
-        } else if (Number(existingEja.eja_amount) !== pendingAmount) {
-          console.log(`[Auto Ijara] EJA amount mismatch (existing: ৳${existingEja.eja_amount}, pending: ৳${pendingAmount}). Updating eja_history ID ${existingEja.id}`);
-          db.runSync(
-            "UPDATE eja_history SET eja_amount = ?, updated_at = ?, is_synced = 0 WHERE id = ?",
-            [pendingAmount, targetIso, existingEja.id]
-          );
-          enqueueSync("eja_history", existingEja.id, "UPDATE");
-        } else {
-          console.log(`[Auto Ijara] EJA record already matches pending amount ৳${pendingAmount}. Skipping EJA write.`);
-        }
-
-        // 3. Clear staged pending values from app_config (fallback complete)
-        db.runSync("DELETE FROM app_config WHERE key = 'pending_ijara_amount'");
-        db.runSync("DELETE FROM app_config WHERE key = 'pending_ijara_date'");
-        
-        enqueueSync("app_config", "pending_ijara_amount", "DELETE");
-        enqueueSync("app_config", "pending_ijara_date", "DELETE");
-        
-        return true;
       }
     }
-    return false;
+
+    return applied;
   } catch (err) {
     console.error("[Auto Ijara] Error in checkAndApplyIjaraRollover:", err.stack || err);
     return false;
