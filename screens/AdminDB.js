@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { exportSalesReportPDF, exportDepositReportPDF } from '../pdfHelper';
-import { formatDisplayDate, getBusinessDate, inspectDatabaseStats, executeInspectorQuery, getFirebaseUsageStats, verifyPinCode, deleteDataByDate, getItemSalesReport, getDb, getTodaySubmissionDetails, getSessionPullNotifications, clearSessionPullNotifications, getSessionPullNotificationCount } from '../database';
+import { formatDisplayDate, getBusinessDate, inspectDatabaseStats, executeInspectorQuery, getFirebaseUsageStats, verifyPinCode, deleteDataByDate, getItemSalesReport, getDb, getTodaySubmissionDetails, getSessionPullNotifications, getSessionPullNotificationCount } from '../database';
 import { getAllRegisteredDevices, getCurrentDeviceRecord } from '../services/deviceRegistry';
 import { fetchMinimumVersion, setMinimumVersionDualDB, APP_VERSION, compareSemver } from '../services/firebaseAppConfig';
 import * as Application from 'expo-application';
@@ -404,14 +404,6 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
     setNotifModalVisible(true);
   };
 
-  const handleClearNotifHistory = () => {
-    try {
-      clearSessionPullNotifications();
-      loadNotifData();
-    } catch (e) {
-      console.error('[AdminDB] Error clearing pull notifications:', e);
-    }
-  };
 
   // Custom Dark Theme Alert State (Replaces native white Alert.alert to match Admin UI)
   const [darkAlert, setDarkAlert] = useState(null);
@@ -3210,14 +3202,6 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                   </Text>
                 </TouchableOpacity>
               </View>
-
-              <TouchableOpacity
-                style={styles.notifClearBtn}
-                onPress={handleClearNotifHistory}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.notifClearBtnText}>🗑️ ক্লিয়ার</Text>
-              </TouchableOpacity>
             </View>
 
             {/* List of Pull Notifications */}
@@ -3478,14 +3462,12 @@ const styles = StyleSheet.create({
   notifModalIconText: { fontSize: 18 },
   notifModalTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
   notifModalSubtitle: { color: '#94A3B8', fontSize: 10.5, marginTop: 2 },
-  notifFilterBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, marginBottom: 8 },
-  notifFilterTabs: { flexDirection: 'row', gap: 6, flex: 1, marginRight: 8 },
+  notifFilterBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', marginTop: 10, marginBottom: 8 },
+  notifFilterTabs: { flexDirection: 'row', gap: 6, flex: 1 },
   notifFilterTab: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: '#18212D', borderWidth: 1, borderColor: '#242C37' },
   notifFilterTabActive: { backgroundColor: 'rgba(255, 183, 3, 0.15)', borderColor: '#FFB703' },
   notifFilterTabText: { color: '#94A3B8', fontSize: 11, fontWeight: '600' },
   notifFilterTabTextActive: { color: '#FFB703', fontWeight: '800' },
-  notifClearBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: 'rgba(239, 68, 68, 0.12)', borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.3)' },
-  notifClearBtnText: { color: '#EF4444', fontSize: 11, fontWeight: '700' },
   notifEmptyWrap: { alignItems: 'center', justifyContent: 'center', paddingVertical: 50, paddingHorizontal: 20 },
   notifEmptyEmoji: { fontSize: 44, marginBottom: 12 },
   notifEmptyTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', marginBottom: 6 },

@@ -86,7 +86,6 @@ it('App.js inserts pull notification into SQLite session history in pullNotifica
 // 4. AdminDB.js integration
 it('AdminDB.js imports session pull notification helpers from database', () => {
   assert.ok(adminSrc.includes('getSessionPullNotifications'), 'AdminDB imports getSessionPullNotifications');
-  assert.ok(adminSrc.includes('clearSessionPullNotifications'), 'AdminDB imports clearSessionPullNotifications');
   assert.ok(adminSrc.includes('getSessionPullNotificationCount'), 'AdminDB imports getSessionPullNotificationCount');
 });
 
@@ -97,15 +96,14 @@ it('AdminDB.js renders notification bell button with badge in the top-right head
   assert.ok(adminSrc.includes('openNotifModal'), 'AdminDB opens notification modal on bell press');
 });
 
-it('AdminDB.js renders Pull Notification History modal with filter tabs and clear button', () => {
+it('AdminDB.js renders Pull Notification History modal with filter tabs (manual clear button removed)', () => {
   assert.ok(adminSrc.includes('notifModalVisible'), 'AdminDB has notifModalVisible state');
   assert.ok(adminSrc.includes('Pull নোটিফিকেশন হিস্ট্রি'), 'modal title in Bengali');
   assert.ok(adminSrc.includes('notifFilterTabs'), 'has filter tabs container');
   assert.ok(adminSrc.includes("setNotifFilter('all')"), 'has All filter');
   assert.ok(adminSrc.includes("setNotifFilter('changes_only')"), 'has New Data filter');
   assert.ok(adminSrc.includes("setNotifFilter('no_changes')"), 'has Routine check filter');
-  assert.ok(adminSrc.includes('handleClearNotifHistory'), 'has clear history button handler');
-  assert.ok(adminSrc.includes('notifClearBtn'), 'renders clear button');
+  assert.ok(!adminSrc.includes('notifClearBtn'), 'manual clear button is removed per user request');
   assert.ok(adminSrc.includes('notifRefreshBtn'), 'renders refresh button');
 });
 
