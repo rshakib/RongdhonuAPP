@@ -858,6 +858,8 @@ export default function App() {
           else if (group === 'high') runAutoPull('realtime-high-frequency-pull', syncSupabaseHighFrequencyCollections, refreshData);
           else if (group === 'deletions') runAutoPull('realtime-deletions-pull', syncSupabaseDeletions, refreshData);
           else if (group === 'daily') runAutoPull('realtime-daily-pull', syncSupabaseDaily, refreshData);
+          else if (group === 'menu') runAutoPull('realtime-menu-pull', syncSupabaseMenu, refreshData);
+          else if (group === 'low') runAutoPull('realtime-low-frequency-pull', syncSupabaseLowFrequencyCollections, refreshData);
         },
         onModeChange: () => { adaptiveTables.kick(); adaptiveHigh.kick(); adaptiveDeletions.kick(); }
       });

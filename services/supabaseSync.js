@@ -44,7 +44,14 @@ export const SIGNAL_GROUPS = {
   tables: ['restaurant_tables'],
   high: ['orders', 'order_items', 'payments', 'deliveries'],
   deletions: ['deletions'],
-  daily: ['daily_submit', 'daily_summary', 'daily_submit_priority', 'eja_history', 'expenses']
+  daily: ['daily_submit', 'daily_summary', 'daily_submit_priority', 'eja_history', 'expenses'],
+  menu: ['menu_items', 'menu_categories'],
+  low: [
+    'users', 'due_payments', 'weather_data', 'off_days', 
+    'supplier_due', 'supplier_due_history', 'supplier_payment_ledger', 
+    'delete_history', 'owner_employees', 'owner_salary_ledger', 
+    'owner_expenses', 'owner_deposits', 'owner_home_deposits'
+  ]
 };
 
 // --- Firebase read policy ------------------------------------------------------
@@ -649,7 +656,7 @@ export async function syncSupabaseMenu() {
   if (isSupabasePullingMenu) return false;
   isSupabasePullingMenu = true;
   try {
-    return await runSupabaseGroup(['menu_items', 'menu_categories'], 'syncMenuOnly');
+    return await runSupabaseGroup(SIGNAL_GROUPS.menu, 'syncMenuOnly');
   } catch (err) {
     console.warn('[SupabaseSync] syncSupabaseMenu error (isolated):', err?.message || err);
     return false;
