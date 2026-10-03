@@ -32,8 +32,13 @@ const runAutoPull = async (name, syncFn, refreshData) => {
     recordAutoSyncEvent(name, 'success', `durationMs=${durationMs} didChange=${didChange}`);
     console.log(`[Auto Pull Tick] timestamp=${new Date().toISOString()} timer=${name} result=success durationMs=${durationMs} didChange=${didChange}`);
     if (didChange) refreshData();
+    let rowCount = 0;
+    try {
+      const { getLastPullStats } = require('./services/supabaseSync.js');
+      rowCount = getLastPullStats()?.rowCount || 0;
+    } catch (_) {}
     const pullSource = String(name || '').startsWith('auto-') ? 'firebase' : 'supabase';
-    reportPullCheck(name, pullSource, didChange);
+    reportPullCheck(name, pullSource, didChange, rowCount);
     return didChange;
   } catch (err) {
     const durationMs = Date.now() - startedAtMs;
@@ -90,8 +95,8 @@ const reportPull = (source, hasChanges) => {
 };
 
 let pullNotificationSink = null;
-const reportPullCheck = (name, source, didChange) => {
-  try { if (pullNotificationSink) pullNotificationSink(name, source, didChange); } catch (_) {}
+const reportPullCheck = (name, source, didChange, rowCount = 0) => {
+  try { if (pullNotificationSink) pullNotificationSink(name, source, didChange, rowCount); } catch (_) {}
 };
 
 const getPullGroupName = (name) => {
@@ -1361,13 +1366,20 @@ export default function App() {
   useEffect(() => {
     if (!isLoggedIn) return;
 
-    pullNotificationSink = (timerName, source, hasChanges) => {
+    pullNotificationSink = (timerName, source, hasChanges, rowCount = 0) => {
       if (!isTargetAdmin()) return;
       const groupLabel = getPullGroupName(timerName);
-      const msg = hasChanges 
-        ? `⬇️ ${groupLabel} pull হয়েছে (আপডেট সহ)`
-        : `⬇️ ${groupLabel} pull হয়েছে`;
-      showToast(msg, 'sync');
+      
+      let msg = '';
+      if (hasChanges && rowCount > 0) {
+        msg = `⬇️ ${groupLabel}: ${rowCount} টি নতুন ডাটা রিড হয়েছে ✓`;
+      } else if (hasChanges) {
+        msg = `⬇️ ${groupLabel}: নতুন ডাটা রিড হয়েছে ✓`;
+      } else {
+        msg = `⬇️ ${groupLabel}: নতুন ডাটা নেই (০ টি রিড)`;
+      }
+
+      showToast(msg, hasChanges ? 'online' : 'sync');
     };
 
     return () => {

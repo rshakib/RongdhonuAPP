@@ -141,10 +141,14 @@ export function isSupabasePrimaryHealthy() {
 // Reports the BACKEND ACTUALLY READ for every pull: 'supabase' on success, or
 // 'firebase' when this group fell back. Fires only when a pull really happened.
 let pullListener = null;
+let lastPullStats = { rowCount: 0, hasChanges: false };
+export function getLastPullStats() {
+  return { ...lastPullStats };
+}
 export function setPullListener(fn) { pullListener = typeof fn === 'function' ? fn : null; }
 export function clearPullListener() { pullListener = null; }
-function emitPull(source, hasChanges) {
-  try { if (pullListener) pullListener({ source, hasChanges: !!hasChanges }); } catch (_) {}
+function emitPull(source, hasChanges, rowCount = 0) {
+  try { if (pullListener) pullListener({ source, hasChanges: !!hasChanges, rowCount }); } catch (_) {}
 }
 
 // --- pure helpers ------------------------------------------------------------
@@ -521,11 +525,13 @@ async function runSupabaseGroup(tables, firebaseFnName) {
 
   let hasChanges = false;
   let failure = false;
+  let totalRows = 0;
   for (const table of tables) {
     try {
       const res = await pullSupabaseTable(db, table);
       if (res.failed) { failure = true; continue; }
       hasChanges = hasChanges || res.hasChanges;
+      totalRows += (res.rowCount || 0);
     } catch (err) {
       const why = isRlsDenialError(err) ? 'RLS/permission denial' : (err?.message || err);
       console.warn(`[SupabaseSync] table ${table} failed (${why}) → Firebase fallback`);
@@ -533,6 +539,8 @@ async function runSupabaseGroup(tables, firebaseFnName) {
       continue;
     }
   }
+
+  lastPullStats = { rowCount: totalRows, hasChanges };
 
   if (failure) {
     supabasePrimaryHealthy = false;
@@ -549,7 +557,7 @@ async function runSupabaseGroup(tables, firebaseFnName) {
     return r;
   }
   supabasePrimaryHealthy = true;
-  emitPull('supabase', hasChanges);
+  emitPull('supabase', hasChanges, totalRows);
   recordSyncHeartbeat({ backend: 'supabase', kind: 'read' }).catch(() => {});
   return hasChanges;
 }
