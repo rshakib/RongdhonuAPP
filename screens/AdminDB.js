@@ -2508,9 +2508,10 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                         ভিউ-অনলি মোড: অ্যাডমিন সরাসরি অর্ডার এডিট বা পরিবর্তন করতে পারবেন না।
                       </Text>
                     </View>
-                  );
-                })()
-              )}
+                  </View>
+                );
+              })()
+            )}
               </ScrollView>
             )}
 
