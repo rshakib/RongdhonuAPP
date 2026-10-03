@@ -56,12 +56,12 @@ it('App.js blocks handleTableSelect and handleCreateDelivery when daily submit i
 });
 
 // 4. AdminDB.js status banner & full access
-it('AdminDB.js renders submit status banner with breakdown and preserves full access', () => {
+it('AdminDB.js renders submit status banner only when submitted, and nothing when not submitted', () => {
   assert.ok(adminSrc.includes('todaySubmissionDetails'), 'accepts todaySubmissionDetails prop');
-  assert.ok(adminSrc.includes('isDailySubmitted && submitInfo'), 'checks submit status for banner');
+  assert.ok(adminSrc.includes('isDailySubmitted && submitInfo ? ('), 'checks submit status for banner');
   assert.ok(adminSrc.includes('submitStatusCardSuccess'), 'has success card styling');
   assert.ok(adminSrc.includes('nextDayIjaraBanner'), 'displays next day ijara callout');
-  assert.ok(adminSrc.includes('submitStatusCardPending'), 'shows pending status when not submitted');
+  assert.ok(adminSrc.includes(') : null}'), 'renders nothing when not submitted');
 });
 
 // 5. ManagerDashboard.js locked screen & hiding restaurant tables/deliveries/FAB
@@ -80,12 +80,13 @@ it('ManagerDashboard.js preserves top hamburger menu button (☰) for full sideb
   assert.ok(managerSrc.includes("setMenuModalVisible(true)"), 'hamburger button triggers side menu');
 });
 
-// 7. OwnerDashboard.js renders submit status card
-it('OwnerDashboard.js renders submit status banner with breakdown and next day ijara', () => {
+// 7. OwnerDashboard.js renders submit status card only when submitted
+it('OwnerDashboard.js renders submit status banner with breakdown only when submitted', () => {
   assert.ok(ownerSrc.includes('todaySubmissionDetails'), 'accepts todaySubmissionDetails prop');
-  assert.ok(ownerSrc.includes('isDailySubmitted && submitInfo'), 'checks submit status for banner');
+  assert.ok(ownerSrc.includes('isDailySubmitted && submitInfo ? ('), 'checks submit status for banner');
   assert.ok(ownerSrc.includes('submitStatusCardSuccess'), 'has success card styling');
   assert.ok(ownerSrc.includes('nextDayIjaraBanner'), 'displays next day ijara callout');
+  assert.ok(ownerSrc.includes(') : null}'), 'renders nothing when not submitted');
 });
 
 // Run all tests

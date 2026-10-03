@@ -692,16 +692,7 @@ export default function OwnerDashboard({ onLogout, tables, deliveries = [], comp
               </Text>
             </View>
           </View>
-        ) : (
-          <View style={[styles.submitStatusCardPending, { marginHorizontal: 16 }]}>
-            <View style={styles.submitBadgePending}>
-              <Text style={styles.submitBadgePendingText}>⏳ আজকের হিসাব এখনও সাবমিট করা হয়নি</Text>
-            </View>
-            <Text style={styles.submitPendingSubtext}>
-              চলতি দিনের অর্ডার ও হিসাব চলমান রয়েছে
-            </Text>
-          </View>
-        )}
+        ) : null}
 
         {/* ── 1. TOP SUMMARY CARDS (Active Tables Card removed) ── */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsContainer}>

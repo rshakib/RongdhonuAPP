@@ -1209,16 +1209,7 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
               </Text>
             </View>
           </View>
-        ) : (
-          <View style={styles.submitStatusCardPending}>
-            <View style={styles.submitBadgePending}>
-              <Text style={styles.submitBadgePendingText}>⏳ আজকের হিসাব এখনও সাবমিট করা হয়নি</Text>
-            </View>
-            <Text style={styles.submitPendingSubtext}>
-              চলতি দিনের অর্ডার ও হিসাব চলমান রয়েছে
-            </Text>
-          </View>
-        )}
+        ) : null}
 
         {/* Horizontal Stats Row: Today's Sales and Monthly Total (Restored from Backup) */}
         <ScrollView 
