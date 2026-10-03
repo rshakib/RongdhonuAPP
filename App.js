@@ -1116,6 +1116,7 @@ export default function App() {
         incrementForegroundRecoveryCount();
         await runPullPreferSupabase('foreground-tables-pull', 'syncSupabaseTables', syncTablesOnly, refreshData);
         await runPullPreferSupabase('foreground-high-frequency-pull', 'syncSupabaseHighFrequencyCollections', syncHighFrequencyCollections, refreshData);
+        await runPullPreferSupabase('foreground-daily-pull', 'syncSupabaseDaily', syncLowFrequencyCollections, refreshData);
         await runPullPreferSupabase('foreground-low-frequency-pull', 'syncSupabaseLowFrequencyCollections', syncLowFrequencyCollections, refreshData);
         checkAndFlushLastSeen();
         const didRollover = checkAndApplyIjaraRollover();
@@ -1238,8 +1239,9 @@ export default function App() {
             console.log(`[Network Recovery] Upload finished. Writes: ${uploadResult.successfulWrites}, Failed: ${uploadResult.failedWrites}`);
 
             // 2. High Frequency Pull (Orders, Order Items, Payments, Deliveries)
-            console.log("[Network Recovery] 2/4: Running High Frequency pull sync...");
+            console.log("[Network Recovery] 2/5: Running High Frequency pull sync...");
             await runPullPreferSupabase('recovery-high-frequency-pull', 'syncSupabaseHighFrequencyCollections', syncHighFrequencyCollections, refreshData);
+            await runPullPreferSupabase('recovery-daily-pull', 'syncSupabaseDaily', syncLowFrequencyCollections, refreshData);
 
             // 3. Low Frequency Pull (Expenses, Ijara, Users, Summaries)
             console.log("[Network Recovery] 3/4: Running Low Frequency pull sync...");
@@ -1604,31 +1606,40 @@ export default function App() {
     setIsLoggedIn(true);
     setCurrentScreen('DASHBOARD');
 
-    // --- STARTUP DELTA SYNC ---
-    // Automatically fetch changes since last_sync_time for all collections immediately after login
+    // --- FULL DB DELTA SYNC ON PIN LOGIN ---
+    // In online mode, immediately test the full DB across all collections for any updated values in the cloud.
+    // If updated values exist, pull and merge them; otherwise do nothing.
     try {
-      console.log("[Startup Sync] PIN Login successful. Initiating delta sync...");
-      
-      // 1. Initial local refresh to show what we have
+      console.log("[Login Sync] PIN Login successful. Checking online status for full DB delta sync...");
+      // Show existing local data immediately so login is fast and responsive
       refreshData();
 
-      // 2. High Frequency (Orders, Payments, Deliveries)
-      await runPullPreferSupabase('login-high-frequency-pull', 'syncSupabaseHighFrequencyCollections', syncHighFrequencyCollections, refreshData);
-      
-      // 3. Tables State
-      await runPullPreferSupabase('login-tables-pull', 'syncSupabaseTables', syncTablesOnly, refreshData);
-      
-      // 4. Low Frequency (Expenses, Ijara, Users, Daily Submit)
-      await runPullPreferSupabase('login-low-frequency-pull', 'syncSupabaseLowFrequencyCollections', syncLowFrequencyCollections, refreshData);
+      const netState = await NetInfo.fetch();
+      const isOnlineNow = netState.isConnected && netState.isInternetReachable !== false;
 
-      // 5. Deletions
-      await runPullPreferSupabase('login-deletions-pull', 'syncSupabaseDeletions', syncDeletionsOnly, refreshData);
+      if (isOnlineNow) {
+        console.log("[Login Sync] Online mode detected. Testing full DB across all collections (Tables, High, Daily, Low, Menu, Deletions)...");
+        const results = await Promise.allSettled([
+          runPullPreferSupabase('login-tables-pull', 'syncSupabaseTables', syncTablesOnly, refreshData),
+          runPullPreferSupabase('login-high-frequency-pull', 'syncSupabaseHighFrequencyCollections', syncHighFrequencyCollections, refreshData),
+          runPullPreferSupabase('login-daily-pull', 'syncSupabaseDaily', syncLowFrequencyCollections, refreshData),
+          runPullPreferSupabase('login-low-frequency-pull', 'syncSupabaseLowFrequencyCollections', syncLowFrequencyCollections, refreshData),
+          runPullPreferSupabase('login-menu-pull', 'syncSupabaseMenu', syncMenuOnly, refreshData),
+          runPullPreferSupabase('login-deletions-pull', 'syncSupabaseDeletions', syncDeletionsOnly, refreshData)
+        ]);
 
-      // 6. Final refresh to update UI with newly downloaded data
-      refreshData();
-      console.log("[Startup Sync] Initial delta sync completed successfully.");
+        const hasAnyUpdates = results.some(r => r.status === 'fulfilled' && r.value === true);
+        if (hasAnyUpdates) {
+          console.log("[Login Sync] Remote updates found and merged. Refreshing local state...");
+          refreshData();
+        } else {
+          console.log("[Login Sync] Full DB check complete: Database is already up to date.");
+        }
+      } else {
+        console.log("[Login Sync] Offline mode. Operating from local SQLite database.");
+      }
     } catch (err) {
-      console.log("[Startup Sync] Delta sync failed (possibly offline):", err.message);
+      console.log("[Login Sync] Delta sync error (possibly offline):", err.message);
     }
 
     // Run the previous day submission check
