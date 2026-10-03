@@ -14,6 +14,7 @@ import {
   Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { formatUserRoleTag, getCurrentDeviceTelemetryName, getFormattedLocalTime } from '../services/orderTelemetry';
 
 export default function AddItemScreen({
   table = { items: [] },
@@ -108,8 +109,22 @@ export default function AddItemScreen({
 
   // Adjust cart quantity directly
   const handleIncreaseCartQty = (itemName) => {
+    const nowTime = getFormattedLocalTime();
+    const taker = formatUserRoleTag(userRole, userDisplayName);
+    const device = getCurrentDeviceTelemetryName();
     const updated = cartItems.map(item =>
-      item.name === itemName ? { ...item, qty: item.qty + 1 } : item
+      item.name === itemName
+        ? {
+            ...item,
+            qty: item.qty + 1,
+            time: item.time || nowTime,
+            addedBy: item.addedBy || taker,
+            deviceName: item.deviceName || device,
+            lastEditedBy: taker,
+            lastEditedTime: nowTime,
+            lastEditedDevice: device
+          }
+        : item
     );
     onUpdateTableItems(table.id, updated);
   };
@@ -118,10 +133,25 @@ export default function AddItemScreen({
     const item = cartItems.find(i => i.name === itemName);
     if (!item) return;
 
+    const nowTime = getFormattedLocalTime();
+    const taker = formatUserRoleTag(userRole, userDisplayName);
+    const device = getCurrentDeviceTelemetryName();
+
     let updated;
     if (item.qty > 1) {
       updated = cartItems.map(i =>
-        i.name === itemName ? { ...i, qty: i.qty - 1 } : i
+        i.name === itemName
+          ? {
+              ...i,
+              qty: i.qty - 1,
+              time: i.time || nowTime,
+              addedBy: i.addedBy || taker,
+              deviceName: i.deviceName || device,
+              lastEditedBy: taker,
+              lastEditedTime: nowTime,
+              lastEditedDevice: device
+            }
+          : i
       );
     } else {
       // Remove item if quantity becomes 0
@@ -152,20 +182,29 @@ export default function AddItemScreen({
   const confirmAddItem = (menuItem, qty) => {
     const existingIndex = cartItems.findIndex(i => i.name === menuItem.name);
     const updated = [...cartItems];
-    const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const taker = userDisplayName || (userRole === 'admin' ? 'অ্যাডমিন' : userRole === 'owner' ? 'মালিক' : 'ম্যানেজার');
+    const nowTime = getFormattedLocalTime();
+    const taker = formatUserRoleTag(userRole, userDisplayName);
+    const device = getCurrentDeviceTelemetryName();
     
     if (existingIndex > -1) {
       updated[existingIndex].qty += qty;
-      if (!updated[existingIndex].time) updated[existingIndex].time = nowTime;
-      if (!updated[existingIndex].addedBy) updated[existingIndex].addedBy = taker;
+      updated[existingIndex].time = updated[existingIndex].time || nowTime;
+      updated[existingIndex].addedBy = updated[existingIndex].addedBy || taker;
+      updated[existingIndex].deviceName = updated[existingIndex].deviceName || device;
+      updated[existingIndex].lastEditedBy = taker;
+      updated[existingIndex].lastEditedTime = nowTime;
+      updated[existingIndex].lastEditedDevice = device;
     } else {
       updated.push({
         name: menuItem.name,
         price: menuItem.price,
         qty: qty,
         time: nowTime,
-        addedBy: taker
+        addedBy: taker,
+        deviceName: device,
+        lastEditedBy: taker,
+        lastEditedTime: nowTime,
+        lastEditedDevice: device
       });
     }
     

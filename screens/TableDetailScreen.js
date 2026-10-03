@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import PrintReceiptModal from '../components/PrintReceiptModal';
 import { BILL_SHOP_PHONE } from '../components/ReceiptPaper';
+import { formatUserRoleTag, getCurrentDeviceTelemetryName, getFormattedLocalTime } from '../services/orderTelemetry';
 
 const formatStartTime = (timeStr) => {
   if (!timeStr) return '';
@@ -34,6 +35,8 @@ const formatStartTime = (timeStr) => {
 
 export default function TableDetailScreen({
   table: propTable,
+  userRole,
+  userDisplayName,
   onBack,
   onUpdateTableItems,
   onUpdateDeliveryDetails,
@@ -206,7 +209,19 @@ export default function TableDetailScreen({
   // Increase item quantity in cart
   const handleIncreaseQty = (index) => {
     const updated = [...items];
-    updated[index].qty += 1;
+    const nowTime = getFormattedLocalTime();
+    const taker = formatUserRoleTag(userRole, userDisplayName);
+    const device = getCurrentDeviceTelemetryName();
+    updated[index] = {
+      ...updated[index],
+      qty: updated[index].qty + 1,
+      time: updated[index].time || nowTime,
+      addedBy: updated[index].addedBy || taker,
+      deviceName: updated[index].deviceName || device,
+      lastEditedBy: taker,
+      lastEditedTime: nowTime,
+      lastEditedDevice: device
+    };
     onUpdateTableItems(table.id, updated);
   };
 
@@ -214,7 +229,19 @@ export default function TableDetailScreen({
   const handleDecreaseQty = (index) => {
     const updated = [...items];
     if (updated[index].qty > 1) {
-      updated[index].qty -= 1;
+      const nowTime = getFormattedLocalTime();
+      const taker = formatUserRoleTag(userRole, userDisplayName);
+      const device = getCurrentDeviceTelemetryName();
+      updated[index] = {
+        ...updated[index],
+        qty: updated[index].qty - 1,
+        time: updated[index].time || nowTime,
+        addedBy: updated[index].addedBy || taker,
+        deviceName: updated[index].deviceName || device,
+        lastEditedBy: taker,
+        lastEditedTime: nowTime,
+        lastEditedDevice: device
+      };
       onUpdateTableItems(table.id, updated);
     }
   };
@@ -229,13 +256,29 @@ export default function TableDetailScreen({
   const handleQuickAddWater = () => {
     const existingIndex = items.findIndex(item => item.name === 'পানি');
     const updated = [...items];
-    const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const nowTime = getFormattedLocalTime();
+    const taker = formatUserRoleTag(userRole, userDisplayName);
+    const device = getCurrentDeviceTelemetryName();
     if (existingIndex > -1) {
       updated[existingIndex].qty += 1;
-      if (!updated[existingIndex].time) updated[existingIndex].time = nowTime;
-      if (!updated[existingIndex].addedBy) updated[existingIndex].addedBy = 'কাউন্টার';
+      updated[existingIndex].time = updated[existingIndex].time || nowTime;
+      updated[existingIndex].addedBy = updated[existingIndex].addedBy || taker;
+      updated[existingIndex].deviceName = updated[existingIndex].deviceName || device;
+      updated[existingIndex].lastEditedBy = taker;
+      updated[existingIndex].lastEditedTime = nowTime;
+      updated[existingIndex].lastEditedDevice = device;
     } else {
-      updated.push({ name: 'পানি', price: 20, qty: 1, time: nowTime, addedBy: 'কাউন্টার' });
+      updated.push({
+        name: 'পানি',
+        price: 20,
+        qty: 1,
+        time: nowTime,
+        addedBy: taker,
+        deviceName: device,
+        lastEditedBy: taker,
+        lastEditedTime: nowTime,
+        lastEditedDevice: device
+      });
     }
     onUpdateTableItems(table.id, updated);
   };

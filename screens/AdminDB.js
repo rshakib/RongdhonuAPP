@@ -19,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { exportSalesReportPDF, exportDepositReportPDF } from '../pdfHelper';
 import { formatDisplayDate, getBusinessDate, inspectDatabaseStats, executeInspectorQuery, getFirebaseUsageStats, verifyPinCode, deleteDataByDate, getItemSalesReport, getDb, getTodaySubmissionDetails, getSessionPullNotifications, getSessionPullNotificationCount, getSessionPullTypeCounts } from '../database';
 import { getAllRegisteredDevices, getCurrentDeviceRecord } from '../services/deviceRegistry';
+import { getOrderTelemetrySummary } from '../services/orderTelemetry';
 import { fetchMinimumVersion, setMinimumVersionDualDB, APP_VERSION, compareSemver } from '../services/firebaseAppConfig';
 import * as Application from 'expo-application';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -2335,106 +2336,141 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                   </View>
                 ) : (
                   /* ── BUSY TABLE / DELIVERY DETAILS ── */
-                  <View style={{ width: '100%' }}>
-                    {/* Timing & Order Info Strip */}
-                    <View style={{ backgroundColor: '#111417', borderRadius: 14, borderWidth: 1, borderColor: '#202630', padding: 12, marginBottom: 14 }}>
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ color: '#8B95A5', fontSize: 11, fontWeight: '600' }}>⏱️ শুরুর সময়</Text>
-                          <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700', marginTop: 2 }}>
-                            {formatStartTime(selectedMonitoringItem.startTime) || 'এইমাত্র'}
-                          </Text>
+                  (() => {
+                    const telemetry = getOrderTelemetrySummary(selectedMonitoringItem);
+                    const parsedItems = Array.isArray(selectedMonitoringItem.items)
+                      ? selectedMonitoringItem.items
+                      : (typeof selectedMonitoringItem.items === 'string'
+                          ? (() => { try { return JSON.parse(selectedMonitoringItem.items); } catch(e) { return []; } })()
+                          : []);
+
+                    return (
+                      <View style={{ width: '100%' }}>
+                        {/* Timing, User & Device Telemetry Strip */}
+                        <View style={{ backgroundColor: '#111417', borderRadius: 14, borderWidth: 1, borderColor: '#202630', padding: 12, marginBottom: 14 }}>
+                          {/* Row 1: Start Time & Elapsed */}
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ color: '#8B95A5', fontSize: 11, fontWeight: '600' }}>⏱️ শুরুর সময়</Text>
+                              <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700', marginTop: 2 }}>
+                                {formatStartTime(selectedMonitoringItem.startTime) || 'এইমাত্র'}
+                              </Text>
+                            </View>
+                            <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                              <Text style={{ color: '#8B95A5', fontSize: 11, fontWeight: '600' }}>⏳ চলছে</Text>
+                              <Text style={{ color: '#F59E0B', fontSize: 12.5, fontWeight: '700', marginTop: 2 }}>
+                                {getTableElapsedMinutes(selectedMonitoringItem) !== null
+                                  ? `${getTableElapsedMinutes(selectedMonitoringItem)} মিনিট ধরে`
+                                  : 'চলমান'}
+                              </Text>
+                            </View>
+                          </View>
+
+                          <View style={{ height: 1, backgroundColor: '#1E242C', marginVertical: 6 }} />
+
+                          {/* Row 2: User & Last Edit Time */}
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                            <View style={{ flex: 1.2, paddingRight: 6 }}>
+                              <Text style={{ color: '#8B95A5', fontSize: 11, fontWeight: '600' }}>👤 অর্ডার / এডিট করেছেন</Text>
+                              <Text style={{ color: '#C084FC', fontSize: 12.5, fontWeight: '700', marginTop: 2 }} numberOfLines={1}>
+                                {telemetry.latestEditor}
+                              </Text>
+                            </View>
+                            <View style={{ flex: 0.8, alignItems: 'flex-end' }}>
+                              <Text style={{ color: '#8B95A5', fontSize: 11, fontWeight: '600' }}>🕒 সর্বশেষ এডিট</Text>
+                              <Text style={{ color: '#38BDF8', fontSize: 12.5, fontWeight: '700', marginTop: 2 }}>
+                                {telemetry.latestEditTime}
+                              </Text>
+                            </View>
+                          </View>
+
+                          <View style={{ height: 1, backgroundColor: '#1E242C', marginVertical: 6 }} />
+
+                          {/* Row 3: Device & Total Qty */}
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                            <View style={{ flex: 1.2, paddingRight: 6 }}>
+                              <Text style={{ color: '#8B95A5', fontSize: 11, fontWeight: '600' }}>📱 ডিভাইস</Text>
+                              <Text style={{ color: '#34D399', fontSize: 12.5, fontWeight: '700', marginTop: 2 }} numberOfLines={1}>
+                                {telemetry.latestDevice}
+                              </Text>
+                            </View>
+                            <View style={{ flex: 0.8, alignItems: 'flex-end' }}>
+                              <Text style={{ color: '#8B95A5', fontSize: 11, fontWeight: '600' }}>📦 মোট পরিমাণ</Text>
+                              <Text style={{ color: '#FFFFFF', fontSize: 12.5, fontWeight: '700', marginTop: 2 }}>
+                                {parsedItems.reduce((sum, i) => sum + (parseInt(i.qty, 10) || 1), 0)} টি খাবার
+                              </Text>
+                            </View>
+                          </View>
                         </View>
-                        <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                          <Text style={{ color: '#8B95A5', fontSize: 11, fontWeight: '600' }}>⏳ চলছে</Text>
-                          <Text style={{ color: '#F59E0B', fontSize: 12.5, fontWeight: '700', marginTop: 2 }}>
-                            {getTableElapsedMinutes(selectedMonitoringItem) !== null
-                              ? `${getTableElapsedMinutes(selectedMonitoringItem)} মিনিট ধরে`
-                              : 'চলমান'}
-                          </Text>
-                        </View>
-                      </View>
 
-                      <View style={{ height: 1, backgroundColor: '#1E242C', marginVertical: 4 }} />
+                        {/* Items Section */}
+                        <View style={{ marginBottom: 12 }}>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, paddingHorizontal: 2 }}>
+                            <Text style={{ color: '#8B95A5', fontSize: 12, fontWeight: '700' }}>
+                              অর্ডারের খাবার সমূহ ({parsedItems.length} পদ)
+                            </Text>
+                            <Text style={{ color: '#8B95A5', fontSize: 11, fontWeight: '600' }}>
+                              মূল্য ও পরিমাণ
+                            </Text>
+                          </View>
 
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ color: '#8B95A5', fontSize: 11, fontWeight: '600' }}>👤 অর্ডার দিয়েছেন</Text>
-                          <Text style={{ color: '#38BDF8', fontSize: 12, fontWeight: '700', marginTop: 2 }}>
-                            {selectedMonitoringItem.orderedBy || selectedMonitoringItem.created_by || 'ম্যানেজার / ক্যাশ কাউন্টার'}
-                          </Text>
-                        </View>
-                        <View style={{ flex: 1, alignItems: 'flex-end' }}>
-                          <Text style={{ color: '#8B95A5', fontSize: 11, fontWeight: '600' }}>📦 মোট পরিমাণ</Text>
-                          <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700', marginTop: 2 }}>
-                            {(selectedMonitoringItem.items || []).reduce((sum, i) => sum + (parseInt(i.qty, 10) || 1), 0)} টি খাবার
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
+                          {/* Items List */}
+                          {parsedItems.map((item, idx) => {
+                            const itemQty = parseInt(item.qty, 10) || 1;
+                            const itemPrice = parseFloat(item.price) || 0;
+                            const itemTotal = itemQty * itemPrice;
+                            const itemTime = item.lastEditedTime || item.time || formatStartTime(selectedMonitoringItem.startTime) || 'চলমান';
+                            const itemTaker = item.lastEditedBy || item.addedBy || selectedMonitoringItem.orderedBy || 'কাউন্টার';
+                            const itemDevice = item.lastEditedDevice || item.deviceName || item.device || telemetry.latestDevice || 'কাউন্টার ডিভাইস';
 
-                    {/* Items Section */}
-                    <View style={{ marginBottom: 12 }}>
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, paddingHorizontal: 2 }}>
-                        <Text style={{ color: '#8B95A5', fontSize: 12, fontWeight: '700' }}>
-                          অর্ডারের খাবার সমূহ ({(selectedMonitoringItem.items || []).length} পদ)
-                        </Text>
-                        <Text style={{ color: '#8B95A5', fontSize: 11, fontWeight: '600' }}>
-                          মূল্য ও পরিমাণ
-                        </Text>
-                      </View>
-
-                      {/* Items List */}
-                      {(selectedMonitoringItem.items || []).map((item, idx) => {
-                        const itemQty = parseInt(item.qty, 10) || 1;
-                        const itemPrice = parseFloat(item.price) || 0;
-                        const itemTotal = itemQty * itemPrice;
-                        const itemTime = item.time || formatStartTime(selectedMonitoringItem.startTime) || 'চলমান';
-                        const itemTaker = item.addedBy || selectedMonitoringItem.orderedBy || 'কাউন্টার';
-
-                        return (
-                          <View
-                            key={idx}
-                            style={{
-                              backgroundColor: '#14181D',
-                              borderRadius: 12,
-                              borderWidth: 1,
-                              borderColor: '#202630',
-                              padding: 12,
-                              marginBottom: 8,
-                            }}
-                          >
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                              <View style={{ flex: 1, paddingRight: 8 }}>
-                                <Text style={{ color: '#FFFFFF', fontSize: 13.5, fontWeight: '700' }}>
-                                  {item.name}
-                                </Text>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginTop: 5, gap: 6 }}>
-                                  <View style={{ backgroundColor: 'rgba(56, 189, 248, 0.1)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 }}>
-                                    <Text style={{ color: '#38BDF8', fontSize: 10, fontWeight: '600' }}>
-                                      🕒 {itemTime}
+                            return (
+                              <View
+                                key={idx}
+                                style={{
+                                  backgroundColor: '#14181D',
+                                  borderRadius: 12,
+                                  borderWidth: 1,
+                                  borderColor: '#202630',
+                                  padding: 12,
+                                  marginBottom: 8,
+                                }}
+                              >
+                                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                  <View style={{ flex: 1, paddingRight: 8 }}>
+                                    <Text style={{ color: '#FFFFFF', fontSize: 13.5, fontWeight: '700' }}>
+                                      {item.name}
                                     </Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginTop: 5, gap: 6 }}>
+                                      <View style={{ backgroundColor: 'rgba(56, 189, 248, 0.1)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, borderWidth: 0.5, borderColor: 'rgba(56, 189, 248, 0.25)' }}>
+                                        <Text style={{ color: '#38BDF8', fontSize: 10, fontWeight: '600' }}>
+                                          🕒 {itemTime}
+                                        </Text>
+                                      </View>
+                                      <View style={{ backgroundColor: 'rgba(168, 85, 247, 0.1)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, borderWidth: 0.5, borderColor: 'rgba(168, 85, 247, 0.25)' }}>
+                                        <Text style={{ color: '#C084FC', fontSize: 10, fontWeight: '600' }}>
+                                          👤 {itemTaker}
+                                        </Text>
+                                      </View>
+                                      <View style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, borderWidth: 0.5, borderColor: 'rgba(16, 185, 129, 0.25)' }}>
+                                        <Text style={{ color: '#34D399', fontSize: 10, fontWeight: '600' }}>
+                                          📱 {itemDevice}
+                                        </Text>
+                                      </View>
+                                    </View>
                                   </View>
-                                  <View style={{ backgroundColor: 'rgba(168, 85, 247, 0.1)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5 }}>
-                                    <Text style={{ color: '#C084FC', fontSize: 10, fontWeight: '600' }}>
-                                      👤 {itemTaker}
+                                  <View style={{ alignItems: 'flex-end' }}>
+                                    <Text style={{ color: '#10B981', fontSize: 14, fontWeight: '800' }}>
+                                      ৳{itemTotal.toLocaleString()}
+                                    </Text>
+                                    <Text style={{ color: '#8B95A5', fontSize: 11, fontWeight: '600', marginTop: 3 }}>
+                                      ৳{itemPrice} × {itemQty}
                                     </Text>
                                   </View>
                                 </View>
                               </View>
-                              <View style={{ alignItems: 'flex-end' }}>
-                                <Text style={{ color: '#10B981', fontSize: 14, fontWeight: '800' }}>
-                                  ৳{itemTotal.toLocaleString()}
-                                </Text>
-                                <Text style={{ color: '#8B95A5', fontSize: 11, fontWeight: '600', marginTop: 3 }}>
-                                  ৳{itemPrice} × {itemQty}
-                                </Text>
-                              </View>
-                            </View>
-                          </View>
-                        );
-                      })}
-                    </View>
+                            );
+                          })}
+                        </View>
 
                     {/* Delivery Charge & Change Money (for Delivery Orders) */}
                     {selectedMonitoringItem.isDelivery && (
@@ -2472,8 +2508,9 @@ export default function AdminDB({ onLogout, tables, deliveries = [], completedOr
                         ভিউ-অনলি মোড: অ্যাডমিন সরাসরি অর্ডার এডিট বা পরিবর্তন করতে পারবেন না।
                       </Text>
                     </View>
-                  </View>
-                )}
+                  );
+                })()
+              )}
               </ScrollView>
             )}
 

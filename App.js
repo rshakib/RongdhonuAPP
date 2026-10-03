@@ -1865,10 +1865,25 @@ export default function App() {
 
   // Dynamically updates a table's or delivery's list items
   const handleUpdateTableItems = async (tableId, updatedItems) => {
+    const { formatUserRoleTag, getCurrentDeviceTelemetryName, getFormattedLocalTime } = require('./services/orderTelemetry');
+    const nowTime = getFormattedLocalTime();
+    const taker = formatUserRoleTag(userRole, userDisplayName);
+    const device = getCurrentDeviceTelemetryName();
+
+    const stampedItems = (updatedItems || []).map(item => ({
+      ...item,
+      time: item.time || nowTime,
+      addedBy: item.addedBy || taker,
+      deviceName: item.deviceName || device,
+      lastEditedBy: item.lastEditedBy || item.addedBy || taker,
+      lastEditedTime: item.lastEditedTime || item.time || nowTime,
+      lastEditedDevice: item.lastEditedDevice || item.deviceName || device
+    }));
+
     const isDoneOrder = completedOrders.some(o => o.id === tableId);
     if (isDoneOrder && userRole === 'admin') {
-      const newTotal = updatedItems.reduce((sum, i) => sum + (i.price * i.qty), 0);
-      updateCompletedOrder(tableId, updatedItems, newTotal);
+      const newTotal = stampedItems.reduce((sum, i) => sum + (i.price * i.qty), 0);
+      updateCompletedOrder(tableId, stampedItems, newTotal);
       refreshData();
       
       const success = await syncRecordImmediately('orders', tableId);
@@ -1879,7 +1894,7 @@ export default function App() {
     if (tableId.toString().startsWith('D-')) {
       const activeDelivery = deliveries.find(d => d.id === tableId);
       if (activeDelivery) {
-        if (updatedItems.length === 0) {
+        if (stampedItems.length === 0) {
           removeDelivery(tableId);
         } else {
           const status = 'BUSY';
@@ -1889,19 +1904,19 @@ export default function App() {
           if (!activeDelivery.items || activeDelivery.items.length === 0) {
              newStartTime = new Date().toISOString();
           }
-          updateDeliveryState(tableId, updatedItems, status, newStartTime);
+          updateDeliveryState(tableId, stampedItems, status, newStartTime);
         }
       }
     } else {
       const activeTable = tables.find(t => t.id === tableId);
       if (activeTable) {
-        const isTransitionToBusy = activeTable.status === 'FREE' && updatedItems.length > 0;
+        const isTransitionToBusy = activeTable.status === 'FREE' && stampedItems.length > 0;
         let newStartTime = activeTable.startTime;
         if (isTransitionToBusy) {
           newStartTime = new Date().toISOString();
         }
-        const status = updatedItems.length > 0 ? 'BUSY' : 'FREE';
-        updateTableState(tableId, updatedItems, status, updatedItems.length > 0 ? newStartTime : '');
+        const status = stampedItems.length > 0 ? 'BUSY' : 'FREE';
+        updateTableState(tableId, stampedItems, status, stampedItems.length > 0 ? newStartTime : '');
       }
     }
     refreshData();
@@ -3107,6 +3122,8 @@ export default function App() {
         return (
           <TableDetailScreen
             table={activeTable}
+            userRole={userRole}
+            userDisplayName={userDisplayName}
             onBack={async () => {
               if (selectedTableId && selectedTableId.toString().startsWith('D-')) {
                 const existing = getDeliveryById(selectedTableId);
