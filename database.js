@@ -6853,10 +6853,10 @@ export function resetPushPullCounts() {
   setAppConfig('pull_count_today', '0');
 }
 
-export const PIN_LOGIN_SYNC_COOLDOWN_MS = 15 * 60 * 1000; // 15 minutes gap
+export const PIN_LOGIN_SYNC_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes gap
 
 /**
- * Checks if PIN login full delta sync is allowed based on the 15-minute cooldown.
+ * Checks if PIN login full delta sync is allowed based on the 30-minute cooldown.
  * @returns {{ allowed: boolean, remainingMinutes: number, lastSyncTime: number, elapsedMs: number }}
  */
 export function checkPinLoginSyncAllowed() {

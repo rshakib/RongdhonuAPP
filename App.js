@@ -1723,12 +1723,12 @@ export default function App() {
     setIsLoggedIn(true);
     setCurrentScreen('DASHBOARD');
 
-    // --- FULL DB DELTA SYNC ON PIN LOGIN ---
-    // In online mode, immediately test the full DB across all collections for any updated values in the cloud.
-    // If updated values exist, pull and merge them; otherwise do nothing.
-    // Throttled by a 15-minute cooldown to avoid excessive cloud reads and notification flooding on frequent PIN logins.
+    // --- OPERATIONAL DELTA SYNC ON PIN LOGIN ---
+    // In online mode, test operational collections (Tables, Orders, Daily, Deletions) for any updated values in cloud.
+    // Menu items are excluded as menu data is static and already present in local SQLite.
+    // Throttled by a 30-minute cooldown to avoid excessive cloud reads and notification flooding on frequent PIN logins.
     try {
-      console.log("[Login Sync] PIN Login successful. Checking online status for full DB delta sync...");
+      console.log("[Login Sync] PIN Login successful. Checking online status for operational delta sync...");
       // Show existing local data immediately so login is fast and responsive
       refreshData();
 
@@ -1736,13 +1736,13 @@ export default function App() {
       const syncStatus = checkPinLoginSyncAllowed();
 
       if (!syncStatus.allowed) {
-        console.log(`[Login Sync] Full DB pull throttled: last sync was ${Math.round(syncStatus.elapsedMs / 60000)}m ago. 15-min cooldown active (next allowed in ~${syncStatus.remainingMinutes}m). Routine 15s/30s background sync active.`);
+        console.log(`[Login Sync] Operational pull throttled: last sync was ${Math.round(syncStatus.elapsedMs / 60000)}m ago. 30-min cooldown active (next allowed in ~${syncStatus.remainingMinutes}m). Routine 15s/30s background sync active.`);
       } else {
         const netState = await NetInfo.fetch();
         const isOnlineNow = netState.isConnected && netState.isInternetReachable !== false;
 
         if (isOnlineNow) {
-          console.log("[Login Sync] Online mode detected. Testing full DB across all collections (Tables, High, Daily, Low, Menu, Deletions)...");
+          console.log("[Login Sync] Online mode detected. Syncing operational collections (Tables, Orders/Deliveries, Daily, Low, Deletions)...");
           recordPinLoginSyncTime();
 
           const results = await Promise.allSettled([
@@ -1750,7 +1750,6 @@ export default function App() {
             runPullPreferSupabase('login-high-frequency-pull', 'syncSupabaseHighFrequencyCollections', syncHighFrequencyCollections, refreshData),
             runPullPreferSupabase('login-daily-pull', 'syncSupabaseDaily', syncLowFrequencyCollections, refreshData),
             runPullPreferSupabase('login-low-frequency-pull', 'syncSupabaseLowFrequencyCollections', syncLowFrequencyCollections, refreshData),
-            runPullPreferSupabase('login-menu-pull', 'syncSupabaseMenu', syncMenuOnly, refreshData),
             runPullPreferSupabase('login-deletions-pull', 'syncSupabaseDeletions', syncDeletionsOnly, refreshData)
           ]);
 
@@ -1759,7 +1758,7 @@ export default function App() {
             console.log("[Login Sync] Remote updates found and merged. Refreshing local state...");
             refreshData();
           } else {
-            console.log("[Login Sync] Full DB check complete: Database is already up to date.");
+            console.log("[Login Sync] Operational check complete: Database is already up to date.");
           }
         } else {
           console.log("[Login Sync] Offline mode. Operating from local SQLite database.");
