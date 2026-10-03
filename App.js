@@ -1726,34 +1726,44 @@ export default function App() {
     // --- FULL DB DELTA SYNC ON PIN LOGIN ---
     // In online mode, immediately test the full DB across all collections for any updated values in the cloud.
     // If updated values exist, pull and merge them; otherwise do nothing.
+    // Throttled by a 15-minute cooldown to avoid excessive cloud reads and notification flooding on frequent PIN logins.
     try {
       console.log("[Login Sync] PIN Login successful. Checking online status for full DB delta sync...");
       // Show existing local data immediately so login is fast and responsive
       refreshData();
 
-      const netState = await NetInfo.fetch();
-      const isOnlineNow = netState.isConnected && netState.isInternetReachable !== false;
+      const { checkPinLoginSyncAllowed, recordPinLoginSyncTime } = require('./database');
+      const syncStatus = checkPinLoginSyncAllowed();
 
-      if (isOnlineNow) {
-        console.log("[Login Sync] Online mode detected. Testing full DB across all collections (Tables, High, Daily, Low, Menu, Deletions)...");
-        const results = await Promise.allSettled([
-          runPullPreferSupabase('login-tables-pull', 'syncSupabaseTables', syncTablesOnly, refreshData),
-          runPullPreferSupabase('login-high-frequency-pull', 'syncSupabaseHighFrequencyCollections', syncHighFrequencyCollections, refreshData),
-          runPullPreferSupabase('login-daily-pull', 'syncSupabaseDaily', syncLowFrequencyCollections, refreshData),
-          runPullPreferSupabase('login-low-frequency-pull', 'syncSupabaseLowFrequencyCollections', syncLowFrequencyCollections, refreshData),
-          runPullPreferSupabase('login-menu-pull', 'syncSupabaseMenu', syncMenuOnly, refreshData),
-          runPullPreferSupabase('login-deletions-pull', 'syncSupabaseDeletions', syncDeletionsOnly, refreshData)
-        ]);
-
-        const hasAnyUpdates = results.some(r => r.status === 'fulfilled' && r.value === true);
-        if (hasAnyUpdates) {
-          console.log("[Login Sync] Remote updates found and merged. Refreshing local state...");
-          refreshData();
-        } else {
-          console.log("[Login Sync] Full DB check complete: Database is already up to date.");
-        }
+      if (!syncStatus.allowed) {
+        console.log(`[Login Sync] Full DB pull throttled: last sync was ${Math.round(syncStatus.elapsedMs / 60000)}m ago. 15-min cooldown active (next allowed in ~${syncStatus.remainingMinutes}m). Routine 15s/30s background sync active.`);
       } else {
-        console.log("[Login Sync] Offline mode. Operating from local SQLite database.");
+        const netState = await NetInfo.fetch();
+        const isOnlineNow = netState.isConnected && netState.isInternetReachable !== false;
+
+        if (isOnlineNow) {
+          console.log("[Login Sync] Online mode detected. Testing full DB across all collections (Tables, High, Daily, Low, Menu, Deletions)...");
+          recordPinLoginSyncTime();
+
+          const results = await Promise.allSettled([
+            runPullPreferSupabase('login-tables-pull', 'syncSupabaseTables', syncTablesOnly, refreshData),
+            runPullPreferSupabase('login-high-frequency-pull', 'syncSupabaseHighFrequencyCollections', syncHighFrequencyCollections, refreshData),
+            runPullPreferSupabase('login-daily-pull', 'syncSupabaseDaily', syncLowFrequencyCollections, refreshData),
+            runPullPreferSupabase('login-low-frequency-pull', 'syncSupabaseLowFrequencyCollections', syncLowFrequencyCollections, refreshData),
+            runPullPreferSupabase('login-menu-pull', 'syncSupabaseMenu', syncMenuOnly, refreshData),
+            runPullPreferSupabase('login-deletions-pull', 'syncSupabaseDeletions', syncDeletionsOnly, refreshData)
+          ]);
+
+          const hasAnyUpdates = results.some(r => r.status === 'fulfilled' && r.value === true);
+          if (hasAnyUpdates) {
+            console.log("[Login Sync] Remote updates found and merged. Refreshing local state...");
+            refreshData();
+          } else {
+            console.log("[Login Sync] Full DB check complete: Database is already up to date.");
+          }
+        } else {
+          console.log("[Login Sync] Offline mode. Operating from local SQLite database.");
+        }
       }
     } catch (err) {
       console.log("[Login Sync] Delta sync error (possibly offline):", err.message);

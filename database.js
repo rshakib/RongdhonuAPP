@@ -6853,6 +6853,40 @@ export function resetPushPullCounts() {
   setAppConfig('pull_count_today', '0');
 }
 
+export const PIN_LOGIN_SYNC_COOLDOWN_MS = 15 * 60 * 1000; // 15 minutes gap
+
+/**
+ * Checks if PIN login full delta sync is allowed based on the 15-minute cooldown.
+ * @returns {{ allowed: boolean, remainingMinutes: number, lastSyncTime: number, elapsedMs: number }}
+ */
+export function checkPinLoginSyncAllowed() {
+  try {
+    const lastSyncTime = parseInt(getAppConfig('last_pin_login_sync_time') || '0', 10);
+    const now = Date.now();
+    const timeSinceLastSync = now - lastSyncTime;
+
+    if (lastSyncTime > 0 && timeSinceLastSync < PIN_LOGIN_SYNC_COOLDOWN_MS) {
+      const remainingMinutes = Math.ceil((PIN_LOGIN_SYNC_COOLDOWN_MS - timeSinceLastSync) / 60000);
+      return { allowed: false, remainingMinutes, lastSyncTime, elapsedMs: timeSinceLastSync };
+    }
+    return { allowed: true, remainingMinutes: 0, lastSyncTime, elapsedMs: timeSinceLastSync };
+  } catch (e) {
+    return { allowed: true, remainingMinutes: 0, lastSyncTime: 0, elapsedMs: 0 };
+  }
+}
+
+/**
+ * Records the timestamp of a successful PIN login full delta sync.
+ * @param {number} [timestamp]
+ */
+export function recordPinLoginSyncTime(timestamp = Date.now()) {
+  try {
+    setAppConfig('last_pin_login_sync_time', String(timestamp));
+  } catch (e) {
+    console.error('[database] Failed to record PIN login sync time:', e);
+  }
+}
+
 export async function executeManualPush() {
   try {
     console.log("[Manual Push] Scanning all tables for unsynced local changes...");
