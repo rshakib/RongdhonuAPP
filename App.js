@@ -2156,8 +2156,13 @@ export default function App() {
       addCompletedOrder(orderRecord);
       setLastCompletedOrder(orderRecord);
 
-      // Auto-print receipt if a verified printer is connected (silent, deduped).
-      setAutoPrintOrder(orderRecord);
+      // Auto-print disabled by default: Receipts are printed manually on the Payment Success screen via "রসিদ প্রিন্ট করুন".
+      try {
+        const { getAppConfig } = require('./database');
+        if (getAppConfig('auto_print_enabled') === 'true') {
+          setAutoPrintOrder(orderRecord);
+        }
+      } catch (_) {}
 
       setPaidAmount(paid);
       setPaymentMethod(method);
