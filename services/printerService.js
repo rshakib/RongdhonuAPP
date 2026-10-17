@@ -196,12 +196,23 @@ export function parseOrderItems(order) {
       const qty = parseInt(item.qty || item.quantity || 1, 10) || 1;
       const price = parseFloat(item.price || 0) || 0;
       const total = parseFloat(item.total || (qty * price)) || 0;
-      return {
+      const base = {
         name: String(item.name || 'আইটেম').trim(),
         qty,
         price,
         total
       };
+      // Additive: pass add-on/extra info through so the receipt can render it
+      // as a small nested line under its parent.
+      if (item.isExtra) {
+        base.isExtra = true;
+        base.parentName = item.parentName || null;
+      }
+      // Additive: a service-charge line is a CHARGE, not an item.
+      if (item.isCharge) {
+        base.isCharge = true;
+      }
+      return base;
     });
   } else if (typeof order.items === 'string' && order.items.trim()) {
     const rawParts = order.items.split(',').map(s => s.trim()).filter(Boolean);
@@ -227,6 +238,19 @@ export function parseOrderItems(order) {
         });
       }
     }
+
+    // Additive: string orders encode extras as "Name (Parent)" and the service
+    // charge by its own name -> mark them so the receipt renders correctly.
+    items = items.map(it => {
+      if (String(it.name || '').trim() === 'সার্ভিস চার্জ') {
+        return { ...it, isCharge: true };
+      }
+      const m = String(it.name || '').match(/^(.*\S)\s\((.+)\)$/);
+      if (m && m[1] && m[2]) {
+        return { ...it, name: m[1].trim(), isExtra: true, parentName: m[2].trim() };
+      }
+      return it;
+    });
   }
 
   if (items.length <= 1) return items;
@@ -238,8 +262,15 @@ export function parseOrderItems(order) {
   const regularItems = [];
   const waterItems = [];
   const deliveryChargeItems = [];
+  const extraItems = [];
 
   for (const item of items) {
+    // Additive: extras are held aside and re-inserted right after their parent.
+    if (item.isExtra) {
+      extraItems.push(item);
+      continue;
+    }
+
     const rawName = String(item.name || '').trim();
     const lowerName = rawName.toLowerCase();
 
@@ -263,7 +294,19 @@ export function parseOrderItems(order) {
     }
   }
 
-  return [...regularItems, ...waterItems, ...deliveryChargeItems];
+  const ordered = [...regularItems, ...waterItems, ...deliveryChargeItems];
+
+  // Insert each extra directly after its parent item (mirrors the order list).
+  for (const ex of extraItems) {
+    const at = ordered.findIndex(o => !o.isExtra && o.name === ex.parentName);
+    if (at > -1) {
+      ordered.splice(at + 1, 0, ex);
+    } else {
+      ordered.push(ex);
+    }
+  }
+
+  return ordered;
 }
 
 /**
@@ -272,10 +315,15 @@ export function parseOrderItems(order) {
 export function normalizeOrderForReceipt(order) {
   if (!order) return null;
 
-  const items = parseOrderItems(order);
+  const allParsed = parseOrderItems(order);
+  const chargeItems = allParsed.filter(i => i.isCharge);
+  const items = allParsed.filter(i => !i.isCharge);
   const rawSubtotal = parseFloat(order.totalAmount ?? order.subtotal ?? order.amount ?? 0) || 0;
   const deliveryCharge = parseFloat(order.deliveryCharge ?? 0) || 0;
   const changeMoney = parseFloat(order.changeMoneyGiven ?? 0) || 0;
+  // Service charge is a CHARGE, not an item. rawSubtotal already includes it, so
+  // the shown subtotal excludes it while the overall (finalAmount) keeps it.
+  const serviceCharge = parseFloat(order.serviceCharge ?? 0) || chargeItems.reduce((s, i) => s + (i.total || 0), 0);
   const paid = parseFloat(order.paidAmount ?? order.grandTotal ?? order.finalAmount ?? rawSubtotal) || rawSubtotal;
 
   const expectedTotal = rawSubtotal + deliveryCharge + changeMoney;
@@ -328,6 +376,7 @@ export function normalizeOrderForReceipt(order) {
     time: timeStr,
     items,
     subtotal: rawSubtotal,
+    serviceCharge,
     deliveryCharge,
     changeMoney,
     discount,
@@ -388,7 +437,8 @@ export function formatReceiptText(order) {
   ];
 
   norm.items.forEach(item => {
-    lines.push(item.name);
+    // Extras render as a small nested line with a ↳ arrow, like the app order list.
+    lines.push(item.isExtra ? ` ↳ ${item.name}` : item.name);
     const qtyPrice = `  ${toBengaliNumber(item.qty)} × ${toBengaliNumber(item.price)}`;
     const itemTotal = `৳${toBengaliNumber(item.total)}`;
     const spaces = Math.max(1, 32 - qtyPrice.length - itemTotal.length);
@@ -396,6 +446,11 @@ export function formatReceiptText(order) {
   });
 
   lines.push(border);
+  // Service charge is added INSIDE the totals section, BEFORE the overall total,
+  // so "সর্বমোট" already includes it.
+  if (norm.serviceCharge > 0) {
+    lines.push(padRow('সার্ভিস চার্জ:', `৳${toBengaliNumber(norm.serviceCharge)}`));
+  }
   lines.push(padRow('সর্বমোট:', `৳${toBengaliNumber(norm.subtotal)}`));
   if (norm.discount > 0) {
     lines.push(padRow('ডিসকাউন্ট:', `৳${toBengaliNumber(norm.discount)}`));
@@ -434,7 +489,7 @@ export async function renderReceiptToEscPosBytes(order) {
 
   // Calculate dynamic height based on item count and split breakdown
   const splitRowsCount = (norm.isSplit && norm.splitBreakdown) ? norm.splitBreakdown.length : 0;
-  const baseHeight = 350 + (splitRowsCount * 22);
+  const baseHeight = 350 + (splitRowsCount * 22) + ((norm.serviceCharge > 0 ? 1 : 0) * 22);
   const itemHeight = norm.items.length * 44;
   const canvasHeight = baseHeight + itemHeight;
   canvas.height = canvasHeight;
@@ -452,7 +507,8 @@ export async function renderReceiptToEscPosBytes(order) {
   const drawText = (text, x, posY) => {
     ctx.fillText(text, x, posY);
     const size = Number(String(ctx.font).match(/(\d+(?:\.\d+)?)px/)?.[1]) || 16;
-    ctx.lineWidth = Math.max(0.8, size * 0.09);
+    // Bold strength reduced ~20% (0.09 → 0.072) to match ReceiptPaper.
+    ctx.lineWidth = Math.max(0.64, size * 0.072);
     ctx.lineJoin = 'round';
     ctx.strokeStyle = '#000000';
     ctx.strokeText(text, x, posY);
@@ -531,7 +587,17 @@ export async function renderReceiptToEscPosBytes(order) {
   drawDashedLine(y);
   y += 24;
 
-  // Subtotal
+  // Service Charge (a charge, not an item) — added before the overall total
+  if (norm.serviceCharge > 0) {
+    ctx.textAlign = 'left';
+    ctx.font = `bold 17px ${BENGALI_FONT}`;
+    drawText('সার্ভিস চার্জ:', 12, y);
+    ctx.textAlign = 'right';
+    drawText(`৳${toBengaliNumber(norm.serviceCharge)}`, canvasWidth - 12, y);
+    y += 22;
+  }
+
+  // Subtotal (already includes the service charge)
   ctx.textAlign = 'left';
   ctx.font = `bold 18px ${BENGALI_FONT}`;
   drawText('সর্বমোট:', 12, y);
@@ -558,6 +624,9 @@ export async function renderReceiptToEscPosBytes(order) {
     drawText(`৳${toBengaliNumber(norm.deliveryCharge)}`, canvasWidth - 12, y);
     y += 22;
   }
+
+  // Service Charge (a charge, not an item)
+  // (drawn earlier, before the overall total)
 
   // Final Amount
   ctx.textAlign = 'left';

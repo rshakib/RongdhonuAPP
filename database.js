@@ -3613,16 +3613,31 @@ export async function fetchHistoricalMonthData(monthStr) {
 }
 
 export async function recoverMenuFromCloud() {
+  // Supabase-first: the menu now lives in Supabase (Firebase auto-reads are
+  // policy-gated). Full snapshot, so a missed/most-recent item is picked up.
+  try {
+    const { recoverMenuFromSupabase } = require('./services/supabaseSync.js');
+    const res = await recoverMenuFromSupabase();
+    if (res && res.success) {
+      return true;
+    }
+  } catch (err) {
+    console.warn('[Menu Recovery] Supabase path failed, falling back to Firebase:', err?.message || err);
+  }
+
+  // Firebase fallback (explicit manual action — allowed even with auto-reads off).
   console.log('[Firebase-Read] recoverMenuFromCloud triggered');
   const collections = ['menu_items', 'menu_categories'];
+  let ok = false;
   for (const table of collections) {
     incrementReadCounter('menu', 1);
     const result = await fetchCollection(table);
     if (result.success) {
       await processRemoteDocsToLocal(table, result.documents);
+      ok = true;
     }
   }
-  return true;
+  return ok;
 }
 
 // ==========================================
@@ -5032,6 +5047,8 @@ export function addCompletedOrder(orderRecord) {
       if (match) {
         const itemName = match[1];
         const qty = parseInt(match[2], 10);
+        // Service charge is a CHARGE, not an item — never create an order_items row.
+        if (String(itemName).trim() === 'সার্ভিস চার্জ') return;
         
         // If price is provided in the string (from UI), use it. 
         // Otherwise, fall back to menu lookup.
@@ -6222,7 +6239,7 @@ export function deleteCompletedOrder(orderId) {
 
 export function updateCompletedOrder(orderId, updatedItems, newTotal) {
   try {
-    const itemsStr = updatedItems.map(i => `${i.name} x${i.qty}`).join(', ');
+    const itemsStr = updatedItems.map(i => `${(i.isExtra && i.parentName) ? `${i.name} (${i.parentName})` : i.name} x${i.qty} @${i.price}`).join(', ');
     const now = new Date().toISOString();
     
     // 1. Update main order
@@ -6253,11 +6270,13 @@ export function updateCompletedOrder(orderId, updatedItems, newTotal) {
     console.log(`[ORDERITEM-DEBUG] updateCompletedOrder WIPE order_items for order=${orderId} (tombstoned ${wipedItemIds.length}) then recreate ${updatedItems.length}`);
     
     updatedItems.forEach((item, index) => {
+      if (item.isCharge) return; // service charge is a charge, not an order item
       const itemId = `${orderId}_item_${index}_rev`;
+      const itemName = (item.isExtra && item.parentName) ? `${item.name} (${item.parentName})` : item.name;
       db.runSync(`
         INSERT INTO order_items (id, order_id, itemName, quantity, unit_price, revenue, created_at, updated_at, is_synced)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
-      `, [itemId, String(orderId), item.name, item.qty, item.price, item.price * item.qty, now, now]);
+      `, [itemId, String(orderId), itemName, item.qty, item.price, item.price * item.qty, now, now]);
       console.log(`[ORDERITEM-DEBUG] updateCompletedOrder INSERT order_items id=${itemId} order=${orderId} item="${item.name}"`);
       enqueueSync("order_items", itemId, "INSERT");
     });

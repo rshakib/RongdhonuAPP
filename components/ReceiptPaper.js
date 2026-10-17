@@ -42,11 +42,12 @@ export const BILL_SHOP_PHONE = '01953838244';
  */
 const BN_BOLD = 'NotoSansBengali-Bold';
 
-/** Hairline same-colour outline — see "THERMAL CLARITY" above. */
+/** Hairline same-colour outline — see "THERMAL CLARITY" above.
+ *  Bold strength reduced ~20% (0.9 → 0.72) for lighter, finer print. */
 const THERMAL_BOLD = {
   textShadowColor: '#000000',
   textShadowOffset: { width: 0, height: 0 },
-  textShadowRadius: 0.9
+  textShadowRadius: 0.72
 };
 
 const ReceiptPaper = forwardRef(function ReceiptPaper({
@@ -91,17 +92,25 @@ const ReceiptPaper = forwardRef(function ReceiptPaper({
       <View style={styles.divider} />
 
       {norm.items.map((item, idx) => (
-        <View key={idx} style={styles.itemBlock}>
-          <Text style={styles.itemName}>{item.name}</Text>
+        <View key={idx} style={[styles.itemBlock, item.isExtra && styles.extraItemBlock]}>
+          <Text style={[styles.itemName, item.isExtra && styles.extraItemName]}>
+            {item.isExtra ? `↳ ${item.name}` : item.name}
+          </Text>
           <View style={styles.splitRow}>
-            <Text style={styles.itemQtyPrice}>{toBengaliNumber(item.qty)} × {toBengaliNumber(item.price)}</Text>
-            <Text style={styles.itemPrice}>৳{toBengaliNumber(item.total)}</Text>
+            <Text style={[styles.itemQtyPrice, item.isExtra && styles.extraItemMeta]}>{toBengaliNumber(item.qty)} × {toBengaliNumber(item.price)}</Text>
+            <Text style={[styles.itemPrice, item.isExtra && styles.extraItemMeta]}>৳{toBengaliNumber(item.total)}</Text>
           </View>
         </View>
       ))}
 
       <View style={styles.divider} />
 
+      {norm.serviceCharge > 0 && (
+        <View style={styles.splitRow}>
+          <Text style={styles.summaryLabel}>সার্ভিস চার্জ:</Text>
+          <Text style={styles.summaryPrice}>৳{toBengaliNumber(norm.serviceCharge)}</Text>
+        </View>
+      )}
       <View style={styles.splitRow}>
         <Text style={styles.summaryLabel}>সর্বমোট:</Text>
         <Text style={styles.summaryPrice}>৳{toBengaliNumber(norm.subtotal)}</Text>
@@ -264,6 +273,26 @@ const styles = StyleSheet.create({
     fontFamily: BN_BOLD,
     lineHeight: 29,
     letterSpacing: 0.3
+  }),
+
+  // ── Extra / add-on lines (nested + slightly smaller) ─────────
+  extraItemBlock: {
+    paddingLeft: 20,
+    marginVertical: 0
+  },
+  extraItemName: T({
+    color: '#000000',
+    fontSize: 19,
+    fontWeight: '700',
+    fontFamily: BN_BOLD,
+    lineHeight: 25
+  }),
+  extraItemMeta: T({
+    color: '#000000',
+    fontSize: 17,
+    fontWeight: '700',
+    fontFamily: BN_BOLD,
+    lineHeight: 22
   }),
 
   // ── Subtotal / Discount / Delivery ───────────────────────────

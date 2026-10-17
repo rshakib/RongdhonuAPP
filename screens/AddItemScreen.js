@@ -297,7 +297,11 @@ export default function AddItemScreen({
   };
 
   // Categories list matching mockup
-  const categories = ['সব', 'বার্গার', 'ফ্রাই', 'নুডুলস', 'চিকেন', 'রাইস', 'স্ন্যাকস', 'পিজ্জা', 'ড্রিংকস'];
+  // NOTE: 'এক্সট্রা' is an additive category for optional menu-driven add-ons
+  // (extra ভাত, extra মুরগি, etc.) managed by owner/admin and picked from the
+  // order screen. Service charge is NOT menu-driven (it is a per-order variable
+  // amount). Existing categories are untouched.
+  const categories = ['সব', 'বার্গার', 'ফ্রাই', 'নুডুলস', 'চিকেন', 'রাইস', 'স্ন্যাকস', 'পিজ্জা', 'ড্রিংকস', 'এক্সট্রা'];
 
   const normalizeCategory = (cat) => {
     if (!cat) return '';

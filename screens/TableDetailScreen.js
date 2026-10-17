@@ -8,6 +8,8 @@ import {
   TextInput,
   Alert,
   Platform,
+  Modal,
+  KeyboardAvoidingView,
   StatusBar as RNStatusBar
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -35,6 +37,7 @@ const formatStartTime = (timeStr) => {
 
 export default function TableDetailScreen({
   table: propTable,
+  menuItems = [],
   userRole,
   userDisplayName,
   onBack,
@@ -68,6 +71,14 @@ export default function TableDetailScreen({
   const [printOrder, setPrintOrder] = useState(null);
   const [isSubmittingBill, setIsSubmittingBill] = useState(false);
   const isSubmittingBillRef = useRef(false);
+  // Additive: per-item Extras + variable Service Charge
+  const [serviceChargeModalVisible, setServiceChargeModalVisible] = useState(false);
+  const [serviceChargeInput, setServiceChargeInput] = useState('');
+  const [extraPickerVisible, setExtraPickerVisible] = useState(false);
+  const [extraParent, setExtraParent] = useState('');
+  const [extraAmountVisible, setExtraAmountVisible] = useState(false);
+  const [extraDraftName, setExtraDraftName] = useState('');
+  const [extraAmountInput, setExtraAmountInput] = useState('');
 
   useEffect(() => {
     if (table) {
@@ -91,7 +102,8 @@ export default function TableDetailScreen({
 
   // Calculate live totals
   const totalAmount = items.reduce((sum, item) => sum + (item.price * item.qty), 0);
-  const totalItemsCount = items.reduce((sum, item) => sum + item.qty, 0);
+  const totalItemsCount = items.reduce((sum, item) => sum + (item.isCharge ? 0 : item.qty), 0);
+  const appliedServiceCharge = items.reduce((sum, item) => sum + (item.isCharge ? (item.price * item.qty) : 0), 0);
   // Grand Total only includes appliedChangeMoney (the one deducted from cash)
   const grandTotal = totalAmount + (isDelivery ? (deliveryCharge + appliedChangeMoney) : 0);
 
@@ -101,7 +113,7 @@ export default function TableDetailScreen({
     tableId: table.name || table.id,
     fullDate: new Date().toISOString().substring(0, 10),
     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    items: items.map((it) => ({ name: it.name, qty: it.qty, price: it.price, total: it.price * it.qty })),
+    items: items.map((it) => ({ name: it.name, qty: it.qty, price: it.price, total: it.price * it.qty, isExtra: !!it.isExtra, parentName: it.parentName || null, isCharge: !!it.isCharge })),
     totalAmount,
     deliveryCharge: isDelivery ? deliveryCharge : 0,
     changeMoneyGiven: isDelivery ? appliedChangeMoney : 0,
@@ -133,6 +145,9 @@ export default function TableDetailScreen({
           qty: it.qty,
           price: it.price,
           total: it.price * it.qty,
+          isExtra: !!it.isExtra,
+          parentName: it.parentName || null,
+          isCharge: !!it.isCharge,
         }));
         if (currentChangeMoney > 0) {
           receiptItems.push({
@@ -283,6 +298,125 @@ export default function TableDetailScreen({
     onUpdateTableItems(table.id, updated);
   };
 
+  // ── Additive: optional Extras (per-item) + Service Charge (variable) ───────
+  // An extra is added FROM an item and stays tied to it (parentName), shown
+  // directly under that item in a smaller style, and carried on the receipt as
+  // "extra (parent)". Everything still flows through the existing checkout →
+  // orders/payments/order_items → daily summary → receipt → sync paths.
+  const EXTRA_CATEGORY = 'এক্সট্রা';
+  const SERVICE_CHARGE_PRESETS = [50, 100, 200, 500];
+
+  const extraMenuItems = (menuItems || []).filter(m => m && m.category === EXTRA_CATEGORY);
+
+  const makeStamp = () => {
+    const nowTime = getFormattedLocalTime();
+    const taker = formatUserRoleTag(userRole, userDisplayName);
+    const device = getCurrentDeviceTelemetryName();
+    return {
+      time: nowTime,
+      addedBy: taker,
+      deviceName: device,
+      lastEditedBy: taker,
+      lastEditedTime: nowTime,
+      lastEditedDevice: device
+    };
+  };
+
+  const parentChoices = items.filter(i => !i.isExtra && !i.isCharge);
+
+  // Step 1 — tap ➕ এক্সট্রা, then pick WHICH extra (name)
+  const openExtraPicker = () => {
+    setExtraParent('');
+    setExtraPickerVisible(true);
+  };
+
+  // Step 2 — set the amount AND which item this extra belongs to
+  const pickExtra = (menuItem) => {
+    setExtraDraftName(menuItem.name);
+    setExtraAmountInput(String(menuItem.price || ''));
+    setExtraParent(parentChoices.length === 1 ? parentChoices[0].name : '');
+    setExtraPickerVisible(false);
+    setExtraAmountVisible(true);
+  };
+
+  // Step 3 — confirm: add as a separate cart line, tied to the chosen parent
+  const confirmExtra = () => {
+    if (!extraParent) {
+      Alert.alert("ত্রুটি", "কোন আইটেমের এক্সট্রা সেটা বাছুন!");
+      return;
+    }
+    const amount = parseInt(String(extraAmountInput).replace(/[^0-9]/g, ''), 10);
+    if (!amount || amount <= 0) {
+      Alert.alert("ত্রুটি", "সঠিক পরিমাণ লিখুন!");
+      return;
+    }
+    const updated = [...items, {
+      name: extraDraftName,
+      price: amount,
+      qty: 1,
+      isExtra: true,
+      parentName: extraParent,
+      ...makeStamp()
+    }];
+    onUpdateTableItems(table.id, updated);
+    setExtraAmountVisible(false);
+    setExtraDraftName('');
+    setExtraParent('');
+  };
+
+  // Service Charge — per-order VARIABLE charge (NOT an item; shown in totals + receipt)
+  const openServiceChargeModal = () => {
+    const existing = items.find(i => i.isCharge);
+    setServiceChargeInput(existing ? String(existing.price) : '');
+    setServiceChargeModalVisible(true);
+  };
+
+  const handleApplyServiceCharge = (presetAmount) => {
+    const amount = (typeof presetAmount === 'number')
+      ? presetAmount
+      : parseInt(String(serviceChargeInput).replace(/[^0-9]/g, ''), 10);
+    if (!amount || amount <= 0) {
+      Alert.alert("ত্রুটি", "সঠিক পরিমাণ লিখুন!");
+      return;
+    }
+    const nowTime = getFormattedLocalTime();
+    const taker = formatUserRoleTag(userRole, userDisplayName);
+    const device = getCurrentDeviceTelemetryName();
+    const updated = [...items];
+    const idx = updated.findIndex(i => i.isCharge);
+    if (idx > -1) {
+      updated[idx] = {
+        ...updated[idx],
+        price: amount,
+        qty: 1,
+        isCharge: true,
+        lastEditedBy: taker,
+        lastEditedTime: nowTime,
+        lastEditedDevice: device
+      };
+    } else {
+      updated.push({
+        name: 'সার্ভিস চার্জ',
+        price: amount,
+        qty: 1,
+        isCharge: true,
+        time: nowTime,
+        addedBy: taker,
+        deviceName: device,
+        lastEditedBy: taker,
+        lastEditedTime: nowTime,
+        lastEditedDevice: device
+      });
+    }
+    onUpdateTableItems(table.id, updated);
+    setServiceChargeModalVisible(false);
+  };
+
+  const removeServiceCharge = () => {
+    const updated = items.filter(i => !i.isCharge);
+    onUpdateTableItems(table.id, updated);
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -350,37 +484,95 @@ export default function TableDetailScreen({
           </View>
         ) : (
           <View style={styles.listContainer}>
-            {items.map((item, index) => (
-              <View key={index} style={styles.tableRow}>
-                <Text style={[styles.td, styles.tdItem]} numberOfLines={1}>
-                  {item.name}
-                </Text>
-                
-                <Text style={[styles.td, styles.tdPrice]}>
-                  ৳ {item.price}
-                </Text>
-                
-                <View style={[styles.td, styles.tdQty]}>
-                  <View style={styles.qtyContainer}>
-                    <TouchableOpacity style={styles.qtyBtn} onPress={() => handleDecreaseQty(index)}>
-                      <Text style={styles.qtyBtnText}>-</Text>
-                    </TouchableOpacity>
-                    <Text style={styles.qtyValue}>{item.qty}</Text>
-                    <TouchableOpacity style={[styles.qtyBtn, styles.qtyBtnPlus]} onPress={() => handleIncreaseQty(index)}>
-                      <Text style={[styles.qtyBtnText, styles.qtyBtnTextPlus]}>+</Text>
+            {items.map((item, index) => {
+              if (item.isExtra || item.isCharge) return null; // extras render under parent; the charge shows in totals only
+              const childExtras = items
+                .map((ex, exIndex) => ({ ex, exIndex }))
+                .filter(({ ex }) => ex.isExtra && ex.parentName === item.name);
+              return (
+                <View key={index}>
+                  <View style={styles.tableRow}>
+                    <Text style={[styles.td, styles.tdItem]} numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                    <Text style={[styles.td, styles.tdPrice]}>
+                      ৳ {item.price}
+                    </Text>
+                    <View style={[styles.td, styles.tdQty]}>
+                      <View style={styles.qtyContainer}>
+                        <TouchableOpacity style={styles.qtyBtn} onPress={() => handleDecreaseQty(index)}>
+                          <Text style={styles.qtyBtnText}>-</Text>
+                        </TouchableOpacity>
+                        <Text style={styles.qtyValue}>{item.qty}</Text>
+                        <TouchableOpacity style={[styles.qtyBtn, styles.qtyBtnPlus]} onPress={() => handleIncreaseQty(index)}>
+                          <Text style={[styles.qtyBtnText, styles.qtyBtnTextPlus]}>+</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                    <Text style={[styles.td, styles.tdTotal]}>
+                      ৳ {item.price * item.qty}
+                    </Text>
+                    <TouchableOpacity style={styles.deleteRowBtn} onPress={() => handleDeleteItem(index)}>
+                      <Text style={styles.deleteRowText}>❌</Text>
                     </TouchableOpacity>
                   </View>
+                  {childExtras.map(({ ex, exIndex }) => (
+                    <View key={`e_${exIndex}`} style={styles.extraSubRow}>
+                      <Text style={styles.extraSubName} numberOfLines={1}>↳ {ex.name}</Text>
+                      <View style={styles.extraQty}>
+                        <TouchableOpacity style={styles.extraQtyBtn} onPress={() => handleDecreaseQty(exIndex)}>
+                          <Text style={styles.extraQtyBtnText}>-</Text>
+                        </TouchableOpacity>
+                        <Text style={styles.extraQtyValue}>{ex.qty}</Text>
+                        <TouchableOpacity style={styles.extraQtyBtn} onPress={() => handleIncreaseQty(exIndex)}>
+                          <Text style={styles.extraQtyBtnText}>+</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <Text style={styles.extraSubPrice}>৳ {ex.price * ex.qty}</Text>
+                      <TouchableOpacity style={styles.extraSubDelete} onPress={() => handleDeleteItem(exIndex)}>
+                        <Text style={styles.deleteRowText}>❌</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
                 </View>
-                
-                <Text style={[styles.td, styles.tdTotal]}>
-                  ৳ {item.price * item.qty}
-                </Text>
-                
-                <TouchableOpacity style={styles.deleteRowBtn} onPress={() => handleDeleteItem(index)}>
-                  <Text style={styles.deleteRowText}>❌</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
+              );
+            })}
+            {/* Orphan extras (their parent item was removed) */}
+            {items.map((ex, exIndex) => {
+              if (!ex.isExtra) return null;
+              if (items.some(i => !i.isExtra && i.name === ex.parentName)) return null;
+              return (
+                <View key={`o_${exIndex}`} style={styles.extraSubRow}>
+                  <Text style={styles.extraSubName} numberOfLines={1}>↳ {ex.name}</Text>
+                  <View style={styles.extraQty}>
+                    <TouchableOpacity style={styles.extraQtyBtn} onPress={() => handleDecreaseQty(exIndex)}>
+                      <Text style={styles.extraQtyBtnText}>-</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.extraQtyValue}>{ex.qty}</Text>
+                    <TouchableOpacity style={styles.extraQtyBtn} onPress={() => handleIncreaseQty(exIndex)}>
+                      <Text style={styles.extraQtyBtnText}>+</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={styles.extraSubPrice}>৳ {ex.price * ex.qty}</Text>
+                  <TouchableOpacity style={styles.extraSubDelete} onPress={() => handleDeleteItem(exIndex)}>
+                    <Text style={styles.deleteRowText}>❌</Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {appliedServiceCharge > 0 && (
+          <View style={styles.serviceChargeRow}>
+            <Text style={styles.serviceChargeLabel}>সার্ভিস চার্জ</Text>
+            <Text style={styles.serviceChargeAmount}>৳ {appliedServiceCharge}</Text>
+            <TouchableOpacity style={styles.serviceChargeBtn} onPress={openServiceChargeModal}>
+              <Text style={styles.serviceChargeBtnText}>✎</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.serviceChargeBtn} onPress={removeServiceCharge}>
+              <Text style={styles.deleteRowText}>❌</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -388,6 +580,16 @@ export default function TableDetailScreen({
         <TouchableOpacity style={styles.dottedAddButton} onPress={onNavigateToAddItem}>
           <Text style={styles.dottedAddText}>➕ মেনু থেকে আইটেম যোগ করুন</Text>
         </TouchableOpacity>
+
+        {/* Additive: rare-use actions (extra / service charge) — kept low-key */}
+        <View style={styles.extraActionsRow}>
+          <TouchableOpacity style={styles.extraActionChip} onPress={openExtraPicker} activeOpacity={0.7}>
+            <Text style={styles.extraActionChipText}>➕ এক্সট্রা</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.extraActionChip} onPress={openServiceChargeModal} activeOpacity={0.7}>
+            <Text style={styles.extraActionChipText}>💰 সার্ভিস চার্জ</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Delivery Charge and Change Money given (Optional for Delivery Orders) */}
         {isDelivery && (
@@ -547,6 +749,7 @@ export default function TableDetailScreen({
           <Text style={styles.summaryCount}>
             {totalItemsCount} টি আইটেম{isDelivery && deliveryCharge > 0 ? ` + ৳${deliveryCharge} চার্জ` : ''}
             {isDelivery && appliedChangeMoney > 0 ? ` + ৳${appliedChangeMoney} ভাঙতি` : ''}
+            {appliedServiceCharge > 0 ? ` + ৳${appliedServiceCharge} সার্ভিস চার্জ` : ''}
           </Text>
         </View>
         <TouchableOpacity
@@ -586,6 +789,143 @@ export default function TableDetailScreen({
         showPayment={false}
         phone={BILL_SHOP_PHONE}
       />
+
+      {/* Additive (step 1): pick WHICH extra for the tapped item */}
+      <Modal
+        visible={extraPickerVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setExtraPickerVisible(false)}
+      >
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalBgCenter}>
+          <View style={styles.extraModalContent}>
+            <Text style={styles.extraModalTitle}>এক্সট্রা বাছুন</Text>
+            <Text style={styles.extraModalSubtitle}>{extraParent ? `'${extraParent}' এর জন্য` : 'মেনু থেকে'}</Text>
+            <ScrollView style={styles.extraModalList} showsVerticalScrollIndicator={false}>
+              {extraMenuItems.length === 0 ? (
+                <Text style={styles.extraEmptyText}>
+                  এখনো কোনো এক্সট্রা যোগ করা হয়নি।{'\n'}মেনু → নতুন আইটেম → ক্যাটাগরি 'এক্সট্রা'।
+                </Text>
+              ) : (
+                extraMenuItems.map((m, idx) => (
+                  <TouchableOpacity
+                    key={`${m.name}_${idx}`}
+                    style={styles.extraRow}
+                    onPress={() => pickExtra(m)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.extraRowName} numberOfLines={1}>{m.name}</Text>
+                    <Text style={styles.extraRowPrice}>৳ {m.price}  ›</Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+            <TouchableOpacity style={styles.extraModalClose} onPress={() => setExtraPickerVisible(false)}>
+              <Text style={styles.extraModalCloseText}>বাতিল</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Additive (step 2): set the extra amount (variable) */}
+      <Modal
+        visible={extraAmountVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setExtraAmountVisible(false)}
+      >
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalBgCenter}>
+          <View style={styles.extraModalContent}>
+            <Text style={styles.extraModalTitle}>{extraDraftName}</Text>
+            <Text style={styles.extraModalSubtitle}>দাম আর কার জন্য — সেট করুন</Text>
+            <View style={[styles.manualInputWrapper, { width: '100%', flex: 0 }]}>
+              <Text style={styles.manualCurrencySymbol}>৳</Text>
+              <TextInput
+                style={styles.manualTextInput}
+                keyboardType="numeric"
+                placeholder="পরিমাণ"
+                placeholderTextColor="#666"
+                value={extraAmountInput}
+                onChangeText={(t) => setExtraAmountInput(String(t).replace(/[^0-9]/g, ''))}
+                autoFocus
+              />
+            </View>
+            <Text style={[styles.extraModalSubtitle, { marginTop: 16, marginBottom: 8 }]}>কার জন্য? (কোন আইটেমের এক্সট্রা)</Text>
+            <View style={styles.parentChipsWrap}>
+              {parentChoices.length === 0 ? (
+                <Text style={styles.extraEmptyText}>আগে অন্তত একটা আইটেম যোগ করুন।</Text>
+              ) : (
+                parentChoices.map((p, i) => (
+                  <TouchableOpacity
+                    key={`${p.name}_${i}`}
+                    style={[styles.parentChip, extraParent === p.name && styles.parentChipActive]}
+                    onPress={() => setExtraParent(p.name)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.parentChipText, extraParent === p.name && styles.parentChipTextActive]}>{p.name}</Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </View>
+            <View style={styles.extraModalActions}>
+              <TouchableOpacity style={styles.extraCancelBtn} onPress={() => setExtraAmountVisible(false)}>
+                <Text style={styles.extraCancelText}>বাতিল</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.extraConfirmBtn} onPress={confirmExtra}>
+                <Text style={styles.extraConfirmText}>যোগ করুন{extraAmountInput ? ` (৳${extraAmountInput})` : ''}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Additive: Service Charge — per-order VARIABLE amount (like delivery charge) */}
+      <Modal
+        visible={serviceChargeModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setServiceChargeModalVisible(false)}
+      >
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalBgCenter}>
+          <View style={styles.extraModalContent}>
+            <Text style={styles.extraModalTitle}>সার্ভিস চার্জ</Text>
+            <Text style={styles.extraModalSubtitle}>নিজের মতো পরিমাণ লিখুন (যেমন 60, 110)</Text>
+            <View style={[styles.manualInputWrapper, { width: '100%', flex: 0 }]}>
+              <Text style={styles.manualCurrencySymbol}>৳</Text>
+              <TextInput
+                style={styles.manualTextInput}
+                keyboardType="numeric"
+                placeholder="পরিমাণ লিখুন"
+                placeholderTextColor="#666"
+                value={serviceChargeInput}
+                onChangeText={(t) => setServiceChargeInput(String(t).replace(/[^0-9]/g, ''))}
+                autoFocus
+              />
+            </View>
+            <Text style={[styles.extraModalSubtitle, { marginTop: 16, marginBottom: 8 }]}>অথবা দ্রুত বেছে নিন</Text>
+            <View style={[styles.presetsRow, { width: '100%', marginBottom: 0 }]}>
+              {SERVICE_CHARGE_PRESETS.map((val) => (
+                <TouchableOpacity
+                  key={val}
+                  style={styles.presetBtn}
+                  onPress={() => handleApplyServiceCharge(val)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.presetBtnText}>৳ {val}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={styles.extraModalActions}>
+              <TouchableOpacity style={styles.extraCancelBtn} onPress={() => setServiceChargeModalVisible(false)}>
+                <Text style={styles.extraCancelText}>বাতিল</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.extraConfirmBtn} onPress={() => handleApplyServiceCharge()}>
+                <Text style={styles.extraConfirmText}>যোগ করুন{serviceChargeInput ? ` (৳${serviceChargeInput})` : ''}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -846,6 +1186,89 @@ const styles = StyleSheet.create({
   deleteRowText: {
     fontSize: 12,
   },
+  // Parent picker chips (extra add: "কার জন্য?")
+  parentChipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+    width: '100%',
+  },
+  parentChip: {
+    borderWidth: 1,
+    borderColor: '#262626',
+    backgroundColor: '#161616',
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  parentChipActive: {
+    borderColor: '#FFB703',
+    backgroundColor: '#FFB703',
+  },
+  parentChipText: {
+    color: '#888888',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  parentChipTextActive: {
+    color: '#000000',
+  },
+  // Extra lines render directly under their parent item, smaller + muted so it
+  // reads as an extra, not a main item.
+  extraSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingLeft: 18,
+    borderBottomWidth: 1,
+    borderColor: '#161616',
+    backgroundColor: '#0D0D0D',
+  },
+  extraSubName: {
+    flex: 1,
+    color: '#888888',
+    fontSize: 11,
+    fontStyle: 'italic',
+  },
+  extraSubPrice: {
+    color: '#888888',
+    fontSize: 11,
+    fontWeight: '600',
+    marginRight: 10,
+  },
+  extraSubDelete: {
+    width: 32,
+    alignItems: 'flex-end',
+    paddingVertical: 4,
+  },
+  extraQty: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1E1E1E',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#262626',
+    marginRight: 10,
+  },
+  extraQtyBtn: {
+    width: 22,
+    height: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 6,
+  },
+  extraQtyBtnText: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#888888',
+  },
+  extraQtyValue: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    paddingHorizontal: 8,
+  },
   dottedAddButton: {
     borderWidth: 1.5,
     borderStyle: 'dashed',
@@ -1031,5 +1454,167 @@ const styles = StyleSheet.create({
     color: '#EF4444',
     fontSize: 12,
     fontWeight: '600',
+  },
+
+  // ── Additive: low-key service charge / extra actions ─────────────────────
+  serviceChargeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 183, 3, 0.02)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 183, 3, 0.15)',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  serviceChargeLabel: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  serviceChargeAmount: {
+    color: '#FFB703',
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginRight: 10,
+  },
+  serviceChargeBtn: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  serviceChargeBtnText: {
+    color: '#FFB703',
+    fontSize: 15,
+    fontWeight: 'bold',
+  },
+  extraActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  extraActionChip: {
+    borderWidth: 1,
+    borderColor: '#262626',
+    backgroundColor: '#0D0D0D',
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  extraActionChipText: {
+    color: '#888888',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  modalBgCenter: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  extraModalContent: {
+    backgroundColor: '#0D0D0D',
+    borderWidth: 1,
+    borderColor: '#262626',
+    borderRadius: 20,
+    padding: 20,
+    width: '100%',
+    maxWidth: 420,
+    alignItems: 'center',
+  },
+  extraModalTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  extraModalSubtitle: {
+    fontSize: 11,
+    color: '#888888',
+    marginTop: 4,
+    marginBottom: 14,
+    textAlign: 'center',
+  },
+  extraModalList: {
+    width: '100%',
+    maxHeight: 300,
+  },
+  extraEmptyText: {
+    color: '#888888',
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 20,
+    paddingVertical: 24,
+  },
+  extraRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#161616',
+    borderWidth: 1,
+    borderColor: '#262626',
+    borderRadius: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    marginBottom: 8,
+  },
+  extraRowName: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    flex: 1,
+    marginRight: 10,
+  },
+  extraRowPrice: {
+    color: '#FFB703',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  extraModalClose: {
+    marginTop: 14,
+    width: '100%',
+    backgroundColor: '#1E1E1E',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  extraModalCloseText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  extraModalActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+    width: '100%',
+  },
+  extraCancelBtn: {
+    flex: 1,
+    backgroundColor: '#1E1E1E',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  extraCancelText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  extraConfirmBtn: {
+    flex: 1,
+    backgroundColor: '#FFB703',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  extraConfirmText: {
+    color: '#000000',
+    fontSize: 13,
+    fontWeight: 'bold',
   },
 });
