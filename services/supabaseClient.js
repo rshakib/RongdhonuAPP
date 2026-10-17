@@ -20,6 +20,43 @@ let supabaseInstance = null;
 let isConfigured = false;
 let currentDeviceId = null;
 
+// --- Resilient fetch: bound every Supabase HTTP call with a timeout and retry
+// transient network failures (DNS/IPv6 blip, cold server). Without this, a hung
+// request has no app-level bound and every Supabase path (device self-check,
+// sync) can look like "no internet".
+const SUPABASE_FETCH_TIMEOUT_MS = (() => {
+  const n = Number(process.env.EXPO_PUBLIC_SUPABASE_FETCH_TIMEOUT_MS);
+  return Number.isFinite(n) && n > 0 ? n : 20000;
+})();
+const SUPABASE_FETCH_RETRIES = 2;
+
+function resilientFetch(input, init = {}) {
+  const attempt = (n) =>
+    new Promise((resolve, reject) => {
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timer = controller
+        ? setTimeout(() => { try { controller.abort(); } catch (_) {} }, SUPABASE_FETCH_TIMEOUT_MS)
+        : null;
+      const opts = controller ? { ...init, signal: controller.signal } : init;
+      global
+        .fetch(input, opts)
+        .then((res) => {
+          if (timer) clearTimeout(timer);
+          resolve(res);
+        })
+        .catch((err) => {
+          if (timer) clearTimeout(timer);
+          if (n < SUPABASE_FETCH_RETRIES) {
+            setTimeout(() => attempt(n + 1).then(resolve).catch(reject), 800 * (n + 1));
+          } else {
+            console.warn(`[SupabaseClient] fetch failed after ${n + 1} attempt(s):`, err?.message || err);
+            reject(err);
+          }
+        });
+    });
+  return attempt(0);
+}
+
 function buildClient(deviceId = null) {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_URL.startsWith('http')) {
     return null;
@@ -29,7 +66,7 @@ function buildClient(deviceId = null) {
     globalHeaders['x-device-id'] = String(deviceId);
   }
   return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    global: { headers: globalHeaders },
+    global: { headers: globalHeaders, fetch: resilientFetch },
     auth: {
       persistSession: false,
       autoRefreshToken: false,

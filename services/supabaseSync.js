@@ -665,6 +665,34 @@ export async function syncSupabaseMenu() {
   }
 }
 
+/**
+ * Manual menu recovery — FULL snapshot of menu_items + menu_categories from
+ * Supabase into local SQLite (bypasses the delta cursor), so a menu item that a
+ * delta pull missed (or one added after another cursor advanced) still shows up.
+ * Returns { success, rows } with an HONEST success flag (false when the kill
+ * switch is off, Supabase is unconfigured, or a fetch errors).
+ */
+export async function recoverMenuFromSupabase() {
+  if (!deps.isEnabled()) return { success: false, rows: 0, reason: 'killswitch' };
+  if (!deps.isConfigured()) return { success: false, rows: 0, reason: 'unconfigured' };
+  const db = deps.getDb();
+  if (!db) return { success: false, rows: 0, reason: 'no-db' };
+  let rows = 0;
+  for (const table of ['menu_items', 'menu_categories']) {
+    try {
+      const col = getSupabaseCursorColumn(db, table);
+      const data = await fetchSupabaseRows(db, table, col, null); // null marker = full fetch
+      mergeSupabaseRows(db, table, data);
+      rows += (data || []).length;
+    } catch (err) {
+      console.warn(`[SupabaseSync] recoverMenuFromSupabase ${table} failed:`, err?.message || err);
+      return { success: false, rows, reason: 'error' };
+    }
+  }
+  console.log(`[Menu Recovery] Supabase full pull OK (${rows} rows)`);
+  return { success: true, rows };
+}
+
 // --- fresh-install restore (transition-period aware) -------------------------
 
 /**

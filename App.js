@@ -447,6 +447,10 @@ export default function App() {
   const [userDisplayName, setUserDisplayName] = useState('');
   const [isOnline, setIsOnline] = useState(true);
   const [isOnlineOnlyMode, setIsOnlineOnlyMode] = useState(true);
+  // True when the last device-access check could not reach Supabase and the app
+  // fell back to offline mode — surfaced as a visible banner so the operator
+  // KNOWS the server could not be reached (never a silent offline).
+  const [serverOfflineNotice, setServerOfflineNotice] = useState(false);
   const [forceReauthRequired, setForceReauthRequired] = useState(() => {
     try {
       const { getAppConfig } = require('./database');
@@ -632,6 +636,8 @@ export default function App() {
             setCurrentScreen('OFFLINE_VERIFICATION');
             return;
           }
+          // Could not reach the server → still allow (approved devices), but SHOW it.
+          if (devAccess) setServerOfflineNotice(Boolean(devAccess.offline));
         } catch (devErr) {
           console.error("[App] Device registration check failed:", devErr);
         }
@@ -1093,6 +1099,7 @@ export default function App() {
               setCurrentScreen('OFFLINE_VERIFICATION');
               return;
             }
+            if (devAccess) setServerOfflineNotice(Boolean(devAccess.offline));
           } catch (resumeErr) {
             console.warn('[App] Error on foreground resume verification:', resumeErr.message);
           }
@@ -1700,6 +1707,7 @@ export default function App() {
         setCurrentScreen('DEVICE_PENDING');
         return;
       }
+      if (devAccess) setServerOfflineNotice(Boolean(devAccess.offline));
     } catch (devErr) {
       console.error("[App] Device login permission check error:", devErr);
     }
@@ -2081,7 +2089,7 @@ export default function App() {
       const orderRecord = {
         id: orderId,
         tableId: tableName,
-        items: (orderItems || []).map(i => `${i.name} x${i.qty} @${i.price}`).join(', '),
+        items: (orderItems || []).map(i => `${(i.isExtra && i.parentName) ? `${i.name} (${i.parentName})` : i.name} x${i.qty} @${i.price}`).join(', '),
         totalAmount: itemsSubtotal,
         deliveryCharge: delCharge,
         changeMoneyGiven: changeMoney,
@@ -2134,7 +2142,7 @@ export default function App() {
       const orderRecord = {
         id: orderId,
         tableId: activeTable.name || activeTable.id,
-        items: activeTable.items.map(i => `${i.name} x${i.qty} @${i.price}`).join(', '),
+        items: activeTable.items.map(i => `${(i.isExtra && i.parentName) ? `${i.name} (${i.parentName})` : i.name} x${i.qty} @${i.price}`).join(', '),
         totalAmount: paymentAmount,
 
         deliveryCharge: deliveryCharge,
@@ -3136,6 +3144,7 @@ export default function App() {
         return (
           <TableDetailScreen
             table={activeTable}
+            menuItems={menuItems}
             userRole={userRole}
             userDisplayName={userDisplayName}
             onBack={async () => {
@@ -3632,6 +3641,27 @@ export default function App() {
     <SafeAreaProvider style={{ flex: 1 }}>
       <View style={styles.container}>
         <StatusBar style="light" translucent={true} backgroundColor="transparent" />
+        {/* Visible notice: the app could not confirm device status with the server
+            and is running in offline mode — never silent. */}
+        {serverOfflineNotice && (
+          <View style={{ backgroundColor: '#7C2D12', paddingVertical: 6, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={{ flex: 1, color: '#FFFFFF', fontSize: 11, fontWeight: 'bold' }}>
+              ⚠️ সার্ভারের সাথে সংযোগ করা যাচ্ছে না — অ্যাপ অফলাইনে চলছে (ডেটা পরে sync হবে)
+            </Text>
+            <TouchableOpacity
+              onPress={async () => {
+                try {
+                  const { verifyDeviceAccessOnStartupOrResume } = require('./services/deviceRegistry');
+                  const res = await verifyDeviceAccessOnStartupOrResume(userRole);
+                  setServerOfflineNotice(Boolean(res && res.offline));
+                } catch (_) {}
+              }}
+              style={{ paddingHorizontal: 8, paddingVertical: 2 }}
+            >
+              <Text style={{ color: '#FFB703', fontSize: 11, fontWeight: 'bold' }}>🔄 Retry</Text>
+            </TouchableOpacity>
+          </View>
+        )}
         {renderScreen()}
 
         {/* Silent auto-print host (only when a verified printer is connected) */}

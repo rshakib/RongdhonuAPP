@@ -1135,8 +1135,18 @@ export async function verifyDeviceAccessOnStartupOrResume(userRole = '') {
 
     const roleUpper = String(userRole || '').toUpperCase().trim();
 
-    // Query authoritative remote row for THIS device
-    const remoteRes = await fetchSingleSupabaseDevice(deviceId);
+    // Query authoritative remote row for THIS device. Bounded with a timeout so a
+    // hung request can never freeze startup / resume (falls through to the offline
+    // policy below instead of hanging).
+    const remoteRes = await Promise.race([
+      fetchSingleSupabaseDevice(deviceId),
+      new Promise((resolve) =>
+        setTimeout(
+          () => resolve({ success: false, record: null, notFound: false, error: 'device self-check timeout' }),
+          8000
+        )
+      )
+    ]);
 
     if (remoteRes.success && remoteRes.record) {
       const remote = remoteRes.record;
@@ -1214,8 +1224,12 @@ export async function verifyDeviceAccessOnStartupOrResume(userRole = '') {
         };
       }
 
-      // Check offline permission
-      const allowOffline = Number(localRecord.allow_offline || 0) === 1 || roleUpper === 'ADMIN';
+      // Offline permission is the ADMIN's decision (authoritative): a device runs
+      // offline ONLY when it was explicitly granted allow_offline (or the operator
+      // is ADMIN). Everything else stays fail-closed below — so keeping "Allow
+      // Offline" OFF in the Admin app genuinely prevents offline use.
+      const allowOffline =
+        Number(localRecord.allow_offline || 0) === 1 || roleUpper === 'ADMIN';
       if (allowOffline) {
         return {
           allowed: true,
