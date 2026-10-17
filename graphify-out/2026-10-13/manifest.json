@@ -1,0 +1,926 @@
+{
+  "App.js": {
+    "mtime": 1791906312.4428737,
+    "seen": 1791906345.2243102,
+    "ast_hash": "caf92d95551bb23f72d7887db8dd07a7",
+    "semantic_hash": ""
+  },
+  "app.config.js": {
+    "mtime": 1791893610.2048845,
+    "seen": 1791901513.885601,
+    "ast_hash": "37cebbdfb464866633a809d689e4e3a5",
+    "semantic_hash": ""
+  },
+  "app.json": {
+    "mtime": 1791893610.2044642,
+    "seen": 1791901513.8856025,
+    "ast_hash": "8aaaa3a987d233fda755792de6d9651c",
+    "semantic_hash": ""
+  },
+  "components/AdminSideMenu.js": {
+    "mtime": 1790874400.843851,
+    "seen": 1791882506.822875,
+    "ast_hash": "ab85107adc477ec02f3c622b597f2a69",
+    "semantic_hash": "ab85107adc477ec02f3c622b597f2a69"
+  },
+  "components/AutoReceiptPrinter.js": {
+    "mtime": 1790186051.0,
+    "seen": 1791882506.8228757,
+    "ast_hash": "99c33c1d174f7e25938d2240dd006c1b",
+    "semantic_hash": "99c33c1d174f7e25938d2240dd006c1b"
+  },
+  "components/CalendarPicker.js": {
+    "mtime": 1790855707.8775804,
+    "seen": 1791882506.8228762,
+    "ast_hash": "65b2045c7781ee272e4ed696e0cfd877",
+    "semantic_hash": "65b2045c7781ee272e4ed696e0cfd877"
+  },
+  "components/DepositReportModal.js": {
+    "mtime": 1790274316.0,
+    "seen": 1791882506.822877,
+    "ast_hash": "14b4645137e33caa1ecdc5748fa38d40",
+    "semantic_hash": "14b4645137e33caa1ecdc5748fa38d40"
+  },
+  "components/ManagerSideMenu.js": {
+    "mtime": 1790357884.0,
+    "seen": 1791882506.8228774,
+    "ast_hash": "46bf7c5f2430410520d06275522880e7",
+    "semantic_hash": "46bf7c5f2430410520d06275522880e7"
+  },
+  "components/OrderDetailModal.js": {
+    "mtime": 1790278353.0,
+    "seen": 1791882506.8228776,
+    "ast_hash": "0c7b17afc5ecf551c28fd8fc2283d782",
+    "semantic_hash": "0c7b17afc5ecf551c28fd8fc2283d782"
+  },
+  "components/OwnerSideMenu.js": {
+    "mtime": 1790357884.0,
+    "seen": 1791882506.8228781,
+    "ast_hash": "60c9d2b07bf0bbac1f19445f922644e6",
+    "semantic_hash": "60c9d2b07bf0bbac1f19445f922644e6"
+  },
+  "components/PastAccountModal.js": {
+    "mtime": 1790273054.0,
+    "seen": 1791882506.8228788,
+    "ast_hash": "bcc2e9453f1a163b73b8921fac030395",
+    "semantic_hash": "bcc2e9453f1a163b73b8921fac030395"
+  },
+  "components/PrintReceiptModal.js": {
+    "mtime": 1790878588.6750147,
+    "seen": 1791882506.8228796,
+    "ast_hash": "f23a688b72c55429b9c65dfaa813bbd2",
+    "semantic_hash": "f23a688b72c55429b9c65dfaa813bbd2"
+  },
+  "components/PrinterStatusBanner.js": {
+    "mtime": 1790100166.0,
+    "seen": 1791882506.82288,
+    "ast_hash": "7e95c976bab9079e560e3a4ce8211253",
+    "semantic_hash": "7e95c976bab9079e560e3a4ce8211253"
+  },
+  "components/ReceiptPaper.js": {
+    "mtime": 1791891985.6603773,
+    "seen": 1791892024.2015173,
+    "ast_hash": "35e73e6520d6e559377f7f653721b92c",
+    "semantic_hash": ""
+  },
+  "components/SalesReportModal.js": {
+    "mtime": 1790273934.0,
+    "seen": 1791882506.822881,
+    "ast_hash": "2b37d51357373a5a9e533d889ed715ab",
+    "semantic_hash": "2b37d51357373a5a9e533d889ed715ab"
+  },
+  "components/SidebarIcon.js": {
+    "mtime": 1790255995.0,
+    "seen": 1791882506.8228812,
+    "ast_hash": "1527ddbbcf46b9c5c986ec9a5d502f9d",
+    "semantic_hash": "1527ddbbcf46b9c5c986ec9a5d502f9d"
+  },
+  "components/StatCard.js": {
+    "mtime": 1789555708.0,
+    "seen": 1791882506.8228817,
+    "ast_hash": "28107dd2aa19e5051ba1e4dcf45b61a1",
+    "semantic_hash": "28107dd2aa19e5051ba1e4dcf45b61a1"
+  },
+  "components/TimePicker.js": {
+    "mtime": 1790874004.185351,
+    "seen": 1791882506.8228824,
+    "ast_hash": "ec77b23e9cf2a08ec2ec6f7aa4eeb9b9",
+    "semantic_hash": "ec77b23e9cf2a08ec2ec6f7aa4eeb9b9"
+  },
+  "database.js": {
+    "mtime": 1791891681.493523,
+    "seen": 1791891709.130411,
+    "ast_hash": "7ab9576aed682ea92d86fb3f302c9d72",
+    "semantic_hash": ""
+  },
+  "eas.json": {
+    "mtime": 1790871667.1680868,
+    "seen": 1791882506.8228834,
+    "ast_hash": "342cb13f38ef988344f7fba31564996d",
+    "semantic_hash": "342cb13f38ef988344f7fba31564996d"
+  },
+  "index.js": {
+    "mtime": 1780078202.0,
+    "seen": 1791882506.822884,
+    "ast_hash": "33caa6d28d87fc7e637c033d0d7124b1",
+    "semantic_hash": "33caa6d28d87fc7e637c033d0d7124b1"
+  },
+  "package.json": {
+    "mtime": 1791893610.2018676,
+    "seen": 1791901513.8856223,
+    "ast_hash": "3dde910f2f30d4729688d39026f1ef3f",
+    "semantic_hash": ""
+  },
+  "pdfHelper.js": {
+    "mtime": 1790263164.0,
+    "seen": 1791882506.822885,
+    "ast_hash": "4f13df4bafc7a1ec3bb5870b75f80b6a",
+    "semantic_hash": "4f13df4bafc7a1ec3bb5870b75f80b6a"
+  },
+  "printer-test.js": {
+    "mtime": 1790107690.0,
+    "seen": 1791882506.8228855,
+    "ast_hash": "eb37f896181887d4b984afa7615355ea",
+    "semantic_hash": "eb37f896181887d4b984afa7615355ea"
+  },
+  "screens/AIDatasetAuditCenterScreen.js": {
+    "mtime": 1785925037.0,
+    "seen": 1791882506.8228862,
+    "ast_hash": "0cd0db80e36790950d9f656e303a531e",
+    "semantic_hash": "0cd0db80e36790950d9f656e303a531e"
+  },
+  "screens/AIDatasetMonitorScreen.js": {
+    "mtime": 1789661802.0,
+    "seen": 1791882506.8228867,
+    "ast_hash": "26ba13935c540d712d52b54487b917c9",
+    "semantic_hash": "26ba13935c540d712d52b54487b917c9"
+  },
+  "screens/ActivityLogScreen.js": {
+    "mtime": 1790359330.0,
+    "seen": 1791882506.8228872,
+    "ast_hash": "ec73aeea751e19a315272f0c677efa43",
+    "semantic_hash": "ec73aeea751e19a315272f0c677efa43"
+  },
+  "screens/ActivityStreamScreen.js": {
+    "mtime": 1790874014.289235,
+    "seen": 1791882506.822888,
+    "ast_hash": "69291fbda96103e00e26de9881081851",
+    "semantic_hash": "69291fbda96103e00e26de9881081851"
+  },
+  "screens/AddEmployeeScreen.js": {
+    "mtime": 1789566801.0,
+    "seen": 1791882506.8228884,
+    "ast_hash": "06d97e4e65616ef279d5a8094cf2a972",
+    "semantic_hash": "06d97e4e65616ef279d5a8094cf2a972"
+  },
+  "screens/AddItemScreen.js": {
+    "mtime": 1791889058.257772,
+    "seen": 1791889097.9154088,
+    "ast_hash": "4f5fc07a7a88f48e355a1689c05bc442",
+    "semantic_hash": ""
+  },
+  "screens/AddSalaryPaymentScreen.js": {
+    "mtime": 1789566801.0,
+    "seen": 1791882506.8228896,
+    "ast_hash": "cc1fadcda0e53b3c328c8176cae12796",
+    "semantic_hash": "cc1fadcda0e53b3c328c8176cae12796"
+  },
+  "screens/AdminAnalyticsScreen.js": {
+    "mtime": 1788891362.0,
+    "seen": 1791882506.8228898,
+    "ast_hash": "de2959f86bfa3ad7cb2e5a292e3bd599",
+    "semantic_hash": "de2959f86bfa3ad7cb2e5a292e3bd599"
+  },
+  "screens/AdminDB.js": {
+    "mtime": 1791057201.9875605,
+    "seen": 1791882506.8228903,
+    "ast_hash": "cb52b5917aa146029e8fd89ea4708256",
+    "semantic_hash": "cb52b5917aa146029e8fd89ea4708256"
+  },
+  "screens/AppUpdateRequiredScreen.js": {
+    "mtime": 1790006425.0,
+    "seen": 1791882506.822891,
+    "ast_hash": "c65c1f06d941b3a4027208643935bfd4",
+    "semantic_hash": "c65c1f06d941b3a4027208643935bfd4"
+  },
+  "screens/BackupRestoreScreen.js": {
+    "mtime": 1790873431.0919528,
+    "seen": 1791882506.8228912,
+    "ast_hash": "212a813027451476b9ed1c110c7ee4d3",
+    "semantic_hash": "212a813027451476b9ed1c110c7ee4d3"
+  },
+  "screens/DailyItemSalesReport.js": {
+    "mtime": 1790453314.0,
+    "seen": 1791882506.8228917,
+    "ast_hash": "4739c7418b250193a2a0e154493059aa",
+    "semantic_hash": "4739c7418b250193a2a0e154493059aa"
+  },
+  "screens/DailySubmitScreen.js": {
+    "mtime": 1789566801.0,
+    "seen": 1791882506.8228922,
+    "ast_hash": "77b8022d2fc88e9982271171357d5186",
+    "semantic_hash": "77b8022d2fc88e9982271171357d5186"
+  },
+  "screens/DatabaseExplorerScreen.js": {
+    "mtime": 1790537301.0368202,
+    "seen": 1791882506.822893,
+    "ast_hash": "57ac150a1f396643d70aac22cb95201d",
+    "semantic_hash": "57ac150a1f396643d70aac22cb95201d"
+  },
+  "screens/DatabaseHealthScreen.js": {
+    "mtime": 1782565206.0,
+    "seen": 1791882506.8228934,
+    "ast_hash": "f911ae84303ea81d6a865e7f793fc87a",
+    "semantic_hash": "f911ae84303ea81d6a865e7f793fc87a"
+  },
+  "screens/DatabaseStatsScreen.js": {
+    "mtime": 1782565218.0,
+    "seen": 1791882506.8228939,
+    "ast_hash": "3177d6d066af8f303ee3ae9cbc8bd173",
+    "semantic_hash": "3177d6d066af8f303ee3ae9cbc8bd173"
+  },
+  "screens/DeleteHistoryScreen.js": {
+    "mtime": 1788894366.0,
+    "seen": 1791882506.8228943,
+    "ast_hash": "0e30244356be6300f56b3a0f764d68e2",
+    "semantic_hash": "0e30244356be6300f56b3a0f764d68e2"
+  },
+  "screens/DeviceBlockedScreen.js": {
+    "mtime": 1789734079.0,
+    "seen": 1791882506.8228948,
+    "ast_hash": "0411ac89ad0d812adc7312352a788bf4",
+    "semantic_hash": "0411ac89ad0d812adc7312352a788bf4"
+  },
+  "screens/DeviceManagementScreen.js": {
+    "mtime": 1790453314.0,
+    "seen": 1791882506.8228953,
+    "ast_hash": "1ff6bd2c39a7171e52a9197f20c98cab",
+    "semantic_hash": "1ff6bd2c39a7171e52a9197f20c98cab"
+  },
+  "screens/DevicePendingScreen.js": {
+    "mtime": 1790453314.0,
+    "seen": 1791882506.8228965,
+    "ast_hash": "4b7a3f375cd723605927ed8e2ecfd59a",
+    "semantic_hash": "4b7a3f375cd723605927ed8e2ecfd59a"
+  },
+  "screens/EmployeeDetailScreen.js": {
+    "mtime": 1782747403.0,
+    "seen": 1791882506.822897,
+    "ast_hash": "f5aec3b02d1fccf4a7c2cfac4912191e",
+    "semantic_hash": "f5aec3b02d1fccf4a7c2cfac4912191e"
+  },
+  "screens/EmployeeListScreen.js": {
+    "mtime": 1782751801.0,
+    "seen": 1791882506.8228974,
+    "ast_hash": "9d9005490eec99a867441b20367f1cbd",
+    "semantic_hash": "9d9005490eec99a867441b20367f1cbd"
+  },
+  "screens/ExpensesScreen.js": {
+    "mtime": 1790886458.4398203,
+    "seen": 1791882506.822898,
+    "ast_hash": "0f05f5427732aebf2fc73db67ec0214a",
+    "semantic_hash": "0f05f5427732aebf2fc73db67ec0214a"
+  },
+  "screens/LoginScreen.js": {
+    "mtime": 1790453314.0,
+    "seen": 1791882506.8228984,
+    "ast_hash": "8532e0e99b8d4506ab493d8063db2895",
+    "semantic_hash": "8532e0e99b8d4506ab493d8063db2895"
+  },
+  "screens/ManagerDashboard.js": {
+    "mtime": 1791047255.9833734,
+    "seen": 1791882506.8228989,
+    "ast_hash": "e311f47abd0eac7e13895b66fdf4379d",
+    "semantic_hash": "e311f47abd0eac7e13895b66fdf4379d"
+  },
+  "screens/OfflineVerificationScreen.js": {
+    "mtime": 1789734079.0,
+    "seen": 1791882506.8228993,
+    "ast_hash": "d3bc09da264e6356449980747bde806f",
+    "semantic_hash": "d3bc09da264e6356449980747bde806f"
+  },
+  "screens/OwnerDashboard.js": {
+    "mtime": 1791047344.2257094,
+    "seen": 1791882506.8229,
+    "ast_hash": "2d5096198713afd6b11959ebee8a9bc0",
+    "semantic_hash": "2d5096198713afd6b11959ebee8a9bc0"
+  },
+  "screens/OwnerExpenseScreen.js": {
+    "mtime": 1789560349.0,
+    "seen": 1791882506.8229005,
+    "ast_hash": "09d538e169d3c2cb7019f9bfa15641d1",
+    "semantic_hash": "09d538e169d3c2cb7019f9bfa15641d1"
+  },
+  "screens/OwnerFinanceDashboard.js": {
+    "mtime": 1789560349.0,
+    "seen": 1791882506.822901,
+    "ast_hash": "8194ecb91d0b2220ffe3bb90edbb6c5a",
+    "semantic_hash": "8194ecb91d0b2220ffe3bb90edbb6c5a"
+  },
+  "screens/PaymentCheckoutScreen.js": {
+    "mtime": 1790102321.0,
+    "seen": 1791882506.8229015,
+    "ast_hash": "da749d2d2acf47590fcd91eb6d34cb5b",
+    "semantic_hash": "da749d2d2acf47590fcd91eb6d34cb5b"
+  },
+  "screens/PaymentSuccess.js": {
+    "mtime": 1790103749.0,
+    "seen": 1791882506.8229017,
+    "ast_hash": "69d3acaa76f9582c2c859258cb625d60",
+    "semantic_hash": "69d3acaa76f9582c2c859258cb625d60"
+  },
+  "screens/PrinterSettingsScreen.js": {
+    "mtime": 1790191438.0,
+    "seen": 1791882506.8229022,
+    "ast_hash": "dae78f8c5a303b3b3dfb3e0b61c64364",
+    "semantic_hash": "dae78f8c5a303b3b3dfb3e0b61c64364"
+  },
+  "screens/RowDetailScreen.js": {
+    "mtime": 1782569797.0,
+    "seen": 1791882506.8229027,
+    "ast_hash": "4483a277a34347646d6bd1b8155eac00",
+    "semantic_hash": "4483a277a34347646d6bd1b8155eac00"
+  },
+  "screens/SupplierDueScreen.js": {
+    "mtime": 1781328769.0,
+    "seen": 1791882506.8229034,
+    "ast_hash": "dc0c377cfefbe6044a0c2f15d599fd9b",
+    "semantic_hash": "dc0c377cfefbe6044a0c2f15d599fd9b"
+  },
+  "screens/SyncDiagnosticsScreen.js": {
+    "mtime": 1780478848.0,
+    "seen": 1791882506.8229039,
+    "ast_hash": "755b280a5e031af4c5c752c8e60728c2",
+    "semantic_hash": "755b280a5e031af4c5c752c8e60728c2"
+  },
+  "screens/SyncHealthScreen.js": {
+    "mtime": 1790870409.6402955,
+    "seen": 1791882506.8229043,
+    "ast_hash": "dedda07653ca9a95bc0e96f85be293de",
+    "semantic_hash": "dedda07653ca9a95bc0e96f85be293de"
+  },
+  "screens/SyncStatusScreen.js": {
+    "mtime": 1782565212.0,
+    "seen": 1791882506.8229046,
+    "ast_hash": "0d270bcec47e6731a4e008d06a619bbb",
+    "semantic_hash": "0d270bcec47e6731a4e008d06a619bbb"
+  },
+  "screens/SystemInfoScreen.js": {
+    "mtime": 1789928967.0,
+    "seen": 1791882506.8229053,
+    "ast_hash": "8f8ca6eba61e76a72b8154a957b2e43e",
+    "semantic_hash": "8f8ca6eba61e76a72b8154a957b2e43e"
+  },
+  "screens/SystemToolsScreen.js": {
+    "mtime": 1790357902.0,
+    "seen": 1791882506.8229058,
+    "ast_hash": "beabfad2e565e529c90d2725cd03ace7",
+    "semantic_hash": "beabfad2e565e529c90d2725cd03ace7"
+  },
+  "screens/TableDetailScreen.js": {
+    "mtime": 1791892304.0739238,
+    "seen": 1791892331.9384167,
+    "ast_hash": "ef87abaf8771d8c5277ebef01d05163f",
+    "semantic_hash": ""
+  },
+  "screens/TableViewerScreen.js": {
+    "mtime": 1782576187.0,
+    "seen": 1791882506.8229067,
+    "ast_hash": "5a5782a723df4c4cacf2ab2e7d994ba7",
+    "semantic_hash": "5a5782a723df4c4cacf2ab2e7d994ba7"
+  },
+  "scripts/fetch-original-passwords.js": {
+    "mtime": 1790201051.0,
+    "seen": 1791882506.8229072,
+    "ast_hash": "3fec60fca85c26fec8ade88aec0cd023",
+    "semantic_hash": "3fec60fca85c26fec8ade88aec0cd023"
+  },
+  "scripts/firestore-sync-audit.js": {
+    "mtime": 1780309418.0,
+    "seen": 1791882506.8229077,
+    "ast_hash": "00c970fd03f7a138698aca317ddab460",
+    "semantic_hash": "00c970fd03f7a138698aca317ddab460"
+  },
+  "scripts/googleAppsScript_Production.js": {
+    "mtime": 1785930096.0,
+    "seen": 1791882506.8229082,
+    "ast_hash": "ec9705652aa52b75ff45bf9320882124",
+    "semantic_hash": "ec9705652aa52b75ff45bf9320882124"
+  },
+  "scripts/googleAppsScript_Weather.js": {
+    "mtime": 1785934862.0,
+    "seen": 1791882506.8229086,
+    "ast_hash": "389120e099391b0ade9a241f759c3ce9",
+    "semantic_hash": "389120e099391b0ade9a241f759c3ce9"
+  },
+  "scripts/runLiveHttpAudit.js": {
+    "mtime": 1785929941.0,
+    "seen": 1791882506.822909,
+    "ast_hash": "2342920197aa5874a075555ab235f7b6",
+    "semantic_hash": "2342920197aa5874a075555ab235f7b6"
+  },
+  "scripts/select-credentials.js": {
+    "mtime": 1790201002.0,
+    "seen": 1791882506.8229096,
+    "ast_hash": "2bb9a892bcf1ecf65bef91fde5f592ff",
+    "semantic_hash": "2bb9a892bcf1ecf65bef91fde5f592ff"
+  },
+  "services/activityLogger.js": {
+    "mtime": 1790501870.0,
+    "seen": 1791882506.8229103,
+    "ast_hash": "180edb55a0624e66d8851aac2a00de04",
+    "semantic_hash": "180edb55a0624e66d8851aac2a00de04"
+  },
+  "services/aiDataset/builder.js": {
+    "mtime": 1785925158.0,
+    "seen": 1791882506.8229108,
+    "ast_hash": "2044d4a717a111e705483f364fb396a3",
+    "semantic_hash": "2044d4a717a111e705483f364fb396a3"
+  },
+  "services/aiDataset/mapper.js": {
+    "mtime": 1785876890.0,
+    "seen": 1791882506.8229113,
+    "ast_hash": "27edad5338c23c89ac534e7bd70338c9",
+    "semantic_hash": "27edad5338c23c89ac534e7bd70338c9"
+  },
+  "services/aiDataset/preview.js": {
+    "mtime": 1785925183.0,
+    "seen": 1791882506.8229117,
+    "ast_hash": "5b861279283edaa394a8ea9c3d600d98",
+    "semantic_hash": "5b861279283edaa394a8ea9c3d600d98"
+  },
+  "services/aiDataset/schema.js": {
+    "mtime": 1785876043.0,
+    "seen": 1791882506.8229122,
+    "ast_hash": "34040b71c5b02931677f265a0cfac4fa",
+    "semantic_hash": "34040b71c5b02931677f265a0cfac4fa"
+  },
+  "services/aiDataset/transport/googleSheets.js": {
+    "mtime": 1785933404.0,
+    "seen": 1791882506.8229127,
+    "ast_hash": "74c0bb730adc40b67c0b44e50f66bbc2",
+    "semantic_hash": "74c0bb730adc40b67c0b44e50f66bbc2"
+  },
+  "services/aiDataset/validator.js": {
+    "mtime": 1785876237.0,
+    "seen": 1791882506.8229132,
+    "ast_hash": "b4d4a0d81dcf6fcf6d0c97e78e0a6733",
+    "semantic_hash": "b4d4a0d81dcf6fcf6d0c97e78e0a6733"
+  },
+  "services/analyticsHelper.js": {
+    "mtime": 1788889947.0,
+    "seen": 1791882506.8229141,
+    "ast_hash": "8c5cf544982225eb2e2a82183dcb277d",
+    "semantic_hash": "8c5cf544982225eb2e2a82183dcb277d"
+  },
+  "services/analyticsService.js": {
+    "mtime": 1788889989.0,
+    "seen": 1791882506.8229146,
+    "ast_hash": "fd3a7cf49d03437a7bf9e03f61706552",
+    "semantic_hash": "fd3a7cf49d03437a7bf9e03f61706552"
+  },
+  "services/appUsageTracker.js": {
+    "mtime": 1790453314.0,
+    "seen": 1791882506.822915,
+    "ast_hash": "669bb1f4feb7703f027c597e36f697e3",
+    "semantic_hash": "669bb1f4feb7703f027c597e36f697e3"
+  },
+  "services/auditClient.js": {
+    "mtime": 1790872807.4452872,
+    "seen": 1791882506.8229156,
+    "ast_hash": "213b8102ec47da6a14377f682c835a3b",
+    "semantic_hash": "213b8102ec47da6a14377f682c835a3b"
+  },
+  "services/auditLog.js": {
+    "mtime": 1790873760.5935812,
+    "seen": 1791882506.822916,
+    "ast_hash": "864d9ac54176c237b54dc742f4474af8",
+    "semantic_hash": "864d9ac54176c237b54dc742f4474af8"
+  },
+  "services/backupRestore.js": {
+    "mtime": 1790869478.8181188,
+    "seen": 1791882506.8229165,
+    "ast_hash": "4ce2deae6178c973b3a712b4afc44eb1",
+    "semantic_hash": "4ce2deae6178c973b3a712b4afc44eb1"
+  },
+  "services/calendarGrid.js": {
+    "mtime": 1790855597.0317576,
+    "seen": 1791882506.8229172,
+    "ast_hash": "89818bcccab1c7399b7e9c78bcd1df6b",
+    "semantic_hash": "89818bcccab1c7399b7e9c78bcd1df6b"
+  },
+  "services/dailySubmitPriority.js": {
+    "mtime": 1790501804.0,
+    "seen": 1791882506.8229177,
+    "ast_hash": "c7988b3c07860c2c465a7ce2c3c117e5",
+    "semantic_hash": "c7988b3c07860c2c465a7ce2c3c117e5"
+  },
+  "services/deviceRegistry.js": {
+    "mtime": 1791906477.04984,
+    "seen": 1791906506.840229,
+    "ast_hash": "e0b050339344a3c13d4c32b1cc934f74",
+    "semantic_hash": ""
+  },
+  "services/dhakaTime.js": {
+    "mtime": 1790501870.0,
+    "seen": 1791882506.8229191,
+    "ast_hash": "50be750fb06652cabac77decb5d47d4c",
+    "semantic_hash": "50be750fb06652cabac77decb5d47d4c"
+  },
+  "services/firebaseAppConfig.js": {
+    "mtime": 1790598409.3297453,
+    "seen": 1791882506.8229196,
+    "ast_hash": "2bcbf53e82d1f09f5e4d3e4f5967cba1",
+    "semantic_hash": "2bcbf53e82d1f09f5e4d3e4f5967cba1"
+  },
+  "services/firebaseAuth.js": {
+    "mtime": 1790453314.0,
+    "seen": 1791882506.82292,
+    "ast_hash": "4b060557f07e3503ac45a03a9c64d47d",
+    "semantic_hash": "4b060557f07e3503ac45a03a9c64d47d"
+  },
+  "services/firebaseDayRestore.js": {
+    "mtime": 1790865584.0796733,
+    "seen": 1791882506.8229208,
+    "ast_hash": "9d615bf45a39feee15adab6084c21b59",
+    "semantic_hash": "9d615bf45a39feee15adab6084c21b59"
+  },
+  "services/localToSupabase.js": {
+    "mtime": 1790873518.2350807,
+    "seen": 1791882506.8229213,
+    "ast_hash": "780538372700ecf41dfa6ee9a14df9a4",
+    "semantic_hash": "780538372700ecf41dfa6ee9a14df9a4"
+  },
+  "services/orderTelemetry.js": {
+    "mtime": 1791057428.767408,
+    "seen": 1791882506.8229218,
+    "ast_hash": "bde29c562d094d9a9e679dc737268c72",
+    "semantic_hash": "bde29c562d094d9a9e679dc737268c72"
+  },
+  "services/printer/index.js": {
+    "mtime": 1790160240.0,
+    "seen": 1791882506.8229222,
+    "ast_hash": "082c5ba9022fcf5a01a5579a64aeab93",
+    "semantic_hash": "082c5ba9022fcf5a01a5579a64aeab93"
+  },
+  "services/printer/printerButtonStates.js": {
+    "mtime": 1790120561.0,
+    "seen": 1791882506.8229227,
+    "ast_hash": "99675d4941d76540d7f4a31e5e8283b2",
+    "semantic_hash": "99675d4941d76540d7f4a31e5e8283b2"
+  },
+  "services/printer/printerDiagnostic.js": {
+    "mtime": 1790160240.0,
+    "seen": 1791882506.8229232,
+    "ast_hash": "5731380c53466c50aea6b9572907fec3",
+    "semantic_hash": "5731380c53466c50aea6b9572907fec3"
+  },
+  "services/printer/printerManager.js": {
+    "mtime": 1790190357.0,
+    "seen": 1791882506.8229237,
+    "ast_hash": "f328a89463301f953048838404afd2a3",
+    "semantic_hash": "f328a89463301f953048838404afd2a3"
+  },
+  "services/printer/printerSettings.js": {
+    "mtime": 1790100114.0,
+    "seen": 1791882506.8229244,
+    "ast_hash": "a5c7e497447357afb11bc67f8c8927f5",
+    "semantic_hash": "a5c7e497447357afb11bc67f8c8927f5"
+  },
+  "services/printer/printerTransport.js": {
+    "mtime": 1790121960.0,
+    "seen": 1791882506.8229249,
+    "ast_hash": "11745b4860dbf796efe4deb289f960be",
+    "semantic_hash": "11745b4860dbf796efe4deb289f960be"
+  },
+  "services/printer/receiptData.js": {
+    "mtime": 1790103142.0,
+    "seen": 1791882506.8229253,
+    "ast_hash": "d7a0eca36c36a68c7a584fd4f43bfca7",
+    "semantic_hash": "d7a0eca36c36a68c7a584fd4f43bfca7"
+  },
+  "services/printerService.js": {
+    "mtime": 1791891996.3232043,
+    "seen": 1791892024.2015908,
+    "ast_hash": "71d86802ab5bf6b6ec2e25cfb62f3c9b",
+    "semantic_hash": ""
+  },
+  "services/realtimeSignal.js": {
+    "mtime": 1791053682.951287,
+    "seen": 1791882506.822926,
+    "ast_hash": "ce249f5773f0176455447cb49c308a3b",
+    "semantic_hash": "ce249f5773f0176455447cb49c308a3b"
+  },
+  "services/supabaseClient.js": {
+    "mtime": 1791901812.2946765,
+    "seen": 1791901827.4900675,
+    "ast_hash": "2dfdd94c33100a4a9ddfe8398897cc99",
+    "semantic_hash": ""
+  },
+  "services/supabaseDeviceControl.js": {
+    "mtime": 1790453314.0,
+    "seen": 1791882506.822927,
+    "ast_hash": "d544c41363114b7f4dc76ffd9617fb5f",
+    "semantic_hash": "d544c41363114b7f4dc76ffd9617fb5f"
+  },
+  "services/supabaseHeartbeat.js": {
+    "mtime": 1790869364.2617493,
+    "seen": 1791882506.8229277,
+    "ast_hash": "b15a71107de38876e5f13a922defe7be",
+    "semantic_hash": "b15a71107de38876e5f13a922defe7be"
+  },
+  "services/supabaseSync.js": {
+    "mtime": 1791891206.5578835,
+    "seen": 1791891221.645858,
+    "ast_hash": "6cdc83314b9abe09dd0dd26a9417fd36",
+    "semantic_hash": ""
+  },
+  "services/supabaseSyncQueue.js": {
+    "mtime": 1790604211.6497688,
+    "seen": 1791882506.8229287,
+    "ast_hash": "31f7da1bc39c43df5ecc138def3b08d0",
+    "semantic_hash": "31f7da1bc39c43df5ecc138def3b08d0"
+  },
+  "services/syncHealthModel.js": {
+    "mtime": 1790855759.5694401,
+    "seen": 1791882506.8229291,
+    "ast_hash": "b9817275facea0d5649cdfa74787436c",
+    "semantic_hash": "b9817275facea0d5649cdfa74787436c"
+  },
+  "services/tombstoneStore.js": {
+    "mtime": 1790535561.674622,
+    "seen": 1791882506.8229296,
+    "ast_hash": "9b626e3c877e2966005549ff8c89933a",
+    "semantic_hash": "9b626e3c877e2966005549ff8c89933a"
+  },
+  "tests/adminDashboardMerge.test.js": {
+    "mtime": 1790499498.0,
+    "seen": 1791882506.82293,
+    "ast_hash": "0a8444a4dcfd29a829240a8e69bf7197",
+    "semantic_hash": "0a8444a4dcfd29a829240a8e69bf7197"
+  },
+  "tests/adminNotificationPanel.test.js": {
+    "mtime": 1791056423.2155294,
+    "seen": 1791882506.8229303,
+    "ast_hash": "3f98e1253bab175a8f63ae81948b6ddc",
+    "semantic_hash": "3f98e1253bab175a8f63ae81948b6ddc"
+  },
+  "tests/dailySubmitAutoPullSync.test.js": {
+    "mtime": 1791051753.483297,
+    "seen": 1791882506.822931,
+    "ast_hash": "cb0432d9995f18117ec4bd0a9568be17",
+    "semantic_hash": "cb0432d9995f18117ec4bd0a9568be17"
+  },
+  "tests/dailySubmitLockAndBanner.test.js": {
+    "mtime": 1791047344.2215278,
+    "seen": 1791882506.8229315,
+    "ast_hash": "e4fe6b412a3121a45df88005bdb0ece2",
+    "semantic_hash": "e4fe6b412a3121a45df88005bdb0ece2"
+  },
+  "tests/forceLogoutAndMetadataSync.test.js": {
+    "mtime": 1790609263.006387,
+    "seen": 1791882506.8229322,
+    "ast_hash": "da585cc8e86eb867f1fa5da99e58bcda",
+    "semantic_hash": "da585cc8e86eb867f1fa5da99e58bcda"
+  },
+  "tests/orderTelemetry.test.js": {
+    "mtime": 1791057063.7215505,
+    "seen": 1791882506.8229327,
+    "ast_hash": "b137d09b0dcf0ca5485df6e9960fcae1",
+    "semantic_hash": "b137d09b0dcf0ca5485df6e9960fcae1"
+  },
+  "tests/pinLoginSyncCooldown.test.js": {
+    "mtime": 1791058215.9735887,
+    "seen": 1791882506.822933,
+    "ast_hash": "bc762b98822a53a5524bab48a735a60b",
+    "semantic_hash": "bc762b98822a53a5524bab48a735a60b"
+  },
+  "tests/autoPrintPolicy.test.js": {
+    "mtime": 1791883171.919656,
+    "seen": 1791885910.4759486,
+    "ast_hash": "00b005afa6ed3e003ccffff89f2e3141",
+    "semantic_hash": "00b005afa6ed3e003ccffff89f2e3141"
+  },
+  "AI_DATASET_E2E_REPORT.md": {
+    "mtime": 1791906486.0406752,
+    "seen": 1791906506.8402994,
+    "ast_hash": "84448e9819847313d6e04131f7e3c852",
+    "semantic_hash": ""
+  },
+  "ARCHITECTURE_CURRENT_STATE.md": {
+    "mtime": 1790869499.3661177,
+    "seen": 1791885910.4759545,
+    "ast_hash": "e8c0f74b94c74433406032560016796c",
+    "semantic_hash": "e8c0f74b94c74433406032560016796c"
+  },
+  "ARCHITECTURE_QUERY_PATTERNS.md": {
+    "mtime": 1790491774.0,
+    "seen": 1791885910.4759552,
+    "ast_hash": "ca71b6377dc6d2bb8ae1e860cda48bd3",
+    "semantic_hash": "ca71b6377dc6d2bb8ae1e860cda48bd3"
+  },
+  "BACKUP_NOTES.md": {
+    "mtime": 1789743159.0,
+    "seen": 1791885910.475956,
+    "ast_hash": "14912b8e1d636817e21160dd2ad8154f",
+    "semantic_hash": "14912b8e1d636817e21160dd2ad8154f"
+  },
+  "CHANGELOG.md": {
+    "mtime": 1785935473.0,
+    "seen": 1791885910.475957,
+    "ast_hash": "6abef8e589d84768798771e93f77958d",
+    "semantic_hash": "6abef8e589d84768798771e93f77958d"
+  },
+  "DATE_FIELD_ANALYSIS.md": {
+    "mtime": 1790492524.0,
+    "seen": 1791885910.4759579,
+    "ast_hash": "c3fedd9f25fb226a14969b63018f34bc",
+    "semantic_hash": "c3fedd9f25fb226a14969b63018f34bc"
+  },
+  "IMPLEMENTATION_PLAN.md": {
+    "mtime": 1790499480.0,
+    "seen": 1791885910.4759586,
+    "ast_hash": "4bd57587670c7991fa6f1bcf088fd045",
+    "semantic_hash": "4bd57587670c7991fa6f1bcf088fd045"
+  },
+  "MIGRATION_PROGRESS.md": {
+    "mtime": 1790869508.848838,
+    "seen": 1791885910.4759593,
+    "ast_hash": "db6148de6bc56572feb033890cfc53b5",
+    "semantic_hash": "db6148de6bc56572feb033890cfc53b5"
+  },
+  "PROJECT_DOCUMENTATION.md": {
+    "mtime": 1790869523.8880565,
+    "seen": 1791885910.47596,
+    "ast_hash": "44b4b4e4fe8e55c469dbad14869160fc",
+    "semantic_hash": "44b4b4e4fe8e55c469dbad14869160fc"
+  },
+  "README.md": {
+    "mtime": 1788898892.0,
+    "seen": 1791885910.4759607,
+    "ast_hash": "dc35458b79a299f763742b125a2e03a1",
+    "semantic_hash": "dc35458b79a299f763742b125a2e03a1"
+  },
+  "RLS_IMPLEMENTATION_PLAN.md": {
+    "mtime": 1790494537.0,
+    "seen": 1791885910.4759617,
+    "ast_hash": "12f4ad80096f2a86e13bdb768c3d7808",
+    "semantic_hash": "12f4ad80096f2a86e13bdb768c3d7808"
+  },
+  "VERSION_CONTROL_MIGRATION_NOTES.md": {
+    "mtime": 1790869516.1468196,
+    "seen": 1791885910.475963,
+    "ast_hash": "f182699b226c89bca550591d3ccb085f",
+    "semantic_hash": "f182699b226c89bca550591d3ccb085f"
+  },
+  "docs/ADMIN_DASHBOARD_REDESIGN_BACKUP.md": {
+    "mtime": 1789912417.0,
+    "seen": 1791885910.4759638,
+    "ast_hash": "f5938b077dbd00d37a0fbae5b3d1c1c2",
+    "semantic_hash": "f5938b077dbd00d37a0fbae5b3d1c1c2"
+  },
+  "docs/ANDROID_RELEASE_SIGNING_BACKUP.md": {
+    "mtime": 1790201666.0,
+    "seen": 1791885910.4759648,
+    "ast_hash": "5945d9708d9d39e5e70d34fbd11f3e42",
+    "semantic_hash": "5945d9708d9d39e5e70d34fbd11f3e42"
+  },
+  "docs/ANDROID_SIGNING_CONFLICT_RECOVERY.md": {
+    "mtime": 1790202722.0,
+    "seen": 1791885910.4759655,
+    "ast_hash": "3f7d4e66824b4b1f0a86349da7b29930",
+    "semantic_hash": "3f7d4e66824b4b1f0a86349da7b29930"
+  },
+  "docs/COMPLETE_APP_FEATURE_DATA_INVENTORY.md": {
+    "mtime": 1790499480.0,
+    "seen": 1791885910.4759665,
+    "ast_hash": "1dafbcb8d6ca74c173d97e6528f27186",
+    "semantic_hash": "1dafbcb8d6ca74c173d97e6528f27186"
+  },
+  "docs/SIGNING_KEYS_BACKUP.md": {
+    "mtime": 1790199854.0,
+    "seen": 1791885910.4759672,
+    "ast_hash": "44d12167f89b9c978e90bc50f3d68025",
+    "semantic_hash": "44d12167f89b9c978e90bc50f3d68025"
+  },
+  "services/aiDataset/README.md": {
+    "mtime": 1785875478.0,
+    "seen": 1791885910.4759684,
+    "ast_hash": "c61e7fad11c9495d10e7edb6a453ad23",
+    "semantic_hash": "c61e7fad11c9495d10e7edb6a453ad23"
+  },
+  "assets/android-icon-background.png": {
+    "mtime": 1780078202.0,
+    "seen": 1791885910.475969,
+    "ast_hash": "2d65569cc0e2afdcea0af9f9902d4173",
+    "semantic_hash": "2d65569cc0e2afdcea0af9f9902d4173"
+  },
+  "assets/android-icon-foreground.png": {
+    "mtime": 1780078202.0,
+    "seen": 1791885910.4759698,
+    "ast_hash": "72e71a9c846c6aa4ae32476641a00e18",
+    "semantic_hash": "72e71a9c846c6aa4ae32476641a00e18"
+  },
+  "assets/android-icon-monochrome.png": {
+    "mtime": 1780078202.0,
+    "seen": 1791885910.4759705,
+    "ast_hash": "1e097dab989759fc0b69440092ca22cd",
+    "semantic_hash": "1e097dab989759fc0b69440092ca22cd"
+  },
+  "assets/favicon.png": {
+    "mtime": 1780078202.0,
+    "seen": 1791885910.4759712,
+    "ast_hash": "d9f444efbdfbe7931aa93beada07318a",
+    "semantic_hash": "d9f444efbdfbe7931aa93beada07318a"
+  },
+  "assets/icon.png": {
+    "mtime": 1780078202.0,
+    "seen": 1791885910.4759722,
+    "ast_hash": "cb975bba2216ce10a60e6c0ffe9941a2",
+    "semantic_hash": "cb975bba2216ce10a60e6c0ffe9941a2"
+  },
+  "assets/splash-icon.png": {
+    "mtime": 1780078202.0,
+    "seen": 1791885910.475973,
+    "ast_hash": "97dae5a0e62ad8551d8a31897b425e63",
+    "semantic_hash": "97dae5a0e62ad8551d8a31897b425e63"
+  },
+  "image/logo.jpeg": {
+    "mtime": 1788899166.0,
+    "seen": 1791885910.4759738,
+    "ast_hash": "9379cfbcd47ae343c513b8b0605b1e7c",
+    "semantic_hash": "9379cfbcd47ae343c513b8b0605b1e7c"
+  },
+  "image/mylogo.png": {
+    "mtime": 1788899166.0,
+    "seen": 1791885910.4759746,
+    "ast_hash": "ffd0a37da7ee2691ac9cdb6680eac185",
+    "semantic_hash": "ffd0a37da7ee2691ac9cdb6680eac185"
+  },
+  "PG_CRON_CHECK.sql": {
+    "mtime": 1790499138.0,
+    "seen": 1791885910.4758399,
+    "ast_hash": "7acbaab6248f2b4785ef19141e5d76fb",
+    "semantic_hash": "7acbaab6248f2b4785ef19141e5d76fb"
+  },
+  "supabase_audit_fix_rls.sql": {
+    "mtime": 1790872818.5152988,
+    "seen": 1791885910.475941,
+    "ast_hash": "5248f879eacf8c40cc95cd4b37bea192",
+    "semantic_hash": "5248f879eacf8c40cc95cd4b37bea192"
+  },
+  "supabase_audit_setup.sql": {
+    "mtime": 1790872807.447155,
+    "seen": 1791885910.4759421,
+    "ast_hash": "69c8fb78e633fc2f1a33445c8ec885bd",
+    "semantic_hash": "69c8fb78e633fc2f1a33445c8ec885bd"
+  },
+  "supabase_cleanup_stray_tombstones.sql": {
+    "mtime": 1790855361.71056,
+    "seen": 1791885910.4759426,
+    "ast_hash": "8302d944eabb47fae72f3b796940a4d1",
+    "semantic_hash": "8302d944eabb47fae72f3b796940a4d1"
+  },
+  "supabase_cron.sql": {
+    "mtime": 1790542567.3275683,
+    "seen": 1791885910.4759433,
+    "ast_hash": "3db988b71ff20154e64dd5755a19c215",
+    "semantic_hash": "3db988b71ff20154e64dd5755a19c215"
+  },
+  "supabase_full_setup.sql": {
+    "mtime": 1790889692.9742458,
+    "seen": 1791885910.4759443,
+    "ast_hash": "a4310d5bde9b99f3e3e64e6c4ad25706",
+    "semantic_hash": "a4310d5bde9b99f3e3e64e6c4ad25706"
+  },
+  "supabase_reset_audit_project.sql": {
+    "mtime": 1790889056.4842203,
+    "seen": 1791885910.475945,
+    "ast_hash": "1b062cb4d3858e98b72e10b5a6d152b8",
+    "semantic_hash": "1b062cb4d3858e98b72e10b5a6d152b8"
+  },
+  "supabase_rls.sql": {
+    "mtime": 1790534506.976099,
+    "seen": 1791885910.4759455,
+    "ast_hash": "fa63375b0354ae9d04fcac6f0c9d7ecf",
+    "semantic_hash": "fa63375b0354ae9d04fcac6f0c9d7ecf"
+  },
+  "SESSION_UPDATES_SUMMARY.md": {
+    "mtime": 1791884902.0749943,
+    "seen": 1791885910.4759624,
+    "ast_hash": "bc269707aab1810b273d9f32179aeeed",
+    "semantic_hash": "bc269707aab1810b273d9f32179aeeed"
+  },
+  "website.md": {
+    "mtime": 1791895693.5126128,
+    "seen": 1791901513.8857605,
+    "ast_hash": "164c6b8889d1e52e4d8122cff1f33a53",
+    "semantic_hash": ""
+  },
+  "read/WhatsApp Image 2026-10-13 at 8.03.18 PM.jpeg": {
+    "mtime": 1791900776.7931561,
+    "seen": 1791901513.885771,
+    "ast_hash": "f76ae31ec39bd020184778fb6f67a9c4",
+    "semantic_hash": ""
+  }
+}
