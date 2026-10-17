@@ -75,7 +75,7 @@ module.exports = ({ config }) => {
     ...config,
     name: pConfig.name,
     slug: pConfig.slug,
-    version: config.version || '1.0.9',
+    version: config.version || '1.0.10',
     runtimeVersion: '1.0.0',
     orientation: 'portrait',
     icon: iconPath,
@@ -107,7 +107,7 @@ module.exports = ({ config }) => {
         foregroundImage: iconPath
       },
       package: pConfig.package,
-      versionCode: config.android?.versionCode || 12,
+      versionCode: config.android?.versionCode || 13,
       // Bluetooth thermal-printer access. BLUETOOTH_SCAN/CONNECT are runtime
       // permissions on Android 12+ and are requested in-app before scanning.
       permissions: [
