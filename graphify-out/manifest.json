@@ -78,9 +78,9 @@
     "semantic_hash": "7e95c976bab9079e560e3a4ce8211253"
   },
   "components/ReceiptPaper.js": {
-    "mtime": 1791906548.3816426,
-    "seen": 1791906581.3112261,
-    "ast_hash": "290aeefa54487adc2bd40462d98ab9cf",
+    "mtime": 1792324587.4485927,
+    "seen": 1792324696.1398444,
+    "ast_hash": "da35d84ee72d295026c4abc7c45b0698",
     "semantic_hash": ""
   },
   "components/SalesReportModal.js": {
@@ -600,9 +600,9 @@
     "semantic_hash": "d7a0eca36c36a68c7a584fd4f43bfca7"
   },
   "services/printerService.js": {
-    "mtime": 1791906548.3817818,
-    "seen": 1791906581.3113492,
-    "ast_hash": "5bfa2c7cc25e57782d2073ee912bbea3",
+    "mtime": 1792324587.4488351,
+    "seen": 1792324696.1399183,
+    "ast_hash": "038b36e297d252375cb0f8a7da36b2d2",
     "semantic_hash": ""
   },
   "services/realtimeSignal.js": {
@@ -702,9 +702,9 @@
     "semantic_hash": "00b005afa6ed3e003ccffff89f2e3141"
   },
   "AI_DATASET_E2E_REPORT.md": {
-    "mtime": 1791906560.5287302,
-    "seen": 1791906581.3113794,
-    "ast_hash": "84448e9819847313d6e04131f7e3c852",
+    "mtime": 1792324641.2147727,
+    "seen": 1792324696.1399415,
+    "ast_hash": "ba107f505caa4d69082f2b8942c54105",
     "semantic_hash": ""
   },
   "ARCHITECTURE_CURRENT_STATE.md": {
@@ -756,10 +756,10 @@
     "semantic_hash": "44b4b4e4fe8e55c469dbad14869160fc"
   },
   "README.md": {
-    "mtime": 1788898892.0,
-    "seen": 1791885910.4759607,
-    "ast_hash": "dc35458b79a299f763742b125a2e03a1",
-    "semantic_hash": "dc35458b79a299f763742b125a2e03a1"
+    "mtime": 1792269396.6550531,
+    "seen": 1792324696.1399493,
+    "ast_hash": "42137cfaec73337643416a9324e8df86",
+    "semantic_hash": ""
   },
   "RLS_IMPLEMENTATION_PLAN.md": {
     "mtime": 1790494537.0,
@@ -921,6 +921,12 @@
     "mtime": 1791900776.7931561,
     "seen": 1791901513.885771,
     "ast_hash": "f76ae31ec39bd020184778fb6f67a9c4",
+    "semantic_hash": ""
+  },
+  "AGENTS.md": {
+    "mtime": 1792267846.5976243,
+    "seen": 1792324696.13994,
+    "ast_hash": "2c355f9b2a6f62b781ae1225e348b301",
     "semantic_hash": ""
   }
 }

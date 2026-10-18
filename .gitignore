@@ -1,73 +1,14 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+# FULL-BACKUP POLICY (private repo)
+# Everything is committed so a fresh clone can build and run immediately —
+# including .env, credentials/ (signing keystores + passwords), android/, tests/.
+# Keep this repository PRIVATE: it now contains the app signing keys.
 
-# dependencies
+# dependencies (restore with `npm install`)
 node_modules/
 
-# Expo
-.expo/
-dist/
-web-build/
-expo-env.d.ts
-
-# Native
-.kotlin/
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
-
-# Metro
-.metro-health-check*
-
-# debug
-npm-debug.*
-yarn-debug.*
-yarn-error.*
-
-# macOS
-.DS_Store
-*.pem
-
-# local env files
-.env
-.env*.local
-
-# typescript
-*.tsbuildinfo
-
-# generated native folders
-/ios
-/android
-
-# backup and internal folders
-.backups/
-.commandcode/
-.claude/
-.idea/
-
-# tests (keep locally, not in repo)
-tests/
-
-# Debug and audit files
-audit_out.txt
-firestore_count.js
-
-# Credentials (keep credentials.example.json as template only)
-credentials.json
-credentials.*.json
-credentials/*.json
-credentials/**/*.json
-credentials/*.jks
-credentials/**/*.jks
-credentials/android/*.jks
-credentials/*.p12
-credentials/**/*.p12
-credentials/*.key
-credentials/**/*.key
-
-
-# Binary APKs and signing backups
+# build output
 *.apk
-RONGDHONU_SIGNING_BACKUP_*/
+
+# Expo's local cache is machine-specific and regenerated on every `expo start`;
+# keeping it out stops the working tree from going dirty after each run.
+.expo/

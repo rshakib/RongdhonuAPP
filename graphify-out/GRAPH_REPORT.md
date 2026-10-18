@@ -1,32 +1,32 @@
-# Graph Report - rong  (2026-10-13)
+# Graph Report - rong  (2026-10-18)
 
 ## Corpus Check
-- 145 files · ~358,660 words
+- 146 files · ~364,543 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 5 file(s) not represented in the graph (top: (none) 3, .ttf 1, .env 1)
 
 ## Summary
-- 2449 nodes · 5702 edges · 183 communities (134 shown, 49 thin omitted)
-- Extraction: 84% EXTRACTED · 16% INFERRED · 0% AMBIGUOUS · INFERRED: 897 edges (avg confidence: 0.94)
+- 2507 nodes · 5846 edges · 184 communities (135 shown, 49 thin omitted)
+- Extraction: 83% EXTRACTED · 17% INFERRED · 0% AMBIGUOUS · INFERRED: 983 edges (avg confidence: 0.94)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `54ae4828`
+- Built from commit: `1bea556b`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
-- react-native
+- printerManager.js
 - deviceRegistry.js
 - getFirestoreAuthHeaders
-- formatDisplayDate
-- 12. SCREENS INVENTORY
+- AdminDB.js
+- firebaseAppConfig.js
+- initDatabase
 - database.js
-- 10. database.js — COMPLETE METHOD REFERENCE
 - scripts
 - supabaseSyncQueue.js
 - Plan — Customer Online-Ordering Website + App Push Notifications
-- supabaseSync.js
+- Changelog
 - printerService.js
 - ActivityStreamScreen.js
 - enqueueSync
@@ -37,71 +37,71 @@
 - CHANGELOG
 - firebaseDayRestore.js
 - 13. COMPONENTS INVENTORY
-- AdminDB.js
+- supabaseClient.js
 - ManagerDashboard.js
 - SyncHealthScreen.js
 - expo
 - dailySubmitPriority.js
-- Read-routing gate (Firebase reads only on failure / >31-day data)
-- submitDailySheet
+- PHASE 1 — SUPABASE SCHEMA & TABLES
+- 1. Table-by-Table Field Analysis (15 Tables)
 - dependencies
 - 1. Complete Supabase Table Inventory (30 Tables)
 - runLiveHttpAudit.js
 - 3. Complete Feature Inventory
 - supabase_full_setup.sql
 - auditClient.js
-- localToSupabase.js
+- withTimeout
 - package.json
-- App
+- checkAndExecuteForceLogout
 - realtimeSignal.js
 - processAIDatasetQueue
-- SalesReportModal.js
+- syncHealthModel.js
 - Android Release Signing — Complete Backup & Recovery Guide
 - autoPrintPolicy.test.js
 - v1.9.1 — AI Dataset Phase 5.1 Monitor Enhancements
 - Rongdhonu Restaurant POS: Complete Application Feature, Data & Storage Inventory
-- OwnerExpenseScreen.js
+- OwnerExpenseScreen
 - executeInspectorQuery
-- withTimeout
+- AGENTS.md — Rongdhonu POS · Agent Guide & Full Setup
 - RONGDHONU POS — MASTER PROJECT DOCUMENTATION
 - backupRestore.js
 - RONGDHONU POS — CURRENT ARCHITECTURE STATE
 - MIGRATION_PROGRESS.md
-- v1.0.2 — Analytics & UI Polish
+- isSupabaseConfigured
 - PHASE 5 — ROLLING 31-DAY RETENTION (pg_cron)
 - Rongdhonu POS CHANGELOG
-- Changelog
+- EmployeeListScreen
 - PHASE 7 — RLS ENFORCEMENT (OPTION B, DEVICE-GATED)
 - RowDetailScreen.js
 - ref_fs
-- enqueueAIDatasetExport
+- v1.5.0 — AI Dataset Post-Release Refinements
 - CalendarPicker.js
 - AI Dataset Export & Google Sheets Pipeline Flow
 - AI Dataset Sync Module
 - builder.js
 - Signing Identity Matrix
-- orderTelemetry.test.js
+- TableDetailScreen.js
 - supabase_audit_setup.sql
 - adminDashboardMerge.test.js
-- getBusinessDate
+- orderTelemetry.test.js
 - PHASE 2 — LOCAL SCAFFOLDING + DUAL-WRITE QUEUE
 - DailyItemSalesReport.js
 - v1.0.5 — Login UI Refinements
 - 9. Complete System Data Flow Diagrams
-- 11. OTHER SERVICES
+- 20. Common tasks / recipes
 - রংধনু ক্যাফে এন্ড রেস্টুরেন্ট (Rongdhonu Café & Restaurant)
 - dailySubmitAutoPullSync.test.js
-- PastAccountModal.js
+- Supabase-Only Device Control System
 - Multi-Device Write Conflicts
-- 10.1. Complete Screen Index (All 37 Screens)
-- SupplierDueScreen.js
+- App.js
+- Category (A) — ALWAYS Recent-Only
 - Admin Dashboard Redesign — Backup Record
 - 10.3. Core Engine (`database.js`) Function Index
 - Phase 7 — RLS enforcement (Option B, device-gated)
 - dailySubmitLockAndBanner.test.js
-- runAutoPull
+- 3. Quick start (fresh machine, step by step)
 - Phase 3 — Read Routing (Supabase-Primary Pull)
-- fetchChangedRecordsFromFirestore
+- SupplierDueScreen.js
 - TimePicker.js
 - 11.1. Data Collection Categories
 - 6.2. Supabase Realtime Channels & WebSocket Topology
@@ -113,13 +113,13 @@
 - public.orders
 - adminNotificationPanel.test.js
 - App Icon - 1024x1024 full-bleed RGB app icon (no transparency): pale ice-blue background with a centered blue gradient (#2080E0 to #80C0E0) rounded chevron/peak brand glyph; the main Expo/iOS/Android launcher icon
-- Firestore Incremental Sync & Deletion Tombstone Flow
+- Firebase Cloud Firestore
 - ref_assert
 - pinLoginSyncCooldown.test.js
 - ActivityLogScreen.js
 - Daily Closing, Submit & Financial Reports
 - Device Hardware Identity & Fleet Control System
-- 2. Key Confirmed Decisions Log
+- PHASE 3 — READ ROUTING (SUPABASE-PRIMARY PULL + FIREBASE FALLBACK)
 - SQLite Schema & Sync Engine
 - Features
 - DeleteHistoryScreen.js
@@ -127,27 +127,28 @@
 - 13. Forensic Bug, Risk & Architectural Inconsistency Registry
 - Owner & Employee Private Finance Hub
 - Android Release Signing Keys Backup & Documentation
-- RONGDHONU POS — BUSINESS DATE & FIELD ANALYSIS FOR DATA RETENTION
+- PHASE 4 — CORRECTNESS & CONFLICT FIXES (PRE-RETENTION)
 - AI DATASET SUBSYSTEM — END-TO-END (E2E) VALIDATION REPORT
-- RONGDHONU POS — VERSION CONTROL SYSTEM (MIGRATION REFERENCE)
-- 3.B. Restaurant Operations / POS & Order Lifecycle
+- 8. SUPABASE
+- 18. Known issues / diagnostics
 - Expenses & Cash Drawer Management
 - v1.9.0 — AI Dataset Phase 5 Monitor Screen (Admin Only)
 - Midnight (12:00 AM) Business-Day Rollover
 - processSyncQueue
 - checkAppVersionPolicy
-- OrderDetailModal.js
+- v0.9.0 — POS Core, Sync Engine & ML Export Foundation
 - AI Dataset Sync & ML Export Module Architecture
-- AIDatasetAuditCenterScreen.js
+- 5. Firebase Cloud Firestore Master Inventory (All 24 Collections)
 - doPost
 - public.deliveries
 - public.devices
-- Firebase Anonymous Authentication (Phase 1)
-- 4. Version Control System (Firebase-only)
-- v2.0.4 — End-to-End (E2E) Pipeline Validation Suite & Final Release Certification
+- app_config Table
+- Phase 5 — Rolling 31-day retention (pg_cron) ✅
+- Getting Started
 - v1.7.0 — AI Dataset Post-Phase 3 Refinements
-- v2.0.0 — AI Dataset Phase 5.2 Audit Center & Transition to Data Collection Mode
-- v1.1.0 — Bengali Localization & Branding Standardization
+- v1.4.0 — AI Dataset Phase 2.5 Verification Suite
+- v2.0.1 — Circular Dependency Removal & Builder Dependency Injection
+- v2.0.5 — Navigation Audit & AdminDB Component Prop Fix
 - Menu & Catalog Management
 - schema.js
 - public.activity_logs
@@ -168,17 +169,17 @@
 1. `App()` - 167 edges
 2. `10. database.js — COMPLETE METHOD REFERENCE` - 89 edges
 3. `Changelog` - 75 edges
-4. `react-native` - 68 edges
-5. `enqueueSync()` - 63 edges
+4. `enqueueSync()` - 69 edges
+5. `react-native` - 68 edges
 6. `react` - 58 edges
 7. `scripts` - 53 edges
-8. `getBusinessDate()` - 49 edges
-9. `getDb()` - 48 edges
+8. `getDb()` - 49 edges
+9. `getBusinessDate()` - 49 edges
 10. `14. PRINTER SUBSYSTEM` - 48 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `6. ENTRY POINTS & NAVIGATION ARCHITECTURE` --references--> `AutoReceiptPrinter()`  [INFERRED]
-  PROJECT_DOCUMENTATION.md → components/AutoReceiptPrinter.js
+- `5.1. Authentication Architecture & Protocol` --references--> `toFirestoreDocument()`  [INFERRED]
+  docs/COMPLETE_APP_FEATURE_DATA_INVENTORY.md → database.js
 - `Channel 2: `device_cmd:{deviceId}`` --references--> `processSyncQueue()`  [INFERRED]
   docs/COMPLETE_APP_FEATURE_DATA_INVENTORY.md → database.js
 - `5.3. Deletion Tombstones Scheme` --references--> `syncDeletionsOnly()`  [INFERRED]
@@ -224,75 +225,75 @@
 - **Project backup and version control reference records** — backup_notes_firebase_anonymous_auth, docs_admin_dashboard_redesign_backup_admin_db, version_control_migration_notes_dual_db_setup [INFERRED 0.75]
 - **Android signing keystore backup, identity and recovery flow** — docs_android_release_signing_backup_keystore, docs_android_signing_conflict_recovery_conflict, docs_android_signing_conflict_recovery_identity_matrix, docs_signing_keys_backup_signing_key_matrix [INFERRED 0.85]
 
-## Communities (183 total, 49 thin omitted)
+## Communities (184 total, 49 thin omitted)
 
-### Community 0 - "react-native"
-Cohesion: 0.05
-Nodes (108): AutoReceiptPrinter(), styles, describe(), PrinterStatusBanner(), styles, PrintReceiptModal(), styles, BILL_SHOP_PHONE (+100 more)
+### Community 0 - "printerManager.js"
+Cohesion: 0.06
+Nodes (97): AutoReceiptPrinter(), styles, describe(), PrinterStatusBanner(), styles, 14. PRINTER SUBSYSTEM, 6. ENTRY POINTS & NAVIGATION ARCHITECTURE, react-native-view-shot (+89 more)
 
 ### Community 1 - "deviceRegistry.js"
-Cohesion: 0.05
-Nodes (96): 3.2 Supabase Tables Schema, 3.3 Full Device Lifecycle Flow, 3.4 Realtime Active/Last-Active Tracking, 3.5 Force Logout Implementation, 3.6 Supabase Client Configuration, 3. Device Control System (Supabase-only), ACTIVE_APP_PROFILE, getDb() (+88 more)
+Cohesion: 0.18
+Nodes (26): getDb(), 8.6 services/deviceRegistry.js — Full Method Reference, expo-device, DeviceManagementScreen(), styles, ACTION_TYPES, logActivity(), formatDurationBengali() (+18 more)
 
 ### Community 2 - "getFirestoreAuthHeaders"
-Cohesion: 0.15
-Nodes (29): checkFirestoreMenuItemExists(), cleanEnvVar(), fetchActivityLogsForDate(), fetchCollection(), fetchSingleDocFromFirestore(), restoreUsersOnlyForProfile(), testFirestoreConnection(), 5. ENVIRONMENT VARIABLES (+21 more)
+Cohesion: 0.09
+Nodes (43): 1.1 SDK Used — REST API Only (No Firebase JS SDK), 1.2 Firebase Project Collections, 1.3 Firebase Authentication, 1. Firebase Setup, 6.1 Firebase Call Failures, feat/firebase-anonymous-auth-phase1 Branch, Firebase Anonymous Authentication (Phase 1), Rollback Instructions (+35 more)
 
-### Community 3 - "formatDisplayDate"
-Cohesion: 0.18
-Nodes (17): DepositReportModal(), monthNamesBangla, styles, formatDisplayDate(), verifyPinCode(), exportDepositReportPDF(), exportSalesReportPDF(), generateAndSharePDF() (+9 more)
+### Community 3 - "AdminDB.js"
+Cohesion: 0.09
+Nodes (40): DepositReportModal(), monthNamesBangla, styles, formatCardDate(), formatShortDayMonth(), getTableBadgeStyle(), monthNamesShort, SalesReportModal() (+32 more)
 
-### Community 4 - "12. SCREENS INVENTORY"
-Cohesion: 0.12
-Nodes (37): 4.3 Login-Time Version Check — Exact Code Path, 6.2 New/moved code: `fetchVersionPolicyDualDB()` / `setVersionPolicyDualDB()`, Phase 6 — Version control migration ✅, Supabase-first dual-DB version policy (fetchVersionPolicyDualDB), 12. SCREENS INVENTORY, 7.3 services/firebaseAppConfig.js — Full Method Reference, AppUpdateRequiredScreen(), styles (+29 more)
+### Community 4 - "firebaseAppConfig.js"
+Cohesion: 0.06
+Nodes (60): 4.1 Where Version is Stored in Firebase, 4.2 App Version Source, 4.3 Login-Time Version Check — Exact Code Path, 4. Version Control System (Firebase-only), checkUserExists(), getUserByUsername(), verifyUserLogin(), 6.1 Supabase table (from Phase 1) (+52 more)
 
-### Community 5 - "database.js"
+### Community 5 - "initDatabase"
 Cohesion: 0.08
-Nodes (41): APP_PROFILES, attachAuditPreImageCapture(), BD_HOLIDAYS, captureHourlyWeather(), DEFAULT_MENU, getAuditModule(), getDailySubmitPriority(), getFailedQueueRetryDelayMs() (+33 more)
+Nodes (45): 5.2 SQLite (local source of truth), 5.6 PUSH (writes), getDailySubmitPriority(), getPersistentDeviceId(), initDatabase(), migrateAIDatasetTables(), migrateDailySubmitPriorityTiebreaker(), migrateDailySubmitUnified() (+37 more)
 
-### Community 6 - "10. database.js — COMPLETE METHOD REFERENCE"
-Cohesion: 0.08
-Nodes (52): 3.1 Confirmation: Is ANY Part in Firebase?, A5. `OwnerFinanceDashboard.js` — Owner Monthly Finance, A6. `EmployeeDetailScreen.js` — Employee Detail + Ledger, clearDeadQueueItems(), deleteCompletedOrder(), deleteHomeDeposit(), deleteMenuItem(), deleteOwnerDepositByMonth() (+44 more)
+### Community 6 - "database.js"
+Cohesion: 0.05
+Nodes (81): App(), 3.1 Confirmation: Is ANY Part in Firebase?, A1. `AdminDB.js` — Main Dashboard, APP_PROFILES, applyAutoIjaraImmediately(), attachAuditPreImageCapture(), BD_HOLIDAYS, calculateAndStoreNextDayIjara() (+73 more)
 
 ### Community 7 - "scripts"
 Cohesion: 0.04
 Nodes (53): scripts, android, build:admin:local, build:manager:local, build:owner:local, ios, start, test:activity (+45 more)
 
 ### Community 8 - "supabaseSyncQueue.js"
-Cohesion: 0.10
-Nodes (30): startSyncService(), 2.3 New file: `services/supabaseSyncQueue.js`, 2.5 `App.js` changes, 2.9 Supabase-down test, Pre-Phase-2 backfill gap (FK violation on owner_salary_ledger), Phase 2 — Local scaffolding + dual-write queue ✅, services/supabaseBackfill.js (added then removed), isSupabaseSyncEnabled() (+22 more)
+Cohesion: 0.11
+Nodes (17): isSupabaseSyncEnabled(), readHeaderFrom(), SUPABASE_TIMEOUT_MS, defaultGetClient(), defaultGetDb(), defaultIsConfigured(), defaultIsEnabled(), deps (+9 more)
 
 ### Community 9 - "Plan — Customer Online-Ordering Website + App Push Notifications"
 Cohesion: 0.08
 Nodes (25): A1. Tables (idempotent SQL in new file `supabase_online_setup.sql`), A2. Public (anon) surface, A3. Management/auth surface (used by the app), A4. Storage, A5. Push sender — Edge Function + DB webhook, Architecture at a glance, B1. Dependencies / native config (requires rebuild), B2. New service `services/onlineProject.js` — the second Supabase client (+17 more)
 
-### Community 10 - "supabaseSync.js"
-Cohesion: 0.09
-Nodes (37): 3.1 New file: `services/supabaseSync.js`, Cross-backend flicker bug (shared is_synced flag), DEFERRED — resilience / restore trade-offs (2026-09-27 · accepted, KNOWN TRADE-OFFS, not bugs), Per-backend is_synced_supabase flag, Phase 3 — Read routing (Supabase-primary pull + Firebase fallback) ✅, Running cart stored in restaurant_tables.items (JSON), not order_items, advanceMarker(), ALLOW_AUTO_FIREBASE_READ (+29 more)
+### Community 10 - "Changelog"
+Cohesion: 0.06
+Nodes (65): 20.2 Add a new synced table, 5.7 PULL (reads), createAdaptivePoller(), NotificationToast(), refreshMenuFromCloud(), reportPull(), runAutoPull(), runFirebasePullIfSupabaseDown() (+57 more)
 
 ### Community 11 - "printerService.js"
-Cohesion: 0.10
-Nodes (37): { formatReceiptText }, line(), main(), makeRecordingTransport(), makeStorage(), now, printer, settings (+29 more)
+Cohesion: 0.08
+Nodes (44): 20.5 Add a receipt line, 5.10 Printer / receipts, BILL_SHOP_PHONE, DEFAULT_SHOP_PHONE, ReceiptPaper, styles, THERMAL_BOLD, { formatReceiptText } (+36 more)
 
 ### Community 12 - "ActivityStreamScreen.js"
 Cohesion: 0.10
 Nodes (39): ACTION_THEME, actionTheme(), ActivityStreamScreen(), APP_WORDS, appWord(), asObject(), clockOf(), dayOf() (+31 more)
 
 ### Community 13 - "enqueueSync"
-Cohesion: 0.13
-Nodes (21): 5.1 Menu Items, A3. `deliveries`, addMenuItem(), changeUserPin(), cleanupDuplicateMenuItems(), completeDelivery(), createDelivery(), createUser() (+13 more)
+Cohesion: 0.09
+Nodes (45): 17. Session log — changes already made (do not undo blindly), 19. Gotchas discovered so far, A1. `orders` (+ `order_items`, `payments`), A3. `deliveries`, addCompletedOrder(), calculateAndSaveDailySummary(), changeUserPin(), completeDelivery() (+37 more)
 
 ### Community 14 - "syncCollections"
-Cohesion: 0.39
-Nodes (17): 2.5 Pull Polling Intervals — Exact Current Values, executeManualPull(), getActiveProfileConfig(), incrementReadCounter(), recordAutoSyncEvent(), syncCollections(), syncDailyAndMenuFromFirebase(), syncDeletionsOnly() (+9 more)
+Cohesion: 0.33
+Nodes (20): 2.5 Pull Polling Intervals — Exact Current Values, executeManualPull(), getActiveProfileConfig(), incrementReadCounter(), recordAutoSyncEvent(), restoreDatabaseFromCloud(), restoreFirebaseFromCloud(), syncCollections() (+12 more)
 
 ### Community 15 - "4. Complete SQLite Data Inventory (All 35 Tables)"
 Cohesion: 0.06
 Nodes (36): 4.10. Table: `menu_categories`, 4.11. Table: `menu_items`, 4.12. Table: `due_payments`, 4.13. Table: `eja_history`, 4.14. Table: `off_days`, 4.15. Table: `weather_data`, 4.16. Table: `sync_queue`, 4.17. Table: `notifications` (+28 more)
 
 ### Community 16 - "auditLog.js"
-Cohesion: 0.12
-Nodes (31): AUDIT_EXCLUDED_TABLES, buildChanges(), capturePreImage(), DEFAULT_DEPS, deps, extractIdParam(), flushAuditOutbox(), identityCache (+23 more)
+Cohesion: 0.11
+Nodes (32): 7. Services inventory, AUDIT_EXCLUDED_TABLES, buildChanges(), capturePreImage(), DEFAULT_DEPS, deps, extractIdParam(), flushAuditOutbox() (+24 more)
 
 ### Community 17 - "Android Signing Conflict Incident, Diagnosis & Recovery Guide"
 Cohesion: 0.06
@@ -300,43 +301,43 @@ Nodes (31): 10. Common Mistakes to Avoid, 11. Emergency Recovery Procedures, 12.
 
 ### Community 18 - "CHANGELOG"
 Cohesion: 0.07
-Nodes (29): Added, Added, Added, Added, Added, Added, Changed, Changed (+21 more)
+Nodes (28): Added, Added, Added, Added, Added, Added, Added, Changed (+20 more)
 
 ### Community 19 - "firebaseDayRestore.js"
 Cohesion: 0.12
-Nodes (24): BackupRestoreScreen(), styles, cleanupInspectBackup(), BACKFILL_ORDER, dayBounds(), deps, fetchTableDay(), FIREBASE_DAY_SPECS (+16 more)
+Nodes (24): BackupRestoreScreen(), styles, cleanupInspectBackup(), BACKFILL_ORDER, dayBounds(), defaultFetchRows(), deps, fetchTableDay() (+16 more)
 
 ### Community 20 - "13. COMPONENTS INVENTORY"
 Cohesion: 0.42
 Nodes (12): ActiveOrdersCard(), ActiveTablesCard(), BaseStatCard(), BENGALI_MONTHS, DigitalBreakdownModal(), getCurrentBengaliMonth(), MonthlyTotalCard(), styles (+4 more)
 
-### Community 21 - "AdminDB.js"
-Cohesion: 0.18
-Nodes (17): buildPullTypeClause(), deleteDataByDate(), formatDisplayTime(), getFirebaseUsageStats(), getSessionPullNotificationCount(), getSessionPullNotifications(), getSessionPullTypeCounts(), inspectDatabaseStats() (+9 more)
+### Community 21 - "supabaseClient.js"
+Cohesion: 0.14
+Nodes (23): 10.2. Modular Services Index (All 15 Services), 7.2 Client-side header injection, OPEN TECHNICAL QUESTIONS & RISKS (not covered by the decisions), Phase 7 — Stage 2 root cause (evidence, not a guess), triggerGlobalForceLogout(), buildClient(), getSupabaseClient(), resilientFetch() (+15 more)
 
 ### Community 22 - "ManagerDashboard.js"
-Cohesion: 0.14
-Nodes (18): 7.1 Single Codebase, Profile-Based Builds, 7.2 Where Role/App-Type is Determined, 7.3 Sync Differences Per Profile, 7.4 Screen Routing by Role, 7. The 3 Apps — Admin / Manager / Owner, DRAWER_WIDTH, ManagerSideMenu(), MenuIcon() (+10 more)
+Cohesion: 0.09
+Nodes (31): 7.2 Where Role/App-Type is Determined, 7.4 Screen Routing by Role, DRAWER_WIDTH, ManagerSideMenu(), MenuIcon(), MenuRow(), styles, { width: SCREEN_WIDTH } (+23 more)
 
 ### Community 23 - "SyncHealthScreen.js"
-Cohesion: 0.07
-Nodes (35): clockOf(), DUAL_TABLES, LIVE_REFRESH_MS, loadDeviceNames(), readDbIdentity(), readLastPushed(), readLocalState(), safeQ() (+27 more)
+Cohesion: 0.13
+Nodes (19): clockOf(), DUAL_TABLES, LIVE_REFRESH_MS, loadDeviceNames(), readDbIdentity(), readLastPushed(), readLocalState(), safeQ() (+11 more)
 
 ### Community 24 - "expo"
 Cohesion: 0.08
 Nodes (24): backgroundColor, foregroundImage, adaptiveIcon, package, softwareKeyboardLayoutMode, versionCode, projectId, expo (+16 more)
 
 ### Community 25 - "dailySubmitPriority.js"
-Cohesion: 0.19
-Nodes (12): daily_submit deterministic priority tie-breaker (priority → submitted_at → device_id), Deferred conflict races (expenses stable-ID, supplier_payment_ledger INSERT-OR-REPLACE, supplier_due running balance), services/dhakaTime.js (getDhakaCalendarDate), Phase 4 — Correctness & conflict fixes (pre-retention), supabase_full_setup.sql (consolidated, idempotent), Tombstone resurrection / delete ping-pong bug, updateCompletedOrder tombstone-free wipe bug, compareDailySubmitPriority() (+4 more)
+Cohesion: 0.21
+Nodes (11): daily_submit deterministic priority tie-breaker (priority → submitted_at → device_id), Deferred conflict races (expenses stable-ID, supplier_payment_ledger INSERT-OR-REPLACE, supplier_due running balance), services/dhakaTime.js (getDhakaCalendarDate), Phase 4 — Correctness & conflict fixes (pre-retention), Tombstone resurrection / delete ping-pong bug, updateCompletedOrder tombstone-free wipe bug, compareDailySubmitPriority(), deviceIdOf() (+3 more)
 
-### Community 26 - "Read-routing gate (Firebase reads only on failure / >31-day data)"
-Cohesion: 0.10
-Nodes (24): EXPO_PUBLIC_SUPABASE_SYNC_ENABLED Kill Switch, ADMIN role / app profile, ALLOW_AUTO_FIREBASE_READ = false policy + FIREBASE_FIRST_SYNC_DAYS = 31, EXPO_PUBLIC_APP_PROFILE build profile (ADMIN / OWNER / MANAGER), Manual Cloud Restore / restoreDatabaseFromCloud (supabaseFirst), Four deferred resilience / restore trade-offs, Device Control stays 100% Supabase-only (permanent owner decision), Dual-write (parallel independent Firebase + Supabase queues) (+16 more)
+### Community 26 - "PHASE 1 — SUPABASE SCHEMA & TABLES"
+Cohesion: 0.08
+Nodes (30): 1.1 Scope of tables, 1.2 Files, 1.3 Key schema rules, 1.4 Pending decision gate (do NOT skip), 1.5 Firebase-untouched verification, 1.6 Supabase-down test, 1.7 Rollback, EXPO_PUBLIC_SUPABASE_SYNC_ENABLED Kill Switch (+22 more)
 
-### Community 27 - "submitDailySheet"
-Cohesion: 0.11
-Nodes (25): 2. Concurrent Edit / Multi-Device Write Conflicts, A1. `orders` (+ `order_items`, `payments`), A2. `restaurant_tables` (⚠️ HIGHEST OPERATIONAL RISK — but manageable), A4. `users`, A5. `menu_items`, `menu_categories`, A6. `owner_employees`, `owner_salary_ledger`, `owner_expenses`, `owner_deposits`, `owner_home_deposits`, A7. `due_payments`, A8. `eja_history` (Ijara history) (+17 more)
+### Community 27 - "1. Table-by-Table Field Analysis (15 Tables)"
+Cohesion: 0.05
+Nodes (43): 2. Concurrent Edit / Multi-Device Write Conflicts, A2. `restaurant_tables` (⚠️ HIGHEST OPERATIONAL RISK — but manageable), A4. `users`, A5. `menu_items`, `menu_categories`, A6. `owner_employees`, `owner_salary_ledger`, `owner_expenses`, `owner_deposits`, `owner_home_deposits`, A7. `due_payments`, A8. `eja_history` (Ijara history), Architecture Context (+35 more)
 
 ### Community 28 - "dependencies"
 Cohesion: 0.08
@@ -351,40 +352,40 @@ Cohesion: 0.12
 Nodes (19): Added, Changed, Documentation, Documentation, v1.7.1 — Per-Record Response Handling & Partial Batch Success, v2.0.3 — Production Strict JSON Contract Enforcement, 15. AI DATASET SUBSYSTEM, node-fetch (+11 more)
 
 ### Community 31 - "3. Complete Feature Inventory"
-Cohesion: 0.09
-Nodes (22): 3.A.1 On-Screen Keypad & PIN Authentication, 3.A.2 Firebase Anonymous Authentication & Token Lifecycle, 3.A.3 Remote Force Logout & Session Revocation, 3.A. Authentication & User Management, 3.C. Delivery Management, 3. Complete Feature Inventory, 3.D. Menu & Catalog Management, 3.E.1 Opening Balance / Ijara (ইজা) System (+14 more)
+Cohesion: 0.07
+Nodes (27): 3.A.1 On-Screen Keypad & PIN Authentication, 3.A.2 Firebase Anonymous Authentication & Token Lifecycle, 3.A.3 Remote Force Logout & Session Revocation, 3.A. Authentication & User Management, 3.B.1 Dine-In Table Management & Table States, 3.B.2 Order Creation, Item Customization & KOT Workflow, 3.B.3 Bill Calculation, Discounts & Multi-Method Split Payments, 3.B.4 Customer Due & Credit Ledger (+19 more)
 
 ### Community 32 - "supabase_full_setup.sql"
 Cohesion: 0.13
 Nodes (21): idx_device_app_usage_date, idx_device_app_usage_device, idx_menu_items_updated_at, idx_off_days_date, idx_owner_employees_updated_at, idx_supplier_due_history_date, idx_supplier_payment_ledger_payment_date, public.app_version_policy (+13 more)
 
 ### Community 33 - "auditClient.js"
-Cohesion: 0.14
-Nodes (16): AUDIT_BACKOFF_MS, AUDIT_BROADCAST_EVENT, AUDIT_BROADCAST_TOPIC, AUDIT_TABLE, AUDIT_TIMEOUT_MS, auditHandlers, auditRead(), closeAuditChannel() (+8 more)
+Cohesion: 0.13
+Nodes (17): @supabase/supabase-js, AUDIT_BACKOFF_MS, AUDIT_BROADCAST_EVENT, AUDIT_BROADCAST_TOPIC, AUDIT_TABLE, AUDIT_TIMEOUT_MS, auditHandlers, auditRead() (+9 more)
 
-### Community 34 - "localToSupabase.js"
-Cohesion: 0.17
-Nodes (13): chunk(), deps, fetchExistingKeys(), isForeignKeyError(), isMissingTable(), LOCAL_ONLY_COLUMNS, LOCAL_PUSH_ORDER, LOCAL_PUSH_SPEC (+5 more)
+### Community 34 - "withTimeout"
+Cohesion: 0.12
+Nodes (21): 2.4 `services/supabaseClient.js` changes, One-time Supabase backfill (pre-Phase-2 permanent-data gap) — ✅ used, then **REMOVED**, chunk(), deps, fetchExistingKeys(), isForeignKeyError(), isMissingTable(), LOCAL_ONLY_COLUMNS (+13 more)
 
 ### Community 35 - "package.json"
-Cohesion: 0.12
-Nodes (16): devDependencies, @expo/ngrok, main, name, private, version, expo-application, expo-document-picker (+8 more)
+Cohesion: 0.09
+Nodes (20): devDependencies, @expo/ngrok, main, name, private, version, expo, expo-application (+12 more)
 
-### Community 36 - "App"
-Cohesion: 0.07
-Nodes (32): App(), defaultMenu, getPullGroupName(), { height }, NotificationToast(), styles, A1. `AdminDB.js` — Main Dashboard, APP_PROFILE_RESOLVED (+24 more)
+### Community 36 - "checkAndExecuteForceLogout"
+Cohesion: 0.16
+Nodes (22): 3.2 Supabase Tables Schema, 3.3 Full Device Lifecycle Flow, 3.4 Realtime Active/Last-Active Tracking, 3.5 Force Logout Implementation, 3.6 Supabase Client Configuration, 3. Device Control System (Supabase-only), ACTIVE_APP_PROFILE, 19. KEY FLOWS END-TO-END (+14 more)
 
 ### Community 37 - "realtimeSignal.js"
-Cohesion: 0.11
-Nodes (30): blankLastPull(), blankTimers(), createAndSubscribe(), debounceTimers, deps, emitModeChange(), ENABLED_GROUPS, enabledGroups() (+22 more)
+Cohesion: 0.06
+Nodes (41): Per-second force-logout network check (~3,600 req/hr/device), Realtime change-signal + adaptive slow safety poll, blankLastPull(), blankTimers(), createAndSubscribe(), debounceTimers, deps, emitModeChange() (+33 more)
 
 ### Community 38 - "processAIDatasetQueue"
-Cohesion: 0.12
-Nodes (17): Added, Added, Changed, Changed, Changed, Deprecated, Documentation, Documentation (+9 more)
+Cohesion: 0.11
+Nodes (20): Added, Added, Added, Changed, Changed, Changed, Deprecated, Documentation (+12 more)
 
-### Community 39 - "SalesReportModal.js"
-Cohesion: 0.33
-Nodes (8): formatCardDate(), formatShortDayMonth(), getTableBadgeStyle(), monthNamesShort, SalesReportModal(), ScooterIcon(), styles, { width }
+### Community 39 - "syncHealthModel.js"
+Cohesion: 0.13
+Nodes (17): ageMinutes(), asObjectLoose(), buildSyncHealthModel(), lagMin(), normalizeSource(), PLAIN_STATUS, PROFILE_BN, PROFILE_EN (+9 more)
 
 ### Community 40 - "Android Release Signing — Complete Backup & Recovery Guide"
 Cohesion: 0.11
@@ -402,53 +403,53 @@ Nodes (3): Added, Documentation, v1.9.1 — AI Dataset Phase 5.1 Monitor Enhance
 Cohesion: 0.12
 Nodes (16): 12. Feature Completeness & Implementation Status Matrix, 14.1. Metric Verification, 14.2. Formal Verification Statement, 14. Final Audit Completeness Check & Verification Statement, 1.1 Audit Methodology & Integrity Constraints, 1.2 Summary of Codebase Metrics, 1. Strict Audit Rules & Executive Scope, 2.1 Multi-Cloud Hybrid Architecture Topology (+8 more)
 
-### Community 44 - "OwnerExpenseScreen.js"
-Cohesion: 0.10
-Nodes (32): addExpenseCategory(), checkPinLoginSyncAllowed(), checkUserExists(), DEFAULT_OWNER_EXPENSE_CATEGORIES, deleteExpenseCategory(), getAppConfig(), getExpenseCategories(), getOwnerDepositByMonth() (+24 more)
+### Community 44 - "OwnerExpenseScreen"
+Cohesion: 0.11
+Nodes (28): 5.11 AI dataset (optional), 5.3 Firebase (POS cloud, REST only), 5.4 Supabase (device control + POS primary read), 5.5 Audit (Cloud C), 5.8 Version control, 5.9 Dates / business day, 5. Architecture, addExpenseCategory() (+20 more)
 
 ### Community 45 - "executeInspectorQuery"
 Cohesion: 0.20
 Nodes (24): C1. `AdminAnalyticsScreen.js` — Business Analytics (⚠️ PRIMARY MIXED CASE), executeInspectorQuery(), services/analyticsService.js, AdminAnalyticsScreen(), BENGALI_MONTHS, formatBengaliMonth(), formatNumber(), styles (+16 more)
 
-### Community 46 - "withTimeout"
-Cohesion: 0.13
-Nodes (15): 2.4 `services/supabaseClient.js` changes, safeSupabaseCallWithTimeout(), withTimeout(), defaultGetDb(), defaultGetDeviceId(), defaultReadQueueCounts(), deps, fetchSyncHeartbeats() (+7 more)
+### Community 46 - "AGENTS.md — Rongdhonu POS · Agent Guide & Full Setup"
+Cohesion: 0.12
+Nodes (17): 0. TL;DR / cheat-sheet, 10. Tests (72), 11. SQL files, 12. Environment variables, 13. Build & release notes, 14. Testing & validation workflow, 15. Graphify, 16. Conventions & hard invariants (+9 more)
 
 ### Community 47 - "RONGDHONU POS — MASTER PROJECT DOCUMENTATION"
 Cohesion: 0.13
-Nodes (17): 16. SCRIPTS, 17. BUILD CONFIGURATION & CREDENTIALS, 18. TESTS INVENTORY, 1. PROJECT OVERVIEW, 2. TECH STACK, 3. DIRECTORY STRUCTURE, 4. THE 3 APPS — PROFILE SYSTEM & ROLES, 6. ENTRY POINTS & NAVIGATION ARCHITECTURE (+9 more)
+Nodes (17): 11. OTHER SERVICES, 16. SCRIPTS, 17. BUILD CONFIGURATION & CREDENTIALS, 18. TESTS INVENTORY, 1. PROJECT OVERVIEW, 2. TECH STACK, 3. DIRECTORY STRUCTURE, Dual Cloud Backends (Firebase + Supabase) (+9 more)
 
 ### Community 48 - "backupRestore.js"
 Cohesion: 0.28
 Nodes (14): services/backupRestore.js, expo-sharing, createBackup(), ensureBackupDirectoryExists(), EXCLUDED_CONFIG_KEYS, EXCLUDED_TABLES, formatDisplayDate(), getBackupDirectory() (+6 more)
 
 ### Community 49 - "RONGDHONU POS — CURRENT ARCHITECTURE STATE"
-Cohesion: 0.13
-Nodes (15): 1.1 SDK Used — REST API Only (No Firebase JS SDK), 1.2 Firebase Project Collections, 1.3 Firebase Authentication, 1. Firebase Setup, 2.1 Architecture Overview, 2.2 SQLite Local Storage — Full Schema, 2.4 Delta Pull Logic — How the App Detects "What Changed", 2.6 Full-Restore Flow (Fresh Install / Manual Restore) (+7 more)
+Cohesion: 0.11
+Nodes (19): 2.1 Architecture Overview, 2.2 SQLite Local Storage — Full Schema, 2.4 Delta Pull Logic — How the App Detects "What Changed", 2.6 Full-Restore Flow (Fresh Install / Manual Restore), 2.7 Same-Day Emergency Resync, 2. Sync System, 5.2 Restaurant Tables, 5. Menu Items & Tables Data (+11 more)
 
 ### Community 50 - "MIGRATION_PROGRESS.md"
-Cohesion: 0.08
-Nodes (24): SQLite rongdhonu.db (33 tables), RONGDHONU POS — QUERY PATTERNS & CONFLICT ANALYSIS, Table of Contents, 0. CONFIRMED DESIGN DECISIONS (from clarification), 1.1 Scope of tables, 1.2 Files, 1.3 Key schema rules, 1.4 Pending decision gate (do NOT skip) (+16 more)
+Cohesion: 0.21
+Nodes (7): RONGDHONU POS — QUERY PATTERNS & CONFLICT ANALYSIS, Table of Contents, 0. CONFIRMED DESIGN DECISIONS (from clarification), PHASE MAP (dependency + risk order), RONGDHONU POS — SUPABASE DUAL-DB MIGRATION · IMPLEMENTATION PLAN, Branch feature/admin-dashboard-redesign, IMPLEMENTATION_PLAN.md (7-phase migration plan)
 
-### Community 51 - "v1.0.2 — Analytics & UI Polish"
-Cohesion: 0.67
-Nodes (3): Added, Fixed, v1.0.2 — Analytics & UI Polish
+### Community 51 - "isSupabaseConfigured"
+Cohesion: 0.30
+Nodes (14): 8.7 services/appUsageTracker.js — Full Method Reference, fetchRemoteAppUsageForDate(), flushAppUsage(), getAppLabelForRole(), getDhakaBusinessDate(), getLocalAppUsageForDate(), handleUsageAppStateChange(), initAppUsageTable() (+6 more)
 
 ### Community 52 - "PHASE 5 — ROLLING 31-DAY RETENTION (pg_cron)"
 Cohesion: 0.15
 Nodes (10): AdminAnalyticsScreen (PRIMARY MIXED case), DailyItemSalesReport Cloud Download, getAvailableMonthsOverview, pg_cron Rolling Retention Job, 5.1 New file: `supabase_cron.sql`, 5.2 Files, 5.3 Firebase-untouched verification, 5.4 Supabase-down test (+2 more)
 
 ### Community 53 - "Rongdhonu POS CHANGELOG"
-Cohesion: 0.21
-Nodes (12): AdminDB component (screens/AdminDB.js), AI Dataset Subsystem Paused Mode, AI Dataset Audit Center, Bengali Localization & Branding, Daily Submit & Lock, Ijara (Eja) Carry-forward, AI Dataset Monitor Screen, POS Core & Sync Engine (v0.9.0) (+4 more)
+Cohesion: 0.18
+Nodes (14): AdminDB component (screens/AdminDB.js), AI Dataset Subsystem Paused Mode, AI Dataset Audit Center, Bengali Localization & Branding, Daily Submit & Lock, Builder Dependency Injection Refactor, Ijara (Eja) Carry-forward, AI Dataset Monitor Screen (+6 more)
 
-### Community 54 - "Changelog"
-Cohesion: 0.19
-Nodes (19): refreshMenuFromCloud(), reportPull(), runFirebasePullIfSupabaseDown(), runPullPreferSupabase(), getRestoreMode(), recoverMenuFromCloud(), 0b. 📌 FINAL SNAPSHOT — current project state (2026-09-27), Changelog (+11 more)
+### Community 54 - "EmployeeListScreen"
+Cohesion: 0.23
+Nodes (10): getEmployeeMonthlySummary(), getEmployeeSalaryLedger(), getOwnerEmployeeById(), AccessDenied(), EmployeeDetailScreen(), styles, AccessDenied(), EmployeeListScreen() (+2 more)
 
 ### Community 55 - "PHASE 7 — RLS ENFORCEMENT (OPTION B, DEVICE-GATED)"
 Cohesion: 0.12
-Nodes (15): Force Logout Command, safeSupabaseCall, 7.1 Supabase SQL (from `RLS_IMPLEMENTATION_PLAN.md §5`), 7.3 Ordering / lockout safety, 7.4 ⚠️ Known risk — Realtime vs RLS (see R6), 7.5 Firebase-untouched verification, 7.6 Supabase-down test, 7.7 Rollback (+7 more)
+Nodes (17): 7.1 Supabase SQL (from `RLS_IMPLEMENTATION_PLAN.md §5`), 7.3 Ordering / lockout safety, 7.4 ⚠️ Known risk — Realtime vs RLS (see R6), 7.5 Firebase-untouched verification, 7.6 Supabase-down test, 7.7 Rollback, CROSS-PHASE TESTING CHECKLIST, NEW ENVIRONMENT VARIABLES / CONFIG (+9 more)
 
 ### Community 56 - "RowDetailScreen.js"
 Cohesion: 0.22
@@ -458,9 +459,9 @@ Nodes (14): AMOUNT_FIELDS, DATE_FIELDS, FieldRow(), formatAmount(), formatDateti
 Cohesion: 0.15
 Nodes (8): fs, path, destCredsFile, fs, path, profile, targetCredsFile, VALID
 
-### Community 58 - "enqueueAIDatasetExport"
-Cohesion: 0.23
-Nodes (13): Added, Added, Changed, Changed, Documentation, Documentation, v1.5.0 — AI Dataset Post-Release Refinements, v1.6.0 — AI Dataset Phase 3 Queue Integration (+5 more)
+### Community 58 - "v1.5.0 — AI Dataset Post-Release Refinements"
+Cohesion: 0.67
+Nodes (3): Changed, Documentation, v1.5.0 — AI Dataset Post-Release Refinements
 
 ### Community 59 - "CalendarPicker.js"
 Cohesion: 0.31
@@ -471,20 +472,20 @@ Cohesion: 0.20
 Nodes (14): AI_DAILY_SALES_DATASET, AI Dataset Export & External Integrations, AI Dataset Export & Google Sheets Pipeline Flow, ai_dataset_queue Table, AI_ITEM_SALES_DATASET, Dual Synchronization Engine, Exponential Backoff Retry Algorithm, Google Apps Script WebApp / Google Sheets (+6 more)
 
 ### Community 61 - "AI Dataset Sync Module"
-Cohesion: 0.19
-Nodes (16): Daily & Item Dataset Builder, Production Release Certification, Queue Layer (Idempotency), Schema Versioning 1.0.0, Transport Engine (Batch Size 25), AI Dataset E2E Validation Report, Validation Engine, Builder Dependency Injection Refactor (+8 more)
+Cohesion: 0.23
+Nodes (14): Daily & Item Dataset Builder, Production Release Certification, Queue Layer (Idempotency), Schema Versioning 1.0.0, Transport Engine (Batch Size 25), AI Dataset E2E Validation Report, Validation Engine, E2E Pipeline Validation Suite (+6 more)
 
 ### Community 62 - "builder.js"
-Cohesion: 0.22
-Nodes (10): Added, Changed, Documentation, v1.3.0 — AI Dataset Phase 2 — Dataset Builder, getISOWeekNumber(), DAILY_SALES_FIELD_MAPPING, ITEM_SALES_FIELD_MAPPING, DATASET_VALIDATION_RULES (+2 more)
+Cohesion: 0.18
+Nodes (16): Added, Added, Changed, Changed, Documentation, v1.3.0 — AI Dataset Phase 2 — Dataset Builder, buildDailyDataset(), buildItemDataset() (+8 more)
 
 ### Community 63 - "Signing Identity Matrix"
 Cohesion: 0.17
 Nodes (13): Credential Switcher (scripts/select-credentials.js), Original EAS Project (shakib223/temp-expo), Keystore Fingerprint Verification, Android Release Keystore (.jks), Signing Credential Recovery Instructions, RONGDHONU_SIGNING_BACKUP_2026-09-24 Directory, Android Signing Conflict (INSTALL_FAILED_UPDATE_INCOMPATIBLE -7), Emergency Recovery Procedures (+5 more)
 
-### Community 64 - "orderTelemetry.test.js"
-Cohesion: 0.14
-Nodes (19): Running-cart (`restaurant_tables.items`) vs `order_items` — trace (Stage 5 investigation), AddItemScreen(), styles, formatStartTime(), styles, TableDetailScreen(), formatUserRoleTag(), getCurrentDeviceTelemetryName() (+11 more)
+### Community 64 - "TableDetailScreen.js"
+Cohesion: 0.36
+Nodes (9): AddItemScreen(), styles, formatStartTime(), styles, TableDetailScreen(), formatUserRoleTag(), getCurrentDeviceTelemetryName(), getFormattedLocalTime() (+1 more)
 
 ### Community 65 - "supabase_audit_setup.sql"
 Cohesion: 0.27
@@ -494,13 +495,19 @@ Nodes (11): activity_events_created_at_idx, activity_events_device_idx, activity
 Cohesion: 0.15
 Nodes (11): adminDbCode, adminDbPath, appCode, appPath, assert, fs, managerDbCode, managerDbPath (+3 more)
 
-### Community 67 - "getBusinessDate"
-Cohesion: 0.08
-Nodes (36): A2. `OwnerDashboard.js` / `ManagerDashboard.js` — Role Dashboards, A3. `DailySubmitScreen.js` — EOD Submission, A4. `ExpensesScreen.js` — Daily Expenses, A7. `AddSalaryPaymentScreen.js` — Add/Record Salary Payment, B2. `expenses` (⚠️ SAME-DAY MULTI-DEVICE WRITE RISK), B4. `supplier_due` (running balance — shared mutable aggregate), Category (A) — ALWAYS Recent-Only, calculateAndSaveDailySummary() (+28 more)
+### Community 67 - "orderTelemetry.test.js"
+Cohesion: 0.17
+Nodes (9): addItemSrc, adminSrc, appSrc, assert, {
+  formatUserRoleTag,
+  getCurrentDeviceTelemetryName,
+  getFormattedLocalTime,
+  stampOrderItem,
+  getOrderTelemetrySummary
+}, fs, Module, tableDetailSrc (+1 more)
 
 ### Community 68 - "PHASE 2 — LOCAL SCAFFOLDING + DUAL-WRITE QUEUE"
-Cohesion: 0.20
-Nodes (11): 2.10 Rollback, 2.2 Single choke-point for dual-write, 2.6 Dual-write exception (sequential), 2.7 New local columns — decision, 2.8 Firebase-untouched verification, enqueueSupabaseSync(), PHASE 2 — LOCAL SCAFFOLDING + DUAL-WRITE QUEUE, sync_queue_supabase Table (+3 more)
+Cohesion: 0.18
+Nodes (12): SQLite rongdhonu.db (33 tables), SQLite sync_queue, 2.10 Rollback, 2.2 Single choke-point for dual-write, 2.6 Dual-write exception (sequential), 2.7 New local columns — decision, 2.8 Firebase-untouched verification, 2.9 Supabase-down test (+4 more)
 
 ### Community 69 - "DailyItemSalesReport.js"
 Cohesion: 0.19
@@ -514,33 +521,33 @@ Nodes (3): Changed, Fixed, v1.0.5 — Login UI Refinements
 Cohesion: 0.18
 Nodes (11): 9.10. Diagram 10: End-to-End Enterprise Architecture & Network Boundary Map, 9.1. Diagram 1: Multi-Role Authentication & Profile Gating Flowchart, 9.2. Diagram 2: Dine-In, Takeaway & Delivery Order Lifecycle State Machine, 9.3. Diagram 3: Split-Payment & Cash Drawer Calculation Pipeline, 9.4. Diagram 4: End-of-Day Closing, Ijara Rollover & Priority Resolution Flow, 9.5. Diagram 5: Offline-First Local Mutation & Sync Queue Execution Pipeline, 9.6. Diagram 6: Firestore Incremental Synchronization & Deletion Tombstone Flow, 9.7. Diagram 7: Supabase Realtime Device Presence, Heartbeat & Remote Command Dispatch (+3 more)
 
-### Community 72 - "11. OTHER SERVICES"
-Cohesion: 0.50
-Nodes (4): 11. OTHER SERVICES, pdfHelper.js, services/activityLogger.js, services/analyticsHelper.js
+### Community 72 - "20. Common tasks / recipes"
+Cohesion: 0.22
+Nodes (9): 20.10 Diagnose a device that won't log in, 20.1 Add a new screen, 20.3 Add an RLS-gated table, 20.4 Add a menu item (runtime, not code), 20.6 Debug sync, 20.7 Change pull behaviour, 20.8 Bump the version, 20.9 Build an APK (+1 more)
 
 ### Community 73 - "রংধনু ক্যাফে এন্ড রেস্টুরেন্ট (Rongdhonu Café & Restaurant)"
-Cohesion: 0.18
-Nodes (10): Build APK, Developer, Environment Variables, Getting Started, Installation, License, Prerequisites, Project Structure (+2 more)
+Cohesion: 0.20
+Nodes (8): Apps (one codebase, three builds), Developer, Environment Variables, License, Project Structure, Tech Stack, Tests, রংধনু ক্যাফে এন্ড রেস্টুরেন্ট (Rongdhonu Café & Restaurant)
 
 ### Community 74 - "dailySubmitAutoPullSync.test.js"
 Cohesion: 0.18
 Nodes (9): appSrc, assert, dbSrc, fs, signal, signalSrc, sync, syncSrc (+1 more)
 
-### Community 75 - "PastAccountModal.js"
-Cohesion: 0.33
-Nodes (8): BkashIcon(), CashIcon(), NagadIcon(), PastAccountModal(), RocketIcon(), styles, { width }, react-native-svg
+### Community 75 - "Supabase-Only Device Control System"
+Cohesion: 0.32
+Nodes (3): Force Logout Command, safeSupabaseCall, app_version_policy Table
 
 ### Community 76 - "Multi-Device Write Conflicts"
-Cohesion: 0.18
-Nodes (8): daily_submit_priority, SQLite sync_queue, Expenses Stable-ID Overwrite Race, orders.locked_at Post-Submit Lock, Supplier Due Running-Balance Lost Update, Supplier Payment Ledger 48h Lock, activity_logs UTC business_date Leak, Phase 4 — Correctness & Conflict Fixes
+Cohesion: 0.21
+Nodes (7): daily_submit_priority, Expenses Stable-ID Overwrite Race, orders.locked_at Post-Submit Lock, Supplier Due Running-Balance Lost Update, Supplier Payment Ledger 48h Lock, activity_logs UTC business_date Leak, Phase 4 — Correctness & Conflict Fixes
 
-### Community 77 - "10.1. Complete Screen Index (All 37 Screens)"
-Cohesion: 0.11
-Nodes (14): executeInspectorWrite(), 10.1. Complete Screen Index (All 37 Screens), DatabaseExplorerScreen(), styles, DatabaseStatsScreen(), styles, DeviceBlockedScreen(), styles (+6 more)
+### Community 77 - "App.js"
+Cohesion: 0.06
+Nodes (55): 5.1 Navigation (no router library), defaultMenu, getPullGroupName(), { height }, reportPullCheck(), styles, PrintReceiptModal(), styles (+47 more)
 
-### Community 78 - "SupplierDueScreen.js"
-Cohesion: 0.15
-Nodes (13): 1. Mixed Date-Range Views, B1. `EmployeeDetailScreen.js` — Salary Ledger View, B2. `SupplierDueScreen.js` — Supplier Payment Ledger, B3. `SupplierDueScreen.js` — Supplier Balance History, Background: The 31-day Boundary, Category (B) — ALWAYS Historical-Only, Category (C) — MIXED (Genuinely spans >31 days + recent in one result), Summary Table (+5 more)
+### Community 78 - "Category (A) — ALWAYS Recent-Only"
+Cohesion: 0.13
+Nodes (15): 1. Mixed Date-Range Views, A2. `OwnerDashboard.js` / `ManagerDashboard.js` — Role Dashboards, A3. `DailySubmitScreen.js` — EOD Submission, A4. `ExpensesScreen.js` — Daily Expenses, A5. `OwnerFinanceDashboard.js` — Owner Monthly Finance, A6. `EmployeeDetailScreen.js` — Employee Detail + Ledger, A7. `AddSalaryPaymentScreen.js` — Add/Record Salary Payment, B1. `EmployeeDetailScreen.js` — Salary Ledger View (+7 more)
 
 ### Community 79 - "Admin Dashboard Redesign — Backup Record"
 Cohesion: 0.20
@@ -551,24 +558,24 @@ Cohesion: 0.20
 Nodes (10): 10.3. Core Engine (`database.js`) Function Index, 10.4. External Network APIs & Cloud Endpoints, 10. API, Service, Screen & Function Index, 2. Order & POS Management, 3. Table & Cart Operations, 4. Delivery Operations, 5. Expenses & Cash Drawer, 6. Daily Closing & Summaries (+2 more)
 
 ### Community 81 - "Phase 7 — RLS enforcement (Option B, device-gated)"
-Cohesion: 0.19
-Nodes (10): 27/27 device-gated POS tables (devices, device_app_usage, app_version_policy excluded), is_device_active() RLS gate function (Option B), Permissive anon access (Phase 1) policy, Phase 5 — Rolling 31-day retention (pg_cron) ✅, Phase 7 — RLS enforcement (Option B, device-gated), Rolling 31-day retention policy (13 rolling tables), pg_cron job rongdhonu_retention_31d ('5 21 * * *' = 03:05 Asia/Dhaka), npm run test:all regression suite (511+ assertions, EXIT 0) (+2 more)
+Cohesion: 0.27
+Nodes (7): 27/27 device-gated POS tables (devices, device_app_usage, app_version_policy excluded), is_device_active() RLS gate function (Option B), Permissive anon access (Phase 1) policy, Phase 7 — RLS enforcement (Option B, device-gated), npm run test:all regression suite (511+ assertions, EXIT 0), x-device-id header never sent bug, public.is_device_active()
 
 ### Community 82 - "dailySubmitLockAndBanner.test.js"
 Cohesion: 0.20
 Nodes (8): adminSrc, appSrc, assert, dbSrc, fs, managerSrc, ownerSrc, tests
 
-### Community 83 - "runAutoPull"
-Cohesion: 0.17
-Nodes (12): createAdaptivePoller(), reportPullCheck(), runAutoPull(), 6.1 Firebase Call Failures, 6.2 Pull Failures, 6.3 Auth Failures, 6.4 Supabase Failures, 6.5 Timeouts (+4 more)
+### Community 83 - "3. Quick start (fresh machine, step by step)"
+Cohesion: 0.29
+Nodes (7): 3.1 Prerequisites, 3.2 Install + env, 3.3 Android SDK for local builds, 3.4 Build, 3.5 Verify the built APK, 3.6 Troubleshooting, 3. Quick start (fresh machine, step by step)
 
 ### Community 84 - "Phase 3 — Read Routing (Supabase-Primary Pull)"
-Cohesion: 0.18
-Nodes (9): APP_PROFILES (ADMIN/OWNER/MANAGER), Firebase Anonymous Authentication, Firestore REST API v1, Menu Items & Restaurant Tables (Firebase), resyncSameDayFromCloud, restaurant_tables Last-Write-Wins, Authentication & User Management, users Table (+1 more)
+Cohesion: 0.21
+Nodes (7): APP_PROFILES (ADMIN/OWNER/MANAGER), Firebase Anonymous Authentication, Firestore REST API v1, Menu Items & Restaurant Tables (Firebase), resyncSameDayFromCloud, restaurant_tables Last-Write-Wins, Phase 3 — Read Routing (Supabase-Primary Pull)
 
-### Community 85 - "fetchChangedRecordsFromFirestore"
-Cohesion: 0.29
-Nodes (10): fetchChangedRecordsFromFirestore(), fetchHistoricalDateData(), fetchHistoricalMonthData(), fromFirestoreDocument(), processRemoteDocsToLocal(), restoreFirebaseFromCloud(), CROSS-PHASE TESTING CHECKLIST, “Firebase is untouched” verification (every phase) (+2 more)
+### Community 85 - "SupplierDueScreen.js"
+Cohesion: 0.40
+Nodes (5): getSupplierPaymentLedger(), monthNames, styles, SupplierDueScreen(), { width }
 
 ### Community 86 - "TimePicker.js"
 Cohesion: 0.39
@@ -587,8 +594,8 @@ Cohesion: 0.25
 Nodes (9): ADMIN_PORTAL App Profile, KITCHEN_DISPLAY App Profile, POS_BILLING App Profile, deliveries Table, Delivery Management, Master Permission Matrix, admin Role, manager Role (+1 more)
 
 ### Community 90 - "Restaurant Operations / POS & Order Lifecycle"
-Cohesion: 0.27
-Nodes (11): due_payments Table, Firebase Cloud Firestore, order_items Table, Dine-In, Takeaway & Delivery Order Lifecycle Flow, orders Table, payments Table, Restaurant Operations / POS & Order Lifecycle, restaurant_tables Table (+3 more)
+Cohesion: 0.33
+Nodes (9): due_payments Table, order_items Table, Dine-In, Takeaway & Delivery Order Lifecycle Flow, orders Table, payments Table, Restaurant Operations / POS & Order Lifecycle, restaurant_tables Table, waiter Role (+1 more)
 
 ### Community 91 - "fetch-original-passwords.js"
 Cohesion: 0.22
@@ -599,8 +606,8 @@ Cohesion: 0.36
 Nodes (8): fieldValue(), fs, main(), fetchCollection(), getDocument(), runIncrementalQuery(), readEnv(), simplifyDocument()
 
 ### Community 93 - "react"
-Cohesion: 0.07
-Nodes (30): AdminSideMenu(), DRAWER_WIDTH, MenuRow(), styles, { width: SCREEN_WIDTH }, DRAWER_WIDTH, MenuRow(), OwnerSideMenu() (+22 more)
+Cohesion: 0.15
+Nodes (15): AdminSideMenu(), DRAWER_WIDTH, MenuRow(), styles, { width: SCREEN_WIDTH }, DRAWER_WIDTH, MenuRow(), OwnerSideMenu() (+7 more)
 
 ### Community 94 - "public.orders"
 Cohesion: 0.22
@@ -614,9 +621,9 @@ Nodes (7): adminSrc, appSrc, assert, dbSrc, fs, supaSrc, tests
 Cohesion: 0.32
 Nodes (8): Android Adaptive Icon Background Layer - 512x512 fully-opaque PNG, a flat pale ice-blue (#E6F4FE) fill with no detail, used as the solid base layer of the Android adaptive app icon, Android Adaptive Icon Foreground Layer - 512x512 transparent PNG with a centered blue (#2080E0/#0070E0) brand glyph: a thick rounded chevron/peak mark with a hollow centre, sized to sit inside the icon safe zone above the background layer, Android Monochrome Themed Icon Layer - 432x432 transparent PNG, a flat gray (#606060) monochrome variant of the same rounded chevron/peak glyph, intended for Android 13+ themed (/monochrome) icons, App Favicon - 48x48 transparent-corner rounded-square web favicon: pale ice-blue (#E6F4FE) tile carrying the small blue (#0070D0) rounded chevron/peak brand glyph, App Icon - 1024x1024 full-bleed RGB app icon (no transparency): pale ice-blue background with a centered blue gradient (#2080E0 to #80C0E0) rounded chevron/peak brand glyph; the main Expo/iOS/Android launcher icon, Splash Screen Icon - 1024x1024 transparent PNG (palette colours) drawn in faint light lavender-gray (#C0C0D0/#D0D0E0): a bilaterally symmetric ornamental medallion motif overlaid on a regular grid of thin lines; the image shown on the app splash/loading screen, Brand Logo (JPEG) - 960x960 logo image on a black background: a centered light/high-contrast emblem with curved strokes and a wide horizontal band, framed by decorative elements; likely the app's brand/wordmark artwork, Brand Logo (MyLogo) - 1024x1024 logo image on a black background: a centered, bilaterally symmetric light ornamental emblem with small motifs top and bottom around a wide horizontal band, very similar in composition to logo.jpeg; a brand logo variant
 
-### Community 97 - "Firestore Incremental Sync & Deletion Tombstone Flow"
-Cohesion: 0.29
-Nodes (8): activity_logs Table, app_config Table, delete_history Table, Firestore Incremental Sync & Deletion Tombstone Flow, GitHub Releases Auto Updater, Notifications & Forensic Activity Logging, Settings, App Configuration & Version Gating, Version Gating Policy
+### Community 97 - "Firebase Cloud Firestore"
+Cohesion: 0.25
+Nodes (8): activity_logs Table, Authentication & User Management, delete_history Table, Firestore Incremental Sync & Deletion Tombstone Flow, Firebase Cloud Firestore, Notifications & Forensic Activity Logging, Same-Day Cloud Resync & Disaster Recovery Flow, users Table
 
 ### Community 98 - "ref_assert"
 Cohesion: 0.25
@@ -638,17 +645,17 @@ Nodes (7): Daily Closing, Submit & Financial Reports, Daily Submit Flow, daily_s
 Cohesion: 0.43
 Nodes (7): device_app_usage Table, Device Hardware Identity & Fleet Control System, Supabase Realtime Device Presence & Heartbeat Flow, device_registry Table, Persistent Hardware Device Identity Resolution, Remote Force Logout & Fleet Command Dispatch Flow, Supabase Realtime & Postgres
 
-### Community 103 - "2. Key Confirmed Decisions Log"
-Cohesion: 0.12
-Nodes (16): restoreDatabaseFromCloud(), 3.2 Merge rules (precedence), 3.3 Files, 3.4 Fresh-install restore behavior (per decisions), 3.5 Firebase-untouched verification, 3.6 Supabase-down test, 3.7 Rollback, PHASE 3 — READ ROUTING (SUPABASE-PRIMARY PULL + FIREBASE FALLBACK) (+8 more)
+### Community 103 - "PHASE 3 — READ ROUTING (SUPABASE-PRIMARY PULL + FIREBASE FALLBACK)"
+Cohesion: 0.29
+Nodes (7): 3.2 Merge rules (precedence), 3.3 Files, 3.4 Fresh-install restore behavior (per decisions), 3.5 Firebase-untouched verification, 3.6 Supabase-down test, 3.7 Rollback, PHASE 3 — READ ROUTING (SUPABASE-PRIMARY PULL + FIREBASE FALLBACK)
 
 ### Community 104 - "SQLite Schema & Sync Engine"
 Cohesion: 0.29
 Nodes (7): AI Dataset Subsystem, Schema Guardian, SQLite Schema & Sync Engine, Permanent Data Source Hierarchy, Menu Pull Exclusion from PIN Login Sync, PIN Login Sync Cooldown (30 min), Dual Pull Notification System
 
 ### Community 105 - "Features"
-Cohesion: 0.33
-Nodes (7): Three-App Build Profile System, 📊 Business Analytics, Features, 💰 Financial Management, 👥 Multi-Role System, 🍽️ Order Management, Order Telemetry & Device Attribution
+Cohesion: 0.29
+Nodes (8): Three-App Build Profile System, 📊 Business Analytics, 📱 Device Management (Supabase), Features, 💰 Financial Management, 👥 Multi-Role System, 🍽️ Order Management, Order Telemetry & Device Attribution
 
 ### Community 106 - "DeleteHistoryScreen.js"
 Cohesion: 0.24
@@ -670,21 +677,21 @@ Nodes (6): Owner & Employee Private Finance Hub, owner_deposits Table, owner_emp
 Cohesion: 0.33
 Nodes (5): 1. Overview & Purpose, 2. Signing Key Matrix, 3. Local Keystore Locations & Ownership, 4. Critical Security Warnings & Rules, Android Release Signing Keys Backup & Documentation
 
-### Community 111 - "RONGDHONU POS — BUSINESS DATE & FIELD ANALYSIS FOR DATA RETENTION"
-Cohesion: 0.20
-Nodes (10): 2.1. Hardcoded vs. Device Local vs. UTC, 2.2. Is Bangladesh Time Enforced in Code?, 2. Timezone Handling Analysis, 3.1. Core POS Orders, Payments, Items, and Expenses, 3.2. The Three Documented Exceptions, 3. Late-Night Orders & Shift Rollover (11 PM – 2 AM), 4. Date Utility Consistency & Audit, 5. Master Reference: Supabase 31-Day Retention Cutoff Filter (+2 more)
+### Community 111 - "PHASE 4 — CORRECTNESS & CONFLICT FIXES (PRE-RETENTION)"
+Cohesion: 0.33
+Nodes (6): 4.1 `activity_logs` business-date UTC bug (must precede Phase 5), 4.3 Explicitly OUT OF SCOPE (note only, do not touch), 4.4 Firebase-untouched verification, 4.5 Supabase-down test, 4.6 Rollback, PHASE 4 — CORRECTNESS & CONFLICT FIXES (PRE-RETENTION)
 
 ### Community 112 - "AI DATASET SUBSYSTEM — END-TO-END (E2E) VALIDATION REPORT"
 Cohesion: 0.40
 Nodes (4): 1. Scenario Execution Matrix, 2. Verified Subsystem Guarantees, 3. Production Release Certification, AI DATASET SUBSYSTEM — END-TO-END (E2E) VALIDATION REPORT
 
-### Community 113 - "RONGDHONU POS — VERSION CONTROL SYSTEM (MIGRATION REFERENCE)"
-Cohesion: 0.18
-Nodes (10): 1.1. Field Specifications, 1. Firestore `app_config/global` Document Structure, 3. Where and When Version Checks Are Triggered, 4. Admin Management Screen (Where Version Policy Is Updated), 5. Is `app_config/global` Shared or Overloaded?, 6.1. Proposed Supabase Table Schema, 6.2. Dual-DB Resolution Flow (`fetchVersionPolicyDualDB`), 6.3. Dual-Write Policy for Admin Updates (`setVersionPolicyDualDB`) (+2 more)
+### Community 113 - "8. SUPABASE"
+Cohesion: 0.33
+Nodes (6): 8.1 Supabase Overview, 8.2 services/supabaseClient.js — Full Method Reference, 8.3 services/supabaseDeviceControl.js — Full Method Reference, 8.4 Supabase Schema, 8.5 RLS Policies & Production RPC Migration Plan, 8. SUPABASE
 
-### Community 114 - "3.B. Restaurant Operations / POS & Order Lifecycle"
+### Community 114 - "18. Known issues / diagnostics"
 Cohesion: 0.40
-Nodes (5): 3.B.1 Dine-In Table Management & Table States, 3.B.2 Order Creation, Item Customization & KOT Workflow, 3.B.3 Bill Calculation, Discounts & Multi-Method Split Payments, 3.B.4 Customer Due & Credit Ledger, 3.B. Restaurant Operations / POS & Order Lifecycle
+Nodes (5): 18.1 “সার্ভার সংযোগ প্রয়োজন / Verification Required (Offline)”, 18.2 Realtime warning, 18.3 “No app is pulling”, 18.4 Log tags to grep, 18. Known issues / diagnostics
 
 ### Community 115 - "Expenses & Cash Drawer Management"
 Cohesion: 0.40
@@ -695,24 +702,24 @@ Cohesion: 0.50
 Nodes (4): Added, Changed, Documentation, v1.9.0 — AI Dataset Phase 5 Monitor Screen (Admin Only)
 
 ### Community 118 - "processSyncQueue"
-Cohesion: 0.21
-Nodes (13): 2.3 Push Logic — Exact Write Flow, processSyncQueue(), toFirestoreDocument(), 5.1. Authentication Architecture & Protocol, 5.2. Exhaustive Collection Inventory, 5.3. Deletion Tombstones Scheme, 5. Firebase Cloud Firestore Master Inventory (All 24 Collections), 7.1. Mutation Lifecycle & Persistent Queue Pipeline (+5 more)
+Cohesion: 0.16
+Nodes (16): 2.3 Push Logic — Exact Write Flow, 5.1 Menu Items, B1. `daily_submit` (⚠️ CONFIRMED — Has existing priority system), cleanupDuplicateMenuItems(), getFailedQueueRetryDelayMs(), isFailedQueueItemRetryDue(), processSyncQueue(), seedDefaultMenu() (+8 more)
 
 ### Community 119 - "checkAppVersionPolicy"
-Cohesion: 0.14
-Nodes (14): checkAppVersionPolicy, 6.1 Supabase table (from Phase 1), 6.3 Files, 6.4 Firebase-untouched verification, 6.5 Supabase-down test, 6.6 Rollback, PHASE 6 — VERSION CONTROL MIGRATION, ADMIN-Exempt Version Gating Rule (+6 more)
+Cohesion: 0.22
+Nodes (8): checkAppVersionPolicy, ADMIN-Exempt Version Gating Rule, Firestore app_config/global Version Policy Document, AppUpdateRequiredScreen, Supabase app_version_policy Table, compareSemver, Dual-DB Setup (Supabase Primary + Firebase Fallback), SQLite cached_version_policy Cache
 
-### Community 120 - "OrderDetailModal.js"
-Cohesion: 0.39
-Nodes (7): FlatRow(), getPaymentMethodLabel(), { height: SCREEN_H }, OrderDetailModal(), parseItems(), PayRow(), s
+### Community 120 - "v0.9.0 — POS Core, Sync Engine & ML Export Foundation"
+Cohesion: 0.50
+Nodes (4): Added, Fixed, Removed, v0.9.0 — POS Core, Sync Engine & ML Export Foundation
 
 ### Community 121 - "AI Dataset Sync & ML Export Module Architecture"
 Cohesion: 0.22
 Nodes (8): 1. `daily_sales_dataset.csv`, 2. `item_sales_dataset.csv`, AI Dataset Sync & ML Export Module Architecture, Dataset Specifications, Existing Google Sheets Infrastructure Audit & Isolated Worksheet Tab Strategy, Module Structure, Overview, Phase Roadmap
 
-### Community 122 - "AIDatasetAuditCenterScreen.js"
-Cohesion: 0.40
-Nodes (4): AIDatasetAuditCenterScreen(), COLORS, styles, { width }
+### Community 122 - "5. Firebase Cloud Firestore Master Inventory (All 24 Collections)"
+Cohesion: 0.50
+Nodes (4): 5.1. Authentication Architecture & Protocol, 5.2. Exhaustive Collection Inventory, 5.3. Deletion Tombstones Scheme, 5. Firebase Cloud Firestore Master Inventory (All 24 Collections)
 
 ### Community 124 - "public.deliveries"
 Cohesion: 0.50
@@ -722,29 +729,33 @@ Nodes (4): idx_deliveries_completed_at, idx_deliveries_created_at, idx_deliverie
 Cohesion: 0.50
 Nodes (4): idx_devices_is_deleted, idx_devices_last_seen, idx_devices_status, public.devices
 
-### Community 126 - "Firebase Anonymous Authentication (Phase 1)"
+### Community 126 - "app_config Table"
+Cohesion: 0.67
+Nodes (4): app_config Table, GitHub Releases Auto Updater, Settings, App Configuration & Version Gating, Version Gating Policy
+
+### Community 127 - "Phase 5 — Rolling 31-day retention (pg_cron) ✅"
+Cohesion: 0.83
+Nodes (3): Phase 5 — Rolling 31-day retention (pg_cron) ✅, Rolling 31-day retention policy (13 rolling tables), pg_cron job rongdhonu_retention_31d ('5 21 * * *' = 03:05 Asia/Dhaka)
+
+### Community 128 - "Getting Started"
 Cohesion: 0.50
-Nodes (4): feat/firebase-anonymous-auth-phase1 Branch, Firebase Anonymous Authentication (Phase 1), Rollback Instructions, Preserved Working APK
-
-### Community 127 - "4. Version Control System (Firebase-only)"
-Cohesion: 0.67
-Nodes (3): 4.1 Where Version is Stored in Firebase, 4.2 App Version Source, 4. Version Control System (Firebase-only)
-
-### Community 128 - "v2.0.4 — End-to-End (E2E) Pipeline Validation Suite & Final Release Certification"
-Cohesion: 0.67
-Nodes (3): Added, Documentation, v2.0.4 — End-to-End (E2E) Pipeline Validation Suite & Final Release Certification
+Nodes (4): Build APK (local), Getting Started, Installation, Prerequisites
 
 ### Community 129 - "v1.7.0 — AI Dataset Post-Phase 3 Refinements"
 Cohesion: 0.67
 Nodes (3): Added, Documentation, v1.7.0 — AI Dataset Post-Phase 3 Refinements
 
-### Community 130 - "v2.0.0 — AI Dataset Phase 5.2 Audit Center & Transition to Data Collection Mode"
+### Community 130 - "v1.4.0 — AI Dataset Phase 2.5 Verification Suite"
 Cohesion: 0.67
-Nodes (3): Added, Documentation, v2.0.0 — AI Dataset Phase 5.2 Audit Center & Transition to Data Collection Mode
+Nodes (3): Added, Documentation, v1.4.0 — AI Dataset Phase 2.5 Verification Suite
 
-### Community 131 - "v1.1.0 — Bengali Localization & Branding Standardization"
+### Community 131 - "v2.0.1 — Circular Dependency Removal & Builder Dependency Injection"
 Cohesion: 0.67
-Nodes (3): Changed, Fixed, v1.1.0 — Bengali Localization & Branding Standardization
+Nodes (3): Changed, Documentation, v2.0.1 — Circular Dependency Removal & Builder Dependency Injection
+
+### Community 132 - "v2.0.5 — Navigation Audit & AdminDB Component Prop Fix"
+Cohesion: 0.67
+Nodes (3): Documentation, Fixed, v2.0.5 — Navigation Audit & AdminDB Component Prop Fix
 
 ### Community 133 - "Menu & Catalog Management"
 Cohesion: 0.67
@@ -770,22 +781,22 @@ Nodes (3): idx_owner_expenses_expense_date, idx_owner_expenses_updated_at, publi
 
 ## Knowledge Gaps
 - **72 isolated node(s):** `@expo/vector-icons`, `expo-splash-screen`, `expo-updates`, `@expo/ngrok`, `daily_summary Table` (+67 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 967 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 1002 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
 - **49 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `App()` connect `App` to `react-native`, `deviceRegistry.js`, `getFirestoreAuthHeaders`, `formatDisplayDate`, `12. SCREENS INVENTORY`, `database.js`, `10. database.js — COMPLETE METHOD REFERENCE`, `supabaseSyncQueue.js`, `supabaseSync.js`, `ActivityStreamScreen.js`, `enqueueSync`, `syncCollections`, `auditLog.js`, `firebaseDayRestore.js`, `AdminDB.js`, `ManagerDashboard.js`, `SyncHealthScreen.js`, `submitDailySheet`, `processAIDatasetQueue`, `OwnerExpenseScreen.js`, `executeInspectorQuery`, `Changelog`, `RowDetailScreen.js`, `orderTelemetry.test.js`, `getBusinessDate`, `DailyItemSalesReport.js`, `10.1. Complete Screen Index (All 37 Screens)`, `SupplierDueScreen.js`, `runAutoPull`, `fetchChangedRecordsFromFirestore`, `react`, `ActivityLogScreen.js`, `2. Key Confirmed Decisions Log`, `DeleteHistoryScreen.js`, `processSyncQueue`, `AIDatasetAuditCenterScreen.js`?**
-  _High betweenness centrality (0.101) - this node is a cross-community bridge._
+- **Why does `App()` connect `database.js` to `printerManager.js`, `deviceRegistry.js`, `getFirestoreAuthHeaders`, `AdminDB.js`, `firebaseAppConfig.js`, `initDatabase`, `supabaseSyncQueue.js`, `Changelog`, `ActivityStreamScreen.js`, `enqueueSync`, `syncCollections`, `auditLog.js`, `firebaseDayRestore.js`, `supabaseClient.js`, `ManagerDashboard.js`, `SyncHealthScreen.js`, `1. Table-by-Table Field Analysis (15 Tables)`, `package.json`, `checkAndExecuteForceLogout`, `processAIDatasetQueue`, `OwnerExpenseScreen`, `executeInspectorQuery`, `isSupabaseConfigured`, `EmployeeListScreen`, `RowDetailScreen.js`, `TableDetailScreen.js`, `DailyItemSalesReport.js`, `App.js`, `SupplierDueScreen.js`, `ActivityLogScreen.js`, `DeleteHistoryScreen.js`, `processSyncQueue`?**
+  _High betweenness centrality (0.093) - this node is a cross-community bridge._
 - **Are the 6 inferred relationships involving `App()` (e.g. with `syncDeletionsOnly()` and `syncHighFrequencyCollections()`) actually correct?**
   _`App()` has 6 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `@expo/vector-icons`, `expo-splash-screen`, `expo-updates` to the rest of the system?**
   _72 weakly-connected nodes found - possible documentation gaps or missing edges._
-- **Should `react-native` be split into smaller, more focused modules?**
-  _Cohesion score 0.05426356589147287 - nodes in this community are weakly interconnected._
-- **Why does `react-native` connect `react-native` to `deviceRegistry.js`, `formatDisplayDate`, `12. SCREENS INVENTORY`, `database.js`, `supabaseSyncQueue.js`, `printerService.js`, `ActivityStreamScreen.js`, `auditLog.js`, `firebaseDayRestore.js`, `13. COMPONENTS INVENTORY`, `AdminDB.js`, `ManagerDashboard.js`, `SyncHealthScreen.js`, `package.json`, `App`, `processAIDatasetQueue`, `SalesReportModal.js`, `OwnerExpenseScreen.js`, `executeInspectorQuery`, `RowDetailScreen.js`, `CalendarPicker.js`, `orderTelemetry.test.js`, `DailyItemSalesReport.js`, `PastAccountModal.js`, `10.1. Complete Screen Index (All 37 Screens)`, `SupplierDueScreen.js`, `TimePicker.js`, `react`, `ActivityLogScreen.js`, `DeleteHistoryScreen.js`, `OrderDetailModal.js`, `AIDatasetAuditCenterScreen.js`?**
-  _High betweenness centrality (0.093) - this node is a cross-community bridge._
+- **Should `printerManager.js` be split into smaller, more focused modules?**
+  _Cohesion score 0.06241956241956242 - nodes in this community are weakly interconnected._
+- **Why does `react-native` connect `App.js` to `printerManager.js`, `deviceRegistry.js`, `AdminDB.js`, `firebaseAppConfig.js`, `database.js`, `supabaseSyncQueue.js`, `printerService.js`, `ActivityStreamScreen.js`, `auditLog.js`, `firebaseDayRestore.js`, `13. COMPONENTS INVENTORY`, `ManagerDashboard.js`, `SyncHealthScreen.js`, `package.json`, `checkAndExecuteForceLogout`, `processAIDatasetQueue`, `OwnerExpenseScreen`, `executeInspectorQuery`, `isSupabaseConfigured`, `EmployeeListScreen`, `RowDetailScreen.js`, `CalendarPicker.js`, `TableDetailScreen.js`, `DailyItemSalesReport.js`, `SupplierDueScreen.js`, `TimePicker.js`, `react`, `ActivityLogScreen.js`, `DeleteHistoryScreen.js`?**
+  _High betweenness centrality (0.088) - this node is a cross-community bridge._
 
 ### Low-confidence Hints
 _AMBIGUOUS edges — the extractor was unsure. Verify before acting on these._
