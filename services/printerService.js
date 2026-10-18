@@ -507,8 +507,9 @@ export async function renderReceiptToEscPosBytes(order) {
   const drawText = (text, x, posY) => {
     ctx.fillText(text, x, posY);
     const size = Number(String(ctx.font).match(/(\d+(?:\.\d+)?)px/)?.[1]) || 16;
-    // Bold strength reduced ~20% (0.09 → 0.072) to match ReceiptPaper.
-    ctx.lineWidth = Math.max(0.64, size * 0.072);
+    // Tuned to a true hairline (0.09 → 0.072 → 0.03) to match ReceiptPaper:
+    // a thicker outline blurs into the 1-bit threshold and clogs small glyphs.
+    ctx.lineWidth = Math.max(0.27, size * 0.03);
     ctx.lineJoin = 'round';
     ctx.strokeStyle = '#000000';
     ctx.strokeText(text, x, posY);

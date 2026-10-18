@@ -43,11 +43,13 @@ export const BILL_SHOP_PHONE = '01953838244';
 const BN_BOLD = 'NotoSansBengali-Bold';
 
 /** Hairline same-colour outline — see "THERMAL CLARITY" above.
- *  Bold strength reduced ~20% (0.9 → 0.72) for lighter, finer print. */
+ *  Tuned down to a true hairline (0.9 → 0.72 → 0.3): a wide halo blurs into the
+ *  printer's 1-bit threshold, which fattens strokes and clogs small Bengali
+ *  counters. Keep this minimal — the font is already bold on its own. */
 const THERMAL_BOLD = {
   textShadowColor: '#000000',
   textShadowOffset: { width: 0, height: 0 },
-  textShadowRadius: 0.72
+  textShadowRadius: 0.3
 };
 
 const ReceiptPaper = forwardRef(function ReceiptPaper({
