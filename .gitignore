@@ -1,14 +1,70 @@
-# FULL-BACKUP POLICY (private repo)
-# Everything is committed so a fresh clone can build and run immediately —
-# including .env, credentials/ (signing keystores + passwords), android/, tests/.
-# Keep this repository PRIVATE: it now contains the app signing keys.
+# =========================================================================
+# Rongdhonu POS - .gitignore (Clean Production Security Baseline)
+# =========================================================================
 
-# dependencies (restore with `npm install`)
+# Dependencies
 node_modules/
 
-# build output
-*.apk
-
-# Expo's local cache is machine-specific and regenerated on every `expo start`;
-# keeping it out stops the working tree from going dirty after each run.
+# Expo & Metro
 .expo/
+dist/
+web-build/
+expo-env.d.ts
+.metro-health-check*
+
+# Environment files
+.env
+.env*.local
+.env.*
+
+# Local Database files (SQLite)
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+rongdhonu.db*
+
+# Android / iOS prebuild artifacts (generated via npx expo prebuild)
+/android
+/ios
+
+# Native build & keys
+.kotlin/
+*.orig.*
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.pem
+*.mobileprovision
+
+# Credentials (keep credentials.example.json as public template)
+credentials.json
+credentials.*.json
+credentials/
+!credentials.example.json
+
+# Signing Backups & Release artifacts
+*.apk
+RONGDHONU_SIGNING_BACKUP_*/
+
+# Knowledge Graph & Assistant IDE caches
+graphify-out/
+.commandcode/
+.backups/
+.claude/
+.idea/
+.vscode/
+
+# Debug and audit artifacts
+audit_out.txt
+firestore_count.js
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# OS files
+.DS_Store
+*.tsbuildinfo
