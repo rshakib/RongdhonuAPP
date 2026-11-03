@@ -69,3 +69,4 @@ yarn-error.*
 .DS_Store
 *.tsbuildinfo
 eas.json
+tests/
